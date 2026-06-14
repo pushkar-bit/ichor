@@ -5,7 +5,7 @@ const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379'
   maxRetriesPerRequest: null, // Required by BullMQ
 });
 
-export const territoryQueue = new Queue('territory-processing', { connection });
+export const territoryQueue = new Queue('territory-processing', { connection: connection as any });
 
 export async function addTerritoryJob(runId: string): Promise<void> {
   await territoryQueue.add(

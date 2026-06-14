@@ -1,11 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { PrismaClient } from '@prisma/client';
 import { requireAuth } from '../middleware/requireAuth';
 import { addTerritoryJob } from '../queues/territoryQueue';
+import { prisma } from '../db';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // ─── Zod Schema ───────────────────────────────────────────────────────────────
 
@@ -73,7 +72,7 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
         totalRuns: { increment: 1 },
         totalDistance: { increment: distanceKm },
       },
-    }).catch((err) => console.error('[Stats] Failed to update user stats:', err));
+    }).catch((err: any) => console.error('[Stats] Failed to update user stats:', err));
 
     // 5. Enqueue territory processing — does NOT block the response
     addTerritoryJob(run.id).catch((err) =>
@@ -92,7 +91,7 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
 
 router.get('/:id', requireAuth, async (req: Request, res: Response) => {
   try {
-    const run = await prisma.run.findUnique({ where: { id: req.params.id } });
+    const run = await prisma.run.findUnique({ where: { id: req.params.id as string } });
     if (!run) return res.status(404).json({ error: 'Run not found' });
     return res.status(200).json({ run });
   } catch (error) {

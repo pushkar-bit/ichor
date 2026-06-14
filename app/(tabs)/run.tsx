@@ -226,7 +226,7 @@ function ActiveRunScreen({
       {/* Full-screen map */}
       <MapView
         ref={mapRef}
-        style={StyleSheet.absoluteFillObject}
+        style={{ ...StyleSheet.absoluteFill as any, top: 0, zIndex: -1 }}
         provider={PROVIDER_GOOGLE}
         mapType={mapType}
         initialRegion={initialRegion}

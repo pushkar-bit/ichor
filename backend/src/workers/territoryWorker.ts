@@ -25,7 +25,7 @@ const territoryWorker = new Worker<TerritoryJobData>(
 
     console.log(`[Worker] Territory job complete for runId=${runId}`);
   },
-  { connection, concurrency: 5 },
+  { connection: connection as any, concurrency: 5 },
 );
 
 territoryWorker.on('completed', (job) => {

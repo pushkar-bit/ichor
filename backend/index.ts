@@ -1,14 +1,12 @@
+import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { Webhook } from 'svix';
-import { PrismaClient } from '@prisma/client';
-import { requireAuth } from './middleware/requireAuth';
-
-dotenv.config();
+import { requireAuth } from './src/middleware/requireAuth';
+import { prisma } from './src/db';
+import runsRouter from './src/routes/runs';
 
 const app = express();
-const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
@@ -146,6 +144,8 @@ app.get('/api/users/me', requireAuth, async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+app.use('/api/runs', runsRouter);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

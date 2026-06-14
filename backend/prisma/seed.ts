@@ -137,7 +137,7 @@ async function main() {
     const user = users[i % 5];
     const run = await prisma.run.create({
       data: {
-        userId: user.id,
+        userId: user!.id,
         startedAt: new Date(Date.now() - Math.random() * 10000000),
         endedAt: new Date(),
         distanceKm: 5.0 + Math.random() * 5.0,
@@ -153,9 +153,9 @@ async function main() {
 
     await prisma.activity.create({
       data: {
-        userId: user.id,
+        userId: user!.id,
         runId: run.id,
-        caption: \`Great run around the block! #run\${i}\`,
+        caption: `Great run around the block! #run${i}`,
         photoUrls: [],
         kudosCount: Math.floor(Math.random() * 10),
       },

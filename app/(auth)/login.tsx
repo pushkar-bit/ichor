@@ -48,7 +48,7 @@ export default function LoginScreen() {
       if (emailCodeFactor) {
         await signIn.prepareFirstFactor({
           strategy: 'email_code',
-          emailAddressId: emailCodeFactor.emailAddressId,
+          emailAddressId: (emailCodeFactor as any).emailAddressId,
         });
         setPendingVerification(true);
       }
@@ -76,7 +76,7 @@ export default function LoginScreen() {
         const user = completeSignIn.userData;
         if (user) {
            await syncUser(
-             user.id || '',
+             (completeSignIn as any).createdUserId || '',
              emailAddress,
              user.firstName ? `${user.firstName} ${user.lastName}` : '',
              user.imageUrl || ''

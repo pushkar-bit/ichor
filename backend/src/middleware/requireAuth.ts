@@ -5,7 +5,7 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction) => 
   // Use Clerk's built-in express middleware to validate the session token
   const authMiddleware = ClerkExpressRequireAuth();
   
-  authMiddleware(req, res, (err) => {
+  (authMiddleware as any)(req, res, (err: any) => {
     if (err) {
       return res.status(401).json({ error: 'Unauthorized', details: err });
     }

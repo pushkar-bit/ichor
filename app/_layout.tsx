@@ -1,3 +1,5 @@
+/// <reference types="../types/global.d.ts" />
+// @ts-ignore
 import '../global.css';
 import { useEffect } from 'react';
 import { Slot, useRouter, useSegments } from 'expo-router';
