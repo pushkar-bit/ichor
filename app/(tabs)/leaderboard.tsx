@@ -1,22 +1,28 @@
 import React from 'react';
 import { View, Text, SafeAreaView } from 'react-native';
-import { Flame } from 'lucide-react-native';
+import { Trophy } from 'lucide-react-native';
 import { Colors } from '../../constants/colors';
 
 /**
- * Home — Social Feed
- * Full implementation in Prompt 05.
- * Displays chronological feed of all Dhaav member posts.
+ * Leaderboard Screen
+ * Full implementation in Prompt 07.
+ * Six leaderboard categories:
+ *  1. Calorie King
+ *  2. Grind Streak
+ *  3. Pace God
+ *  4. Distance Destroyer
+ *  5. Integrity Champion
+ *  6. Clan Wars
  */
-export default function HomeScreen() {
+export default function LeaderboardScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }}>
-      <Flame size={48} color={Colors.primary} />
+      <Trophy size={48} color={Colors.gold} />
       <Text style={{ color: Colors.textPrimary, fontSize: 24, fontWeight: '700', marginTop: 16 }}>
-        Feed
+        Rankings
       </Text>
       <Text style={{ color: Colors.textSecondary, fontSize: 14, marginTop: 8 }}>
-        Social feed — coming in Prompt 05
+        6 leaderboard categories — coming in Prompt 07
       </Text>
     </SafeAreaView>
   );

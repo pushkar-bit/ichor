@@ -4,14 +4,15 @@ import cors from 'cors';
 import { Webhook } from 'svix';
 import { requireAuth } from './src/middleware/requireAuth';
 import { prisma } from './src/db';
-import runsRouter from './src/routes/runs';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 
-// Webhook endpoint needs raw body for Svix verification
+// ─── Clerk Webhook ────────────────────────────────────────────────────────────
+// Needs raw body for Svix signature verification
+
 app.post('/webhooks/clerk', express.raw({ type: 'application/json' }), async (req: Request, res: Response) => {
   const SIGNING_SECRET = process.env.CLERK_WEBHOOK_SECRET;
 
@@ -19,26 +20,19 @@ app.post('/webhooks/clerk', express.raw({ type: 'application/json' }), async (re
     throw new Error('Error: Please add CLERK_WEBHOOK_SECRET from Clerk Dashboard to .env');
   }
 
-  // Get headers
   const svix_id = req.headers['svix-id'] as string;
   const svix_timestamp = req.headers['svix-timestamp'] as string;
   const svix_signature = req.headers['svix-signature'] as string;
 
-  // If there are missing headers, error out
   if (!svix_id || !svix_timestamp || !svix_signature) {
-    return res.status(400).json({
-      success: false,
-      message: 'Error: Missing svix headers',
-    });
+    return res.status(400).json({ success: false, message: 'Error: Missing svix headers' });
   }
 
-  // Get body
   const payload = req.body;
   const body = payload.toString();
 
   let evt: any;
 
-  // Verify payload with headers
   try {
     const wh = new Webhook(SIGNING_SECRET);
     evt = wh.verify(body, {
@@ -48,54 +42,39 @@ app.post('/webhooks/clerk', express.raw({ type: 'application/json' }), async (re
     });
   } catch (err) {
     console.error('Error: Could not verify webhook:', err);
-    return res.status(400).json({
-      success: false,
-      message: 'Error: Verification error',
-    });
+    return res.status(400).json({ success: false, message: 'Error: Verification error' });
   }
 
-  // Handle the webhook event
   const { id } = evt.data;
   const eventType = evt.type;
 
   if (eventType === 'user.created' || eventType === 'user.updated') {
     const { email_addresses, first_name, last_name, image_url } = evt.data;
-    
     const primaryEmail = email_addresses?.length > 0 ? email_addresses[0].email_address : '';
     const name = `${first_name || ''} ${last_name || ''}`.trim();
 
     try {
       await prisma.user.upsert({
         where: { clerkId: id },
-        update: {
-          email: primaryEmail,
-          name,
-          avatarUrl: image_url,
-        },
-        create: {
-          clerkId: id,
-          email: primaryEmail,
-          name,
-          avatarUrl: image_url,
-        },
+        update: { email: primaryEmail, name, avatarUrl: image_url },
+        create: { clerkId: id, email: primaryEmail, name, avatarUrl: image_url },
       });
-      console.log(`User ${id} upserted successfully from webhook.`);
+      console.log(`[Dhaav] User ${id} upserted from webhook.`);
     } catch (error) {
       console.error('Error upserting user in webhook:', error);
       return res.status(500).json({ error: 'Database error' });
     }
   }
 
-  return res.status(200).json({
-    success: true,
-    message: 'Webhook received',
-  });
+  return res.status(200).json({ success: true, message: 'Webhook received' });
 });
 
-// Middleware for parsing JSON for all other routes
+// ─── JSON middleware for all other routes ─────────────────────────────────────
 app.use(express.json());
 
-// Sync user endpoint called by frontend after login
+// ─── User Routes ──────────────────────────────────────────────────────────────
+
+// Sync user after Clerk login (called by frontend)
 app.post('/api/users/sync', requireAuth, async (req: Request, res: Response) => {
   try {
     const clerkId = req.auth.userId;
@@ -107,17 +86,8 @@ app.post('/api/users/sync', requireAuth, async (req: Request, res: Response) => 
 
     const user = await prisma.user.upsert({
       where: { clerkId },
-      update: {
-        email,
-        name,
-        avatarUrl,
-      },
-      create: {
-        clerkId,
-        email,
-        name,
-        avatarUrl,
-      },
+      update: { email, name, avatarUrl },
+      create: { clerkId, email, name, avatarUrl },
     });
 
     return res.status(200).json({ success: true, user });
@@ -132,6 +102,12 @@ app.get('/api/users/me', requireAuth, async (req: Request, res: Response) => {
     const clerkId = req.auth.userId;
     const user = await prisma.user.findUnique({
       where: { clerkId },
+      include: {
+        clan: {
+          select: { id: true, name: true, tag: true, color: true },
+        },
+        badges: true,
+      },
     });
 
     if (!user) {
@@ -145,8 +121,46 @@ app.get('/api/users/me', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-app.use('/api/runs', runsRouter);
+app.patch('/api/users/profile', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const clerkId = req.auth.userId;
+    const { name, bio, avatarUrl } = req.body;
 
+    const user = await prisma.user.update({
+      where: { clerkId },
+      data: { name, bio, avatarUrl },
+    });
+
+    return res.status(200).json({ success: true, user });
+  } catch (error) {
+    console.error('Error in PATCH /api/users/profile:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.patch('/api/users/fcm-token', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const clerkId = req.auth.userId;
+    const { fcmToken } = req.body;
+
+    await prisma.user.update({
+      where: { clerkId },
+      data: { fcmToken },
+    });
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Error in PATCH /api/users/fcm-token:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Health Check ─────────────────────────────────────────────────────────────
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', app: 'Dhaav', version: '1.0.0' });
+});
+
+// ─── Start Server ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`[Dhaav API] Server running on port ${PORT}`);
 });

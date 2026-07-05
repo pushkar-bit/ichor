@@ -1,13 +1,7 @@
 import { create } from 'zustand';
-import { GpxPoint } from '../utils/paceCalculator';
+import type { Workout, Post, PostDraft, DietAnalysisResult } from '../types';
 
-export interface FinalRunStats {
-  gpxPath: GpxPoint[];
-  distanceKm: number;
-  durationSeconds: number;
-  avgPaceMinPerKm: number;
-  calories: number;
-}
+// ─── User Slice ──────────────────────────────────────────────────────────────
 
 export interface UserSlice {
   id: string | null;
@@ -15,79 +9,93 @@ export interface UserSlice {
   avatar: string | null;
   clanId: string | null;
   token: string | null;
-  setUser: (user: Partial<UserSlice>) => void;
+  streakDays: number;
+  integrityPoints: number;
+  setUser: (user: Partial<Omit<UserSlice, 'setUser' | 'clearUser'>>) => void;
   clearUser: () => void;
 }
 
-export interface ActiveRunSlice {
-  isRunning: boolean;
-  isPaused: boolean;
-  startTime: number | null;
-  coordinates: GpxPoint[];
-  distance: number;
-  pace: number;
-  duration: number;
-  calories: number;
-  splitMarkers: number[];
-  startRun: () => void;
-  pauseRun: () => void;
-  resumeRun: () => void;
-  stopRun: () => void;
-  addCoordinate: (point: GpxPoint) => void;
-  updateRunStats: (distance: number, pace: number, duration: number, calories: number) => void;
-  addSplitMarker: (km: number) => void;
-  resetRun: () => void;
+// ─── Import Slice ─────────────────────────────────────────────────────────────
+
+export interface ImportSlice {
+  pendingWorkouts: Workout[];
+  currentDraft: Workout | null;
+  draftPost: PostDraft | null;
+  setPendingWorkouts: (workouts: Workout[]) => void;
+  removePendingWorkout: (workoutId: string) => void;
+  clearPendingWorkouts: () => void;
+  setCurrentDraft: (workout: Workout | null) => void;
+  setDraftPost: (post: PostDraft | null) => void;
+  updateDraftPost: (updates: Partial<PostDraft>) => void;
+  clearDraft: () => void;
 }
 
-type AppStore = UserSlice & ActiveRunSlice;
+// ─── Feed Slice ───────────────────────────────────────────────────────────────
+
+export interface FeedSlice {
+  optimisticPosts: Post[];
+  hasNewPosts: boolean;
+  addOptimisticPost: (post: Post) => void;
+  removeOptimisticPost: (postId: string) => void;
+  setHasNewPosts: (val: boolean) => void;
+  clearOptimisticPosts: () => void;
+}
+
+// ─── Combined Store ───────────────────────────────────────────────────────────
+
+type AppStore = UserSlice & ImportSlice & FeedSlice;
 
 export const useAppStore = create<AppStore>((set) => ({
-  // User Slice
+  // ── User Slice defaults ──
   id: null,
   name: null,
   avatar: null,
   clanId: null,
   token: null,
-  setUser: (user) => set((state) => ({ ...state, ...user })),
-  clearUser: () => set({ id: null, name: null, avatar: null, clanId: null, token: null }),
+  streakDays: 0,
+  integrityPoints: 0,
 
-  // Active Run Slice
-  isRunning: false,
-  isPaused: false,
-  startTime: null,
-  coordinates: [],
-  distance: 0,
-  pace: 0,
-  duration: 0,
-  calories: 0,
-  splitMarkers: [],
-  
-  startRun: () => set({ 
-    isRunning: true, 
-    isPaused: false, 
-    startTime: Date.now(),
-    coordinates: [],
-    distance: 0,
-    pace: 0,
-    duration: 0,
-    calories: 0,
-    splitMarkers: [],
-  }),
-  pauseRun: () => set({ isPaused: true }),
-  resumeRun: () => set({ isPaused: false }),
-  stopRun: () => set({ isRunning: false, isPaused: false }),
-  addCoordinate: (point) => set((state) => ({ coordinates: [...state.coordinates, point] })),
-  updateRunStats: (distance, pace, duration, calories) => set({ distance, pace, duration, calories }),
-  addSplitMarker: (km) => set((state) => ({ splitMarkers: [...state.splitMarkers, km] })),
-  resetRun: () => set({ 
-    isRunning: false, 
-    isPaused: false, 
-    startTime: null,
-    coordinates: [],
-    distance: 0,
-    pace: 0,
-    duration: 0,
-    calories: 0,
-    splitMarkers: [],
-  }),
+  setUser: (user) => set((state) => ({ ...state, ...user })),
+  clearUser: () =>
+    set({
+      id: null,
+      name: null,
+      avatar: null,
+      clanId: null,
+      token: null,
+      streakDays: 0,
+      integrityPoints: 0,
+    }),
+
+  // ── Import Slice defaults ──
+  pendingWorkouts: [],
+  currentDraft: null,
+  draftPost: null,
+
+  setPendingWorkouts: (workouts) => set({ pendingWorkouts: workouts }),
+  removePendingWorkout: (workoutId) =>
+    set((state) => ({
+      pendingWorkouts: state.pendingWorkouts.filter((w) => w.id !== workoutId),
+    })),
+  clearPendingWorkouts: () => set({ pendingWorkouts: [] }),
+  setCurrentDraft: (workout) => set({ currentDraft: workout }),
+  setDraftPost: (post) => set({ draftPost: post }),
+  updateDraftPost: (updates) =>
+    set((state) => ({
+      draftPost: state.draftPost ? { ...state.draftPost, ...updates } : null,
+    })),
+  clearDraft: () => set({ currentDraft: null, draftPost: null }),
+
+  // ── Feed Slice defaults ──
+  optimisticPosts: [],
+  hasNewPosts: false,
+
+  addOptimisticPost: (post) =>
+    set((state) => ({ optimisticPosts: [post, ...state.optimisticPosts] })),
+  removeOptimisticPost: (postId) =>
+    set((state) => ({
+      optimisticPosts: state.optimisticPosts.filter((p) => p.id !== postId),
+    })),
+  setHasNewPosts: (val) => set({ hasNewPosts: val }),
+  clearOptimisticPosts: () => set({ optimisticPosts: [] }),
 }));

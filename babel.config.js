@@ -3,11 +3,13 @@ module.exports = function (api) {
   return {
     presets: [
       ["babel-preset-expo", { jsxImportSource: "nativewind" }],
-      "nativewind/babel",
     ],
     plugins: [
-      "react-native-worklets/plugin",
-      "react-native-reanimated/plugin"
-    ]
+      // NativeWind requires this plugin for Tailwind class compilation
+      "nativewind/babel",
+      // Reanimated must be last. In Reanimated v4+, worklets are built-in.
+      // Do NOT include react-native-worklets/plugin separately — it conflicts.
+      "react-native-reanimated/plugin",
+    ],
   };
 };

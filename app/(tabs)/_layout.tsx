@@ -1,6 +1,7 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { Home, Map, Activity, Rss, User } from 'lucide-react-native';
+import { Flame, Map, Plus, Trophy, User } from 'lucide-react-native';
+import { Colors } from '../../constants/colors';
 
 export default function TabLayout() {
   return (
@@ -8,38 +9,58 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#1A1A1A',
-          borderTopColor: '#333',
+          backgroundColor: Colors.tabBackground,
+          borderTopColor: Colors.tabBorder,
+          borderTopWidth: 1,
+          height: 64,
+          paddingBottom: 8,
+          paddingTop: 8,
         },
-        tabBarActiveTintColor: '#E8520A',
-        tabBarInactiveTintColor: '#888',
-      }}>
+        tabBarActiveTintColor: Colors.tabActive,
+        tabBarInactiveTintColor: Colors.tabInactive,
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          letterSpacing: 0.3,
+        },
+      }}
+    >
       <Tabs.Screen
         name="home"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
+          title: 'Feed',
+          tabBarIcon: ({ color, size }) => <Flame size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="map"
         options={{
-          title: 'Map',
+          title: 'Territory',
           tabBarIcon: ({ color, size }) => <Map size={size} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="run"
+        name="import"
         options={{
-          title: 'Run',
-          tabBarIcon: ({ color, size }) => <Activity size={size} color={color} />,
+          title: 'Import',
+          tabBarIcon: ({ color, size }) => (
+            <Plus size={size} color={color} />
+          ),
+          tabBarStyle: {
+            backgroundColor: Colors.tabBackground,
+            borderTopColor: Colors.tabBorder,
+            borderTopWidth: 1,
+            height: 64,
+            paddingBottom: 8,
+            paddingTop: 8,
+          },
         }}
       />
       <Tabs.Screen
-        name="feed"
+        name="leaderboard"
         options={{
-          title: 'Feed',
-          tabBarIcon: ({ color, size }) => <Rss size={size} color={color} />,
+          title: 'Rankings',
+          tabBarIcon: ({ color, size }) => <Trophy size={size} color={color} />,
         }}
       />
       <Tabs.Screen
