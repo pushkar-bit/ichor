@@ -1,599 +1,965 @@
-# ICHOR — Product Requirements Document & Antigravity Build Guide
+# ICHOR — Complete Product Requirements Document
+## "Turn Sweat Into Lore"
 
-> **App Name:** ICHOR  
-> **Tagline:** Sweat. Post. Dominate.  
-> **Platform:** iOS + Android (React Native + Expo)  
-> **Version:** v1.0 — Full Pivot Build  
-> **Status:** Pre-development
+> **Version:** 2.0 — Final Architecture
+> **Frontend:** Next.js 14 (App Router) — Vercel
+> **Backend:** Node.js + Express — Railway
+> **Database:** MongoDB (Atlas Free Tier M0)
+> **Auth:** Clerk
+> **AI:** Google Gemini 1.5 Flash
+> **Target Load:** 500–700 concurrent users
+> **Cost:** $0
 
 ---
 
 ## PART 1: PRODUCT VISION
 
-ICHOR is a campus-exclusive social fitness battleground. It is NOT a run tracking app. It is a platform where athletic effort — verified through health apps, wearables, and AI screenshot parsing — becomes social currency, territory, and power.
+ICHOR is a campus-exclusive social fitness battleground. Every run you complete becomes territory. Every territory can be challenged. Every challenge can become a war.
 
-You don't track your runs inside ICHOR. You import them. You post them. You get judged on them. And then you fight for territory using those stats.
+You do not track runs inside ICHOR. You import them — from Apple Health, Google Fit, Strava, RunKeeper, or any fitness app screenshot. Once imported, you post them to the feed. Once posted, your run claims territory, earns points, and places you on leaderboards.
 
-The core loop: **Run → Import → Post → Battle → Dominate.**
+**The core loop:**
+**Run (externally) → Import data → Tag location → Post → Claim territory → Battle → Dominate leaderboard**
 
 ---
 
-## PART 2: WHAT CHANGED FROM DHAAV
+## PART 2: TECH STACK (ZERO COST)
 
-| Dhaav (Old) | ICHOR (New) |
+### Why This Stack Costs Nothing
+
+| Service | Free Tier |
 |---|---|
-| Native GPS background tracking | Removed entirely |
-| Real-time run HUD | Removed |
-| Strava-style live map drawing | Removed |
-| Manual stat entry | Removed |
-| Expo Location background mode | Removed |
-| Apple Health / Google Fit sync | ✅ Added |
-| Garmin /WHOOP / Strava / RunKeeper import | ✅ Added |
-| AI screenshot OCR (Gemini Vision) | ✅ Added |
-| Social post with calorie/diet honesty | ✅ Added |
-| Rating and commenting on workouts | ✅ Added |
-| Territory system (PostGIS) | ✅ Kept |
-| Clans and battles | ✅ Kept |
-| Leaderboards | ✅ Kept + expanded |
-| Gemini AI Coach | ✅ Kept + expanded |
-| Clerk Auth | ✅ Kept |
+| Vercel | Unlimited hobby deploys, 100GB bandwidth/month |
+| Railway | $5 free credit/month — enough for backend + Redis |
+| MongoDB Atlas M0 | 512MB free forever, 500 concurrent connections |
+| Clerk | 10,000 MAU free |
+| Google Gemini API | 15 RPM free (Gemini 1.5 Flash) |
+| Cloudinary | 25GB storage + 25GB bandwidth free |
+| Firebase FCM | Free unlimited push notifications |
+| Google Maps JS API | $200 free credit/month (more than enough) |
+| Upstash Redis | 10,000 commands/day free |
+
+### Full Stack
+
+| Layer | Technology | Purpose |
+|---|---|---|
+| Frontend | Next.js 14 App Router + TypeScript | Web app hosted on Vercel |
+| Styling | Tailwind CSS + shadcn/ui | Free, fast, beautiful |
+| State | Zustand + TanStack Query v5 | Client + server state |
+| Auth | Clerk | Login, sessions, webhooks |
+| Backend | Node.js + Express | REST API + WebSockets |
+| Real-time | Socket.io | Live leaderboards, notifications |
+| Database | MongoDB Atlas + Mongoose | All data (free M0 tier) |
+| Cache | Upstash Redis (REST API) | Leaderboards, sessions, rate limiting |
+| AI | Google Gemini 1.5 Flash | OCR, coach, diet analysis |
+| Media | Cloudinary | Photos, screenshots |
+| Push | Firebase Admin FCM | Browser push notifications |
+| Maps | Google Maps JS API | Territory display, location pick |
+| Jobs | node-cron (in-process) | Replaces BullMQ — free, no Redis queue needed |
+| Hosting FE | Vercel | Free forever |
+| Hosting BE | Railway | Free $5 credit |
+
+### SOLID Principles Applied
+
+**S — Single Responsibility:** Each Express router handles one domain only (auth, workouts, posts, territories, leaderboards, clans, coach). Each Mongoose model is in its own file.
+
+**O — Open/Closed:** Score calculation uses a strategy pattern — new scoring rules added without touching existing logic. New leaderboard categories added via config, not code changes.
+
+**L — Liskov Substitution:** Location providers (GPS, map pick, manual) implement a single `LocationProvider` interface. Swapping providers does not break anything.
+
+**I — Interface Segregation:** Health sync (Apple/Google), OCR, and manual entry are three separate import interfaces. Frontend consumes only what it needs.
+
+**D — Dependency Inversion:** Backend services depend on abstractions (repository interfaces), not direct Mongoose calls. Swap MongoDB for anything else without touching business logic.
+
+### Scalability for 500–700 Concurrent Users
+
+- MongoDB Atlas M0 handles 500 simultaneous connections — exactly enough. Connection pooling via Mongoose (pool size 10).
+- Upstash Redis for leaderboard sorted sets — handles thousands of reads/sec on free tier.
+- Next.js on Vercel: edge-cached static pages, ISR for leaderboards (revalidate every 60s).
+- Express backend: stateless — Railway can run 2 instances if needed (still free).
+- Socket.io: rooms scoped per territory/clan — not broadcasting to all 700 users at once.
+- Rate limiting: express-rate-limit on all API routes (100 req/min per user).
+- Image optimization: all uploads go directly to Cloudinary from browser (signed upload) — backend never handles binary data.
 
 ---
 
-## PART 3: CORE FEATURE SPECIFICATION
-
-### 3.1 — Health Data Ingestion Engine
-
-**How workout data enters ICHOR:**
-
-**Method A — Native Health Sync (Primary)**  
-On app open, ICHOR silently fetches the last 7 days of workouts from the device health store.  
-- iOS: Apple HealthKit via `react-native-health`  
-- Android: Google Health Connect via `react-native-health-connect`  
-- Data pulled: activity type, distance, duration, calories burned, average heart rate, start time  
-- Only Running, Walking, Cycling workouts are imported  
-- Duplicates detected by start timestamp — never imported twice  
-- User sees a "New workouts found" banner and can approve or dismiss each one  
-
-**Method B — Screenshot OCR Import (Secondary)**  
-User takes a screenshot of their Strava, RunKeeper, Garmin, Nike Run Club, or any fitness app summary screen and uploads it in ICHOR.  
-- ICHOR sends the image to the Gemini 1.5 Flash Vision API  
-- Gemini extracts: distance, duration, pace, calories, date, activity type  
-- Extracted data shown to user for confirmation before saving  
-- User can manually correct any field before confirming  
-- Screenshot is stored as proof/verification artifact on the activity  
-
-**Method C — Wearable Deep Link (Future)**  
-Garmin Connect IQ, Apple Watch, Fitbit APIs — planned for v2.
-
-**Fraud Prevention:**  
-- Screenshot is stored and publicly visible on the activity card  
-- Community can flag activities as suspicious  
-- 3 flags = activity auto-hidden pending admin review  
-- Admin dashboard for reviewing flagged activities  
-
----
-
-### 3.2 — Social Post System
-
-Every imported or OCR-verified workout automatically creates a draft post. User must complete the post before it counts toward leaderboards or territory.
-
-**Post composer fields:**  
-- Auto-populated: activity type, distance, duration, calories, date  
-- Required: at least one photo (run selfie, route screenshot, gym photo)  
-- Optional: caption text (up to 300 characters)  
-- Optional: Diet Honesty Card (see 3.3)  
-- Optional: tag location (campus landmark from a preset list)  
-- isPublic toggle (default: public within the club)  
-
-**Activity Card (feed display):**  
-- Header: avatar, name, time ago, activity type badge, verification badge (Health Sync = green tick, OCR = camera icon)  
-- Hero photo (first uploaded photo)  
-- Stats strip: Distance | Pace | Duration | Calories — clean icon + value layout  
-- Diet Honesty Card if attached (see 3.3)  
-- Caption  
-- Proof section: screenshot thumbnail (if OCR import) — tap to expand full screenshot  
-- Footer: Flame rating (1–5 flames), Comment count, Share button  
-
----
-
-### 3.3 — Diet Honesty Card (Unique Feature)
-
-This is the feature that makes ICHOR unlike any other fitness app.
-
-After posting a workout, users are prompted: **"What did you eat today?"**  
-This is voluntary but rewarded — honest diet logging earns "Integrity Points."
-
-**Diet card types:**  
-- Clean Eat: logged healthy meal → +integrity bonus  
-- Cheat Day: logged junk food → shown on post publicly with a cheat emoji, slight leaderboard penalty  
-- Skipped: said nothing → neutral  
-
-**Leaderboard impact:**  
-Base score = Calories Burned  
-Final score = (Calories Burned × Consistency Multiplier) + Integrity Bonus - Cheat Penalty  
-
-Consistency Multiplier: 1.0× base, +0.1× for every consecutive day with a post, max 2.0×  
-Integrity Bonus: +50 points per honest diet log  
-Cheat Penalty: -10% of calorie score if junk food logged  
-
-This creates a meta-game: burn 1000 calories but ate pizza = your effective score drops. The community can see your diet card and react.
-
----
-
-### 3.4 — Feed & Engagement
-
-**Main Feed:**  
-- Chronological feed of all club member posts  
-- Filter tabs: All | Following | Clan | Top Today  
-
-**Engagement actions:**  
-- Flame Rating: 1–5 flames (replaces generic like button) — shown as average rating on the post  
-- Comments: text only, nested replies  
-- Kudos: quick tap to send a fire emoji to the poster  
-- Flag: report suspicious activity stats  
-
-**Activity detail screen:**  
-- Full-size photos (swipeable gallery)  
-- Full stats breakdown  
-- Screenshot proof (if OCR)  
-- Diet card  
-- All comments  
-- Map thumbnail if location tagged  
-
----
-
-### 3.5 — Territory System (Adapted)
-
-Territory is now assigned based on the location tagged in the post, not live GPS path.
-
-**How territory works in ICHOR:**  
-- Campus is divided into named zones (predefined by admin: Library Zone, Track Zone, Hostel Zone, etc.)  
-- Each zone is a PostGIS polygon defined at setup  
-- When you post a workout and tag a location, you claim that zone  
-- If someone else tags the same zone and has better stats (higher calorie score that week), an automatic attack is triggered  
-- Attack resolution: same as before — stat battle or scheduled sprint (sprint results entered manually with screenshot proof)  
-
-**Territory display:**  
-- Campus map view showing all zones  
-- Colour-filled by owner / clan colour  
-- Tap zone: see owner, their weekly stats in that zone, challenge button  
-
----
-
-### 3.6 — Leaderboards (Expanded)
-
-**Leaderboard categories:**  
-
-1. **Calorie King** — most calories burned this week (primary leaderboard)  
-2. **Grind Streak** — most consecutive days with a verified post  
-3. **Pace God** — best average pace across all runs this week (min 3 runs)  
-4. **Distance Destroyer** — most total km this week  
-5. **Integrity Champion** — most Integrity Points from diet honesty  
-6. **Clan Dominance** — clan ranked by combined calorie score + territory held  
-
-All weekly leaderboards reset Monday 00:00. Monthly hall-of-fame preserves top 3.
-
----
-
-### 3.7 — Clans
-
-Same as Dhaav spec — Create clan, join clan (max 10), clan territory = union of member zones, clan vs clan battles, clan leaderboard.
-
-New addition: **Clan Diet Pact** — clan can set a weekly diet challenge (e.g., "no sugar this week"). Members who comply get a clan integrity bonus.
-
----
-
-### 3.8 — Gemini AI Features
-
-**AI Coach (Dhruv):**  
-- Chat bot with full conversation history  
-- Context: user's last 30 days of imported workouts  
-- Answers training, nutrition, and territory strategy questions  
-- Weekly training plan generation (structured JSON, displayed as week card)  
-
-**AI Screenshot Parser:**  
-- Gemini Vision extracts workout data from any fitness app screenshot  
-- Handles Strava, RunKeeper, Garmin, Nike Run Club, Apple Fitness, Samsung Health  
-- Returns structured JSON: { activityType, distanceKm, durationSeconds, avgPaceMinPerKm, caloriesBurned, date }  
-
-**AI Diet Analyzer:**  
-- User describes what they ate (free text)  
-- Gemini classifies: Clean / Cheat / Neutral and estimates calorie intake  
-- Returns: { classification, estimatedCalories, integrityBonus, suggestion }  
-
----
-
-### 3.9 — Profile
-
-- Stats: total distance, total workouts, total calories, territory held, battles won/lost  
-- Streak calendar (GitHub-style heatmap of workout days)  
-- Badges: Calorie King, Streak Master, Integrity Champion, Conqueror, etc.  
-- Health sync status indicator  
-- Connected apps display (which health source last synced)  
-- Weekly training plan card (from Gemini)  
-
----
-
-## PART 4: TECH STACK (UPDATED)
-
-### Frontend
-| Tool | Purpose |
-|---|---|
-| React Native + Expo SDK 51 | iOS + Android from one codebase |
-| Expo Router v3 | File-based navigation |
-| NativeWind v4 | Tailwind styling |
-| Zustand | Global state (user, activePost, healthSync) |
-| TanStack Query v5 | Server state, caching, infinite scroll |
-| react-native-health | Apple HealthKit integration (iOS) |
-| react-native-health-connect | Google Health Connect (Android) |
-| expo-image-picker | Screenshot upload |
-| react-native-maps | Campus zone map display |
-| Reanimated 3 | Animations |
-
-### Authentication
-| Tool | Purpose |
-|---|---|
-| Clerk | Email OTP + Google OAuth, college domain gating |
-
-### Backend
-| Tool | Purpose |
-|---|---|
-| Node.js + Express | REST API |
-| Socket.io | Real-time feed updates, challenge notifications |
-| Prisma ORM | Type-safe PostgreSQL queries |
-| Zod | Request validation |
-| BullMQ | Background jobs (leaderboard reset, challenge expiry) |
-| @google/generative-ai | Gemini SDK (Vision + Chat) |
-| firebase-admin | FCM push notifications |
-| cloudinary | Photo + screenshot storage |
-| svix | Clerk webhook verification |
-
-### Database & Infrastructure
-| Tool | Purpose |
-|---|---|
-| PostgreSQL + PostGIS | Users, posts, territory zones, activities |
-| Redis | Leaderboard sorted sets, BullMQ queue, pub/sub |
-| Railway | Backend + PostgreSQL + Redis hosting |
-| Cloudinary | Media storage |
-| Firebase FCM | Push notifications |
-| Sentry | Error tracking |
-| PostHog | Analytics |
-
-### Google APIs Required
-| API | Purpose |
-|---|---|
-| Gemini 1.5 Flash | Screenshot OCR, AI coach, diet analyzer |
-| Maps SDK iOS + Android | Campus zone map display |
-| Static Maps API | Zone thumbnail images |
-
----
-
-## PART 5: DATABASE SCHEMA
-
-### Core Models
-
-**User:** id, clerkId, email, name, avatarUrl, bio, fcmToken, totalDistance, totalWorkouts, totalCalories, streakDays, integrityPoints, battlesWon, battlesLost, clanId, createdAt
-
-**Workout:** id, userId, sourceType (HEALTH_SYNC | OCR_SCREENSHOT | MANUAL), activityType (RUN | WALK | CYCLE), distanceKm, durationSeconds, avgPaceMinPerKm, caloriesBurned, heartRateAvg, workoutDate, externalId (dedup key), screenshotUrl, verificationStatus (PENDING | VERIFIED | FLAGGED), createdAt
-
-**Post:** id, userId, workoutId (unique FK), caption, photoUrls[], locationZoneId, isPublic, avgFlameRating, flameCount, kudosCount, flagCount, createdAt
-
-**DietCard:** id, postId (unique FK), description, classification (CLEAN | CHEAT | NEUTRAL), estimatedCalories, integrityBonus, createdAt
-
-**FlameRating:** id, postId, userId, rating (1–5), createdAt — unique on postId+userId
-
-**Comment:** id, postId, authorId, parentId (nullable for replies), text, createdAt
-
-**CampusZone:** id, name, description, polygon (PostGIS geometry), color — seeded by admin at setup
-
-**Territory:** id, zoneId (unique FK), ownerId, clanId, weeklyCalorieScore, acquiredAt, lastDefended
-
-**Attack:** id, attackerId, defenderId, zoneId, status (PENDING|ACCEPTED|FORFEITED|RESOLVED|EXPIRED), type (STAT|SPRINT), scheduledAt, resolvedAt, winnerId, createdAt
-
-**Clan:** id, name, tag, leaderId, color, dietPactDescription, createdAt
-
-**ClanMember:** clanId, userId, role (LEADER|MEMBER), joinedAt
-
----
-
-## PART 6: ENV VARIABLES
+## PART 3: ARCHITECTURE — WHAT GOES WHERE
 
 ```
-EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=
-EXPO_PUBLIC_API_URL=
-EXPO_PUBLIC_ALLOWED_DOMAIN=
+Browser (Next.js on Vercel)
+  ↕ HTTPS REST + WebSocket
+Express API (Railway)
+  ↕ Mongoose         ↕ ioredis (Upstash)    ↕ Gemini SDK
+MongoDB Atlas     Upstash Redis           Google AI
+  ↕ Cloudinary SDK (server-side signing only)
+  ↕ Firebase Admin (push)
+  ↕ Google Maps (frontend SDK)
+```
+
+### Request Flow Example — Posting a Workout
+
+1. User finishes run, opens ICHOR on browser
+2. Clicks "Import" → device GPS pings once (Geolocation API) → gets lat/lng
+3. If GPS fails → Google Maps embed loads → user taps their location
+4. User uploads Strava screenshot → browser sends to `POST /api/workouts/ocr`
+5. Backend uploads to Cloudinary, sends URL to Gemini Vision → gets structured JSON
+6. User sees pre-filled form (correctable) → adds caption, photos, diet card
+7. Clicks "Post" → `POST /api/posts` saves to MongoDB
+8. Background: node-cron territory claim job runs → updates territory in MongoDB
+9. Socket.io emits `feed:new_post` to all connected clients in same college room
+10. Leaderboard sorted set in Upstash Redis updated with new score
+
+---
+
+## PART 4: FULL FEATURE SPECIFICATION
+
+### 4.1 — Workout Import Engine
+
+**Method A — Apple Health / Google Fit Sync (Primary for mobile browsers)**
+
+Using the Health API web bridge:
+- On import page load: check if browser supports `navigator.health` (Chrome on Android with Health Connect) or prompt iOS users to use the Share Workout feature from Apple Health to ICHOR's share target (PWA share target).
+- Fallback: user exports workout as `.fit` or `.gpx` file from their wearable app → ICHOR parses it server-side.
+- Google Fit REST API: user connects Google account once via OAuth → ICHOR backend fetches last 7 days of activities via `fitness.googleapis.com`.
+- Apple Health: iOS users use the "Export Health Data" feature and upload the XML, or use the Strava/Garmin screenshot method.
+
+**Method B — Screenshot OCR (Primary for most users)**
+
+User takes a screenshot from any fitness app (Strava, RunKeeper, Garmin, Nike Run Club, Samsung Health, Apple Fitness) and uploads it on the import page.
+- File input (drag & drop + click) accepts PNG, JPG, HEIC.
+- Browser sends to `POST /api/workouts/ocr`.
+- Backend: upload to Cloudinary → send URL to Gemini 1.5 Flash Vision.
+- Gemini extracts: activityType, distanceKm, durationSeconds, avgPaceMinPerKm, caloriesBurned, heartRateAvg, workoutDate.
+- Pre-filled editable form shown. Screenshot stored as verification artifact.
+- 3 community flags → activity hidden pending admin review.
+
+**Method C — Google Fit OAuth Sync**
+
+- User clicks "Connect Google Fit" → OAuth2 flow → backend stores refresh token in MongoDB.
+- On demand sync: `POST /api/workouts/sync/googlefit` → fetches last 7 days from Fitness API.
+- Deduplication by `startTimeMillis` stored as `externalId`.
+
+**Live Group Run Sync (60-second Health Sync):**
+
+During a declared group run session:
+- Each participant's browser polls their connected Google Fit account every 60 seconds.
+- `GET /api/groupruns/:id/sync` → backend fetches latest activity data from Fit API for this user → pushes update to Socket.io room.
+- If Google Fit unavailable → fallback: user submits checkpoint splits manually via a simple form every km.
+- Live leaderboard updates in real time via Socket.io as data comes in.
+- Session ends when host closes it or all participants submit final stats.
+
+**Location Tagging (one-time ping, not tracking):**
+
+When user clicks "Post Workout":
+1. Browser calls `navigator.geolocation.getCurrentPosition()` — one ping, instant, no tracking.
+2. On success: lat/lng sent with the post. Backend reverse-geocodes to district/city using Google Maps Geocoding API. Territory polygon looked up via geospatial query in MongoDB.
+3. On failure (network error, denied): Show message "Location unavailable — pick your run area on the map." Google Maps JS embed loads. User taps the map to drop a pin. Coordinates sent with post.
+4. Both paths produce identical `{ lat, lng, district, city, territory }` object — system doesn't care which method was used.
+
+---
+
+### 4.2 — Territory System
+
+**How territories work:**
+
+The world is divided into named territories. A territory is not an app-defined polygon — it is a real geographic area (a park, a road, a neighbourhood) that users name themselves.
+
+**Creating a territory:**
+- When a user posts a workout and tags a location for the first time, if no territory exists at those coordinates within 500m, they are prompted: "You're the first to run here. Name this territory."
+- They give it a name (e.g. "Lodhi Garden Loop", "IIT Delhi Track").
+- A territory record is created in MongoDB with: name, creator, centroid coordinates, radius 500m.
+- The creator becomes the first owner.
+
+**Territory ownership and leaderboard:**
+- Each territory has its own internal leaderboard: all runners who have posted workouts tagged to that territory, ranked by their weekly score on that territory.
+- The #1 ranked runner on the territory leaderboard is the territory owner.
+- Territory owner is updated automatically every Monday when weekly scores reset.
+- Score for a specific territory = calories burned × pace bonus on runs tagged to that territory this week.
+
+**Challenges:**
+- Any runner who posts a workout in a territory and is not #1 can "Challenge" the owner.
+- Challenge options:
+  - **Stat Battle:** both runners' cumulative weekly stats on that territory compared at end of week. Better stats win.
+  - **Sprint Duel:** schedule a group run session. Both submit results. Better stats take the territory.
+- Owner gets a notification: "[Name] is challenging your territory [Territory Name]."
+- Owner can accept or decline. Declining forfeits territory automatically.
+
+**Clan territories:**
+- If the top 3 runners on a territory leaderboard are from the same clan → territory becomes a clan territory.
+- Clan territory shows clan color on the map.
+
+---
+
+### 4.3 — Local Leaderboards
+
+**District / City leaderboards:**
+
+- When a workout is posted, backend reverse-geocodes the location to extract: `district` (e.g. "South Delhi"), `city` (e.g. "New Delhi"), `state` (e.g. "Delhi").
+- These are stored on the post.
+- District leaderboard = all users whose posts are tagged in that district this week, ranked by weekly score.
+- City leaderboard = same logic at city level.
+
+**"Sync Local" button:**
+- On the leaderboard page, user clicks "Find My Area."
+- Browser pings `navigator.geolocation` once.
+- Backend returns the district and city leaderboard for those coordinates.
+- Shows who else is running in their local area — even if those people are not in their college club.
+- This is the discovery mechanism for finding rivals in real life.
+
+**Leaderboard categories:**
+
+1. **Global ICHOR** — all users, all time, by total career score
+2. **Weekly Overall** — all users this week by weekly score
+3. **My District** — this week, your district only
+4. **My City** — this week, your city only
+5. **My Territory** — leaderboard for each territory you've run in
+6. **Calorie King** — most calories burned this week
+7. **Pace God** — best average pace (min 3 runs this week)
+8. **Distance Destroyer** — most total km this week
+9. **Grind Streak** — most consecutive days with a post
+10. **Integrity Champion** — most Integrity Points (diet honesty, all-time)
+11. **Clan Wars** — clans ranked by combined score + territories held
+
+---
+
+### 4.4 — Scoring System
+
+**Weekly Score Formula:**
+
+```
+baseCalories = SUM of caloriesBurned from posts this week
+
+consistencyMultiplier = MIN(1.0 + (activeDays - 1) × 0.1, 2.0)
+(activeDays = days with at least one post this week)
+
+paceBonus = IF avgPace < 5 min/km → 1.3×
+            IF avgPace 5–6 min/km → 1.15×
+            IF avgPace 6–7 min/km → 1.0×
+            IF avgPace > 7 min/km → 0.9×
+
+integrityBonus = cleanDietLogs × 50
+
+cheatPenalty = cheatDietLogs × (baseCalories × 0.10)
+
+weeklyScore = (baseCalories × consistencyMultiplier × paceBonus) + integrityBonus - cheatPenalty
+```
+
+**Territory Score (per territory per week):**
+```
+territoryScore = SUM of (caloriesBurned × paceBonus) for all posts tagged to this territory this week
+```
+
+**Career Score:**
+```
+careerScore = SUM of all weeklyScores ever + territoryBonus (50 per week held) + battleBonus (200 per battle won)
+```
+
+---
+
+### 4.5 — Diet Honesty Card
+
+After posting a workout, user is shown: **"What did you fuel with today?"**
+
+- Free text input: "Had pasta for lunch, protein shake after run, pizza for dinner"
+- Gemini analyzes it → returns: classification (CLEAN / CHEAT / NEUTRAL), estimatedCaloriesIn, integrityBonus, tip
+- Shown on the activity card publicly:
+  - CLEAN: green "Fuelled Right" badge + +50 integrity points
+  - CHEAT: red "Cheat Day 🍕" badge, small calorie penalty shown
+  - NEUTRAL: gray "Mixed Fuel" badge, +25 integrity points
+- **Calorie balance shown:** Calories Burned vs Calories In → net deficit or surplus displayed on the card
+- Other users can react to the diet card with emoji reactions
+
+---
+
+### 4.6 — Social Feed
+
+**Feed:**
+- Chronological with filter tabs: All | Following | Clan | My Territory | Top Today
+- Infinite scroll via cursor-based pagination
+
+**Activity Card:**
+- Header: avatar, name, time ago, activity badge (Run/Walk/Cycle), verification badge (Fit Sync = ✓, OCR = 📷)
+- Hero photo
+- Stats strip: Distance | Pace | Duration | Calories Burned
+- Diet Honesty Card (if attached): calories in vs out balance bar
+- Territory tag chip: "📍 Lodhi Garden Loop — 3rd on territory leaderboard"
+- Caption (expandable)
+- Screenshot proof thumbnail (if OCR)
+- Footer: Flame rating (1–5), Comments count, Share
+
+**Comments:**
+- Threaded replies (1 level deep)
+- Emoji reactions on comments
+- @mentions
+
+**Profile:**
+- Stats: total km, total workouts, total calories, territories owned, battles won/lost
+- Streak calendar (GitHub heatmap style)
+- Career score prominently displayed
+- Territory map: mini map showing all territories they've ever tagged
+- Badges (earned)
+- All posts in a grid
+- Weekly training plan from Gemini (collapsible card)
+
+---
+
+### 4.7 — Group Runs
+
+**Creating a group run:**
+- Title, description, location (map tap or GPS), start time, max participants, type (Competitive / Friendly)
+- Share a 6-char session code
+
+**During the run:**
+- Each participant has the session open in their browser
+- Every 60 seconds: browser attempts Google Fit sync → if connected, latest activity data pulled and posted to `POST /api/groupruns/:id/sync/:userId`
+- If Fit unavailable: participant manually taps distance checkpoints (1km, 2km, 3km buttons)
+- Socket.io broadcasts updated leaderboard to all participants in real time
+- Live leaderboard shows: rank, name, current distance, current pace, calories — updating live
+
+**End of run:**
+- Host ends session
+- Each participant submits final screenshot/data
+- Final leaderboard locked
+- COMPETITIVE: winner gains territory claim for the tagged location (if stats beat current owner)
+- FRIENDLY: all participants get a co-run badge, no territory transfer
+
+---
+
+### 4.8 — Clans
+
+- Create clan: name, 4-char tag, color, optional weekly diet pact
+- Max 15 members (increased from 10 for 200-person college)
+- Clan territory = all territories where top 3 runners are clan members
+- Clan Wars: challenge another clan → 3v3 stat comparison → winner clan gains 1 territory from loser
+- Clan leaderboard: combined weekly score + (territories × 200 bonus)
+- Clan chat via Socket.io room
+- Clan Diet Pact: weekly challenge (e.g. "no sugar") → completing earns clan integrity bonus
+
+---
+
+## PART 5: MONGODB SCHEMA
+
+### Collections
+
+**users**
+```
+{
+  _id, clerkId (unique), email, name, avatarUrl, bio,
+  college, fcmToken,
+  stats: {
+    totalDistanceKm, totalWorkouts, totalCalories,
+    streakDays, longestStreak, integrityPoints,
+    battlesWon, battlesLost, careerScore, weeklyScore
+  },
+  clanId (ref Clan),
+  connectedApps: { googleFitRefreshToken, stravaToken },
+  badges: [{ name, awardedAt }],
+  createdAt
+}
+```
+
+**workouts**
+```
+{
+  _id, userId (ref User),
+  sourceType: 'HEALTH_SYNC' | 'OCR_SCREENSHOT' | 'MANUAL' | 'GOOGLE_FIT',
+  activityType: 'RUN' | 'WALK' | 'CYCLE',
+  distanceKm, durationSeconds, avgPaceMinPerKm,
+  caloriesBurned, heartRateAvg,
+  workoutDate, externalId (dedup),
+  screenshotUrl, verificationStatus: 'PENDING' | 'VERIFIED' | 'FLAGGED',
+  createdAt
+}
+```
+
+**posts**
+```
+{
+  _id, userId (ref User), workoutId (ref Workout, unique),
+  caption, photoUrls: [],
+  location: {
+    lat, lng, district, city, state,
+    territoryId (ref Territory), territoryName,
+    method: 'GPS' | 'MAP_PICK'
+  },
+  isPublic,
+  engagement: { avgFlameRating, flameCount, kudosCount, flagCount },
+  dietCard: {
+    description, classification, estimatedCaloriesIn,
+    caloriesBurned (mirror from workout), netBalance,
+    integrityBonus, tip
+  },
+  weeklyScore, territoryScore,
+  createdAt
+}
+```
+
+**territories**
+```
+{
+  _id, name, createdBy (ref User),
+  centroid: { type: 'Point', coordinates: [lng, lat] },
+  radiusMeters: 500,
+  currentOwnerId (ref User), currentClanOwnerId (ref Clan),
+  weeklyLeaderboard: [{ userId, score, rank }],
+  totalRuns, createdAt
+}
+```
+*Index: `centroid` as 2dsphere for geospatial queries*
+
+**attacks**
+```
+{
+  _id, attackerId, defenderId, territoryId,
+  status: 'PENDING' | 'ACCEPTED' | 'FORFEITED' | 'RESOLVED' | 'EXPIRED',
+  type: 'STAT' | 'SPRINT',
+  scheduledAt, resolvedAt, winnerId,
+  createdAt
+}
+```
+
+**clans**
+```
+{
+  _id, name, tag (unique 4-char), leaderId,
+  color, dietPactDescription,
+  stats: { weeklyScore, battlesWon, territoriesHeld },
+  members: [{ userId, role: 'LEADER'|'MEMBER', joinedAt }],
+  createdAt
+}
+```
+
+**groupruns**
+```
+{
+  _id, title, hostId, sessionCode (6-char unique),
+  type: 'COMPETITIVE' | 'FRIENDLY',
+  location: { lat, lng, district, city },
+  startAt, endedAt,
+  status: 'LOBBY' | 'ACTIVE' | 'COMPLETED',
+  participants: [{
+    userId, status: 'READY'|'RUNNING'|'FINISHED',
+    checkpoints: [{ distanceKm, timestamp }],
+    finalStats: { distanceKm, durationSeconds, avgPaceMinPerKm, caloriesBurned }
+  }],
+  createdAt
+}
+```
+
+**leaderboard_history**
+```
+{
+  _id, week (YYYY-WW), category, userId, score, rank, createdAt
+}
+```
+
+---
+
+## PART 6: API ROUTES
+
+### Auth
+- `POST /api/webhooks/clerk` — user sync
+- `PATCH /api/users/profile`
+- `PATCH /api/users/fcm-token`
+- `GET /api/users/:id`
+
+### Workouts & Import
+- `POST /api/workouts/ocr` — screenshot → Gemini → JSON
+- `POST /api/workouts/sync/googlefit` — OAuth sync
+- `POST /api/workouts/sync/manual` — manual entry
+- `GET /api/workouts/mine` — user's workout history
+
+### Posts & Feed
+- `POST /api/posts` — create post (triggers territory claim job)
+- `GET /api/feed?cursor=` — paginated feed
+- `GET /api/posts/:id`
+- `POST /api/posts/:id/flame` — rate 1–5
+- `POST /api/posts/:id/kudos`
+- `POST /api/posts/:id/flag`
+- `POST /api/posts/:id/comments`
+- `GET /api/posts/:id/comments`
+- `POST /api/coach/diet-analyze` — Gemini diet classification
+
+### Territories
+- `GET /api/territories?lat=&lng=&radius=` — nearby territories
+- `POST /api/territories` — create new territory
+- `GET /api/territories/:id` — territory detail + leaderboard
+- `POST /api/attacks` — initiate challenge
+- `POST /api/attacks/:id/respond`
+- `POST /api/attacks/:id/resolve`
+
+### Leaderboards
+- `GET /api/leaderboards/weekly`
+- `GET /api/leaderboards/local?lat=&lng=` — district + city boards
+- `GET /api/leaderboards/territory/:id`
+- `GET /api/leaderboards/clans`
+- `GET /api/leaderboards/categories/:name` — calorie/pace/distance/streak/integrity
+
+### Clans
+- `POST /api/clans`
+- `GET /api/clans/:id`
+- `GET /api/clans/search?q=`
+- `POST /api/clans/:id/join`
+- `POST /api/clans/:id/leave`
+- `DELETE /api/clans/:id/members/:userId`
+- `PATCH /api/clans/:id`
+
+### Group Runs
+- `POST /api/groupruns`
+- `GET /api/groupruns/:code` — join by session code
+- `POST /api/groupruns/:id/join`
+- `POST /api/groupruns/:id/sync/:userId` — submit checkpoint/Fit data
+- `POST /api/groupruns/:id/end`
+
+### AI Coach
+- `POST /api/coach/chat`
+- `POST /api/coach/training-plan`
+- `POST /api/coach/diet-analyze`
+
+### Upload
+- `POST /api/upload` — Cloudinary signed upload URL
+
+---
+
+## PART 7: ENV VARIABLES
+
+```env
+# Clerk
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
 CLERK_SECRET_KEY=
 CLERK_WEBHOOK_SECRET=
-DATABASE_URL=
-REDIS_URL=
+NEXT_PUBLIC_CLERK_ALLOWED_DOMAIN=
+
+# Backend
+NEXT_PUBLIC_API_URL=https://ichor-backend.railway.app
+PORT=5000
+
+# MongoDB
+MONGODB_URI=mongodb+srv://...
+
+# Upstash Redis
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+
+# Google
 GEMINI_API_KEY=
-GOOGLE_MAPS_IOS_KEY=
-GOOGLE_MAPS_ANDROID_KEY=
+GOOGLE_MAPS_API_KEY=
+GOOGLE_FIT_CLIENT_ID=
+GOOGLE_FIT_CLIENT_SECRET=
+
+# Cloudinary
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
+
+# Firebase
 FIREBASE_SERVICE_ACCOUNT_JSON=
+
+# Sentry (free)
 SENTRY_DSN=
+
+# Admin
+ADMIN_SECRET=
 ```
 
 ---
 
-## PART 7: BUILD PHASES
+## PART 8: BUILD PHASES
 
 ### Phase 1 — Foundation (Week 1–2)
-1. Expo scaffold with TypeScript, Expo Router, NativeWind, Zustand, React Query
-2. Clerk auth with college domain gating
-3. PostgreSQL + PostGIS on Railway, Prisma schema and migration
-4. Node.js backend with Clerk middleware, user sync webhook
-5. Seed campus zones (predefined polygons for your college map)
+1. Next.js 14 project with TypeScript, Tailwind, shadcn/ui, Zustand, TanStack Query
+2. Clerk auth with college domain gating, webhook user sync
+3. MongoDB Atlas setup, Mongoose models for all collections
+4. Express backend scaffold on Railway, all route stubs, requireAuth middleware
+5. 2dsphere index on Territory.centroid, test geospatial query
 
-### Phase 2 — Health Ingestion (Week 3–4)
-1. Apple HealthKit integration (react-native-health)
-2. Google Health Connect integration (react-native-health-connect)
-3. Deduplication logic by externalId / start timestamp
-4. "New workouts found" approval UI
-5. OCR screenshot upload + Gemini Vision parsing
-6. Post composer with manual field correction
+### Phase 2 — Import Engine (Week 3–4)
+1. Screenshot OCR: file upload → Cloudinary → Gemini Vision → editable form
+2. Google Fit OAuth flow and workout sync
+3. Geolocation one-ping + Google Maps fallback for location tagging
+4. Reverse geocoding (district, city extraction)
+5. Territory creation on first post in area
+6. Deduplication logic
 
 ### Phase 3 — Social Layer (Week 5–6)
-1. Post composer: photos, caption, diet card, location zone tag
-2. Activity feed: infinite scroll, filter tabs
-3. Flame rating system
-4. Comments with nested replies
-5. Flag / report system
-6. Activity detail screen
+1. Post composer: photos, caption, diet card, location tag
+2. Diet analyzer (Gemini) integrated in post composer
+3. Activity feed with infinite scroll
+4. Flame rating, kudos, comments, flags
+5. Profile page with stats, heatmap, badges, post grid
+6. Real-time feed updates via Socket.io
 
-### Phase 4 — Game Systems (Week 7–9)
-1. Campus zone map display with territory colours
-2. Territory assignment logic (post + zone tag → territory claim)
-3. Attack trigger when better stats detected
-4. Challenge accept/forfeit/resolve UI
-5. All 6 leaderboards with Redis sorted sets
-6. BullMQ cron jobs (weekly reset, challenge expiry)
-7. Clan system: create, join, leave, clan territory union
+### Phase 4 — Territory + Leaderboards (Week 7–9)
+1. Territory map (Google Maps JS) with markers and ownership display
+2. Territory leaderboard per zone
+3. Attack/challenge flow
+4. All 11 leaderboard categories
+5. Upstash Redis sorted sets for weekly leaderboards
+6. Local leaderboard (geolocation sync button)
+7. node-cron jobs (weekly reset, streak check, challenge expiry)
 
-### Phase 5 — AI Features (Week 10–11)
-1. Gemini AI Coach (Dhruv) chat UI
-2. Diet analyzer endpoint
-3. Weekly training plan generation
-4. Screenshot OCR refinements
+### Phase 5 — Group Runs + Clans (Week 10–11)
+1. Group run session creation, lobby, session code join
+2. Google Fit live sync every 60s during session
+3. Manual checkpoint fallback
+4. Socket.io live leaderboard during group run
+5. Clan system (create, join, wars, chat)
+6. Clan territory logic
 
-### Phase 6 — Polish & Launch (Week 12)
-1. Push notifications for all events
-2. Sentry + PostHog integration
-3. Admin dashboard for flagged activities
-4. App Store + Play Store submission
+### Phase 6 — AI + Polish (Week 12)
+1. Gemini AI coach "Dhruv" chat
+2. Weekly training plan generation
+3. Push notifications (FCM browser push)
+4. Error boundaries, loading skeletons, offline detection
+5. Sentry integration
+6. Admin dashboard (flagged posts, zone management)
 
 ---
 
-## PART 8: ANTIGRAVITY MASTER ORCHESTRATOR PROMPT
+## PART 9: ANTIGRAVITY MASTER ORCHESTRATOR PROMPT
+
+Paste this into Antigravity FIRST. Attach `ichor.prd.md` to the project before running.
 
 ```
-You are the Lead Principal Software Engineer behind "ICHOR" — a campus-exclusive social fitness battleground app built with React Native (Expo), Node.js, PostgreSQL + PostGIS, Redis, and Google Gemini AI.
+You are the Lead Principal Software Engineer behind "ICHOR" — a campus-exclusive social fitness battleground. Your job is to read ichor.prd.md fully, then implement the entire application systematically using Review-driven development.
 
-Read this entire PRD before writing a single line of code. Your job is to implement the complete application systematically using Review-driven development in Google Antigravity.
+MANDATORY RULES — NEVER BREAK THESE:
+1. Stack is non-negotiable: Next.js 14 (App Router) + TypeScript + Tailwind + shadcn/ui on Vercel. Express + Mongoose + Upstash Redis on Railway. MongoDB Atlas M0. Clerk auth. Gemini 1.5 Flash AI. Zero paid services.
+2. NO GPS tracking of any kind. Location is a ONE-TIME ping via Geolocation API at upload time only, with Google Maps tap-to-pick as fallback.
+3. NO native mobile app. This is a Next.js web application only.
+4. Apply SOLID principles throughout: single-responsibility routers, repository pattern for DB access, strategy pattern for scoring, interface segregation for import methods.
+5. Design for 500–700 concurrent users: connection pooling (Mongoose pool:10), Upstash Redis for all leaderboards, rate limiting on all routes, cursor-based pagination everywhere, no N+1 queries (use aggregation pipelines).
+6. The Diet Honesty Card is a core feature. Never skip it. It appears on every activity card.
+7. Territory is location-based (MongoDB 2dsphere geospatial query, 500m radius), not GPS-path-based.
+8. Leaderboards live in Upstash Redis sorted sets. DB is source of truth. Redis is the read cache.
+9. Group run live leaderboard: Google Fit sync every 60s → Socket.io broadcast. Fallback: manual checkpoint submit.
+10. Use node-cron (not BullMQ) for all scheduled jobs — runs in-process on Railway, zero extra cost.
 
-CORE ARCHITECTURE RULES:
-1. NO native GPS tracking. ICHOR does not track runs. All workout data comes from Apple HealthKit, Google Health Connect, or Gemini Vision OCR of screenshots.
-2. Every workout must be posted to the social feed before it counts toward leaderboards or territory.
-3. Territory is zone-based (predefined campus polygons), not GPS-path-based.
-4. Gemini 1.5 Flash handles three tasks: screenshot OCR parsing, AI coach chat, and diet classification.
-5. Leaderboards are primarily calorie-based, modified by consistency and diet honesty multipliers.
-6. The Diet Honesty Card is a core differentiating feature — never skip it.
+BRAND & UI RULES:
+- Primary color: #AE93F4 (lavender/violet — "Momentum")
+- Background: #231F20 (near-black — "Midnight Run")
+- Accent: #FDA2DE (pink blush — "After Run")
+- Gold accent: #D4AF37 (for leaderboard top 3)
+- Display font: Neighbour (bold condensed, all-caps for headings) — load via @font-face
+- Body font: Inter (Light 300, Bold 700)
+- Visual style: dark backgrounds, lavender glows, motion blur hero images
+- Every card has a subtle lavender border glow on hover
+- Leaderboard rank 1: gold gradient. Rank 2: silver. Rank 3: bronze.
+- All buttons: rounded-full, lavender (#AE93F4) fill, dark text
+- Tagline displayed in hero: "Turn Sweat Into Lore"
 
 EXECUTION ORDER:
-Step 1: Read and confirm you understand the full PRD.
-Step 2: Ask me 3 clarifying questions maximum before starting.
-Step 3: Begin with Prompt 01 (Scaffold) and proceed sequentially through all prompts.
-Step 4: After each prompt completes, show me what was built and wait for my approval before moving to the next.
+1. Read ichor.prd.md fully and confirm understanding in 3 bullet points.
+2. Ask maximum 2 clarifying questions.
+3. Run Prompt 01 → wait for approval → Prompt 02 → and so on.
+4. After each prompt: show file tree of what was created, show key code snippets, ask "Ready to proceed to Prompt 0X?"
+5. Never proceed without explicit approval.
+6. Never add packages not listed in the PRD tech stack.
+7. Never implement any feature not in the PRD without asking first.
 
-TECH STACK (non-negotiable):
-- Frontend: React Native + Expo SDK 51, TypeScript strict, Expo Router v3, NativeWind v4, Zustand, TanStack Query v5
-- Auth: Clerk
-- Backend: Node.js + Express, Prisma, Zod, BullMQ, Socket.io
-- DB: PostgreSQL + PostGIS + Redis (Railway)
-- AI: Gemini 1.5 Flash (@google/generative-ai SDK)
-- Media: Cloudinary
-- Notifications: Firebase Admin FCM
-- Maps: react-native-maps with Google Maps
-
-Do not improvise on the stack. Do not add packages not listed. Do not skip the Diet Honesty Card feature. Do not implement any GPS tracking whatsoever.
-
-Start by reading the full PRD attached to this project and confirm your understanding.
+Read ichor.prd.md now and confirm.
 ```
 
 ---
 
-## PART 9: SEQUENTIAL ANTIGRAVITY PROMPTS
+## PART 10: ALL ANTIGRAVITY PROMPTS (01–11)
 
 ---
 
-### PROMPT 01 — Project Scaffold
+### PROMPT 01 — Project Scaffold (Next.js + Backend)
 
 ```
-Scaffold the complete ICHOR app — a campus social fitness battleground built on React Native + Expo.
+Scaffold the complete ICHOR application — two separate projects in one monorepo.
 
-Create an Expo SDK 51 project with TypeScript strict mode named "ichor".
+MONOREPO STRUCTURE:
+ichor/
+  apps/
+    web/          → Next.js 14 App Router (deployed to Vercel)
+    api/          → Express backend (deployed to Railway)
+  packages/
+    types/        → Shared TypeScript interfaces
+    utils/        → Shared score calculator, formatters
 
-Setup:
-- Expo Router v3 (file-based navigation)
-- NativeWind v4
-- Zustand (global state)
-- TanStack Query v5 with a queryClient (staleTime: 30s, retry: 2)
-- Axios base instance reading from EXPO_PUBLIC_API_URL, auto-attaches Clerk JWT
+Use npm workspaces. No Turborepo (adds complexity). Simple package.json workspaces.
 
-Folder structure:
-app/                  → Expo Router screens
-components/ui/        → Button, Card, Avatar, Badge, FlameRating, StatChip
-components/features/  → feature-specific composed components
-hooks/                → custom hooks
-stores/               → Zustand slices
-services/             → API call functions (one file per feature domain)
-utils/                → formatters, date helpers, score calculators
-constants/            → colors.ts, config.ts, zones.ts
-types/                → User, Workout, Post, Territory, Clan, Attack, DietCard
+WEB APP (apps/web):
+- Next.js 14 App Router, TypeScript strict
+- Tailwind CSS with custom theme:
+  colors: { primary: '#AE93F4', background: '#231F20', accent: '#FDA2DE', gold: '#D4AF37' }
+  fontFamily: { display: ['Neighbour', 'sans-serif'], body: ['Inter', 'sans-serif'] }
+- shadcn/ui (init with dark theme, custom primary color)
+- Zustand store slices: userSlice, importSlice, feedSlice
+- TanStack Query v5 with queryClient (staleTime 30s, retry 2)
+- Axios base instance: reads NEXT_PUBLIC_API_URL, auto-attaches Clerk JWT via interceptor
 
-Screens to scaffold (placeholder only):
-(auth)/login
-(auth)/register
-(tabs)/home        → Feed
-(tabs)/map         → Campus zone territory map
-(tabs)/import      → Import workout (health sync or screenshot)
-(tabs)/leaderboard → All leaderboards
-(tabs)/profile     → User profile
+App Router structure:
+app/
+  (auth)/login/page.tsx
+  (auth)/register/page.tsx
+  (app)/feed/page.tsx
+  (app)/import/page.tsx
+  (app)/map/page.tsx
+  (app)/leaderboard/page.tsx
+  (app)/profile/[userId]/page.tsx
+  (app)/territory/[id]/page.tsx
+  (app)/clans/page.tsx
+  (app)/clans/[id]/page.tsx
+  (app)/grouprun/page.tsx
+  (app)/grouprun/[id]/page.tsx
+  (app)/coach/page.tsx
+  layout.tsx → ClerkProvider + QueryClientProvider + ZustandProvider
+  globals.css → Tailwind + Neighbour font @font-face
 
-Tab navigator: icons from Lucide (Flame, Map, Plus, Trophy, User)
+Components to scaffold (empty with correct props interface):
+components/ui/ → (shadcn components auto-generated)
+components/features/
+  ActivityCard.tsx
+  FlameRating.tsx
+  DietHonestyCard.tsx
+  TerritoryMap.tsx
+  LeaderboardRow.tsx
+  GroupRunLiveBoard.tsx
+  StatChip.tsx
+  VerificationBadge.tsx
 
-Zustand stores:
-- userSlice: { id, name, avatar, clanId, token, streakDays, integrityPoints }
-- importSlice: { pendingWorkouts[], currentDraft, draftPost }
-- feedSlice: { optimisticPosts[] }
+API APP (apps/api):
+- Express + TypeScript
+- Folder structure applying Single Responsibility:
+  src/
+    routes/        → auth.ts, workouts.ts, posts.ts, territories.ts, leaderboards.ts, clans.ts, groupruns.ts, coach.ts, upload.ts, admin.ts
+    controllers/   → one controller per route file
+    services/      → territoryService.ts, scoreService.ts, geminiService.ts, notificationService.ts, locationService.ts
+    repositories/  → userRepo.ts, postRepo.ts, territoryRepo.ts, clanRepo.ts (Dependency Inversion)
+    models/        → User.ts, Workout.ts, Post.ts, Territory.ts, Attack.ts, Clan.ts, GroupRun.ts, LeaderboardHistory.ts
+    middleware/    → requireAuth.ts, rateLimiter.ts, errorHandler.ts
+    jobs/          → weeklyReset.ts, dailyStreak.ts, challengeExpiry.ts, streakReminder.ts (node-cron)
+    lib/           → mongoose.ts, redis.ts, gemini.ts, cloudinary.ts, firebase.ts
+    app.ts         → Express app setup
+    server.ts      → listen, cron start
 
-Constants:
-- colors.ts: primary #C41E3A (deep crimson — ICHOR brand), dark #0D0D0D, accent gold #D4AF37
-- config.ts: API_URL, ALLOWED_DOMAIN, APP_NAME: "ICHOR"
+SHARED TYPES (packages/types):
+Export interfaces: IUser, IWorkout, IPost, ITerritory, IAttack, IClan, IGroupRun, IDietCard, ILeaderboardEntry, ILocation
 
-Create .env.example with all required variables.
+SHARED UTILS (packages/utils):
+scoreCalculator.ts: calculateWeeklyScore(posts), calculateTerritoryScore(posts), calculateCareerScore(user)
+formatters.ts: formatPace(minPerKm), formatDistance(km), formatDuration(seconds), timeAgo(date)
 
-Do NOT implement any GPS tracking, expo-location, or background location anything.
-```
+Create .env.example in both apps with all required variables.
+Create README.md with setup instructions.
 
----
-
-### PROMPT 02 — Clerk Auth + User Sync
-
-```
-Integrate Clerk authentication into ICHOR.
-
-Frontend:
-- Install @clerk/clerk-expo, wrap _layout.tsx with ClerkProvider
-- Login screen: email OTP + Google OAuth. Brand color #C41E3A. Loading states, error handling.
-- Register screen: validate email domain matches EXPO_PUBLIC_ALLOWED_DOMAIN. Clear error if wrong domain.
-- Protect all (tabs) routes — redirect to /login if unauthenticated
-- After login: POST /api/users/sync with { clerkId, email, name, avatarUrl }
-- Axios request interceptor: auto-attach Clerk JWT Bearer token to every request
-- Custom hook useCurrentUser: returns merged Clerk + DB user
-
-Backend (Node.js/Express):
-- POST /webhooks/clerk: verify signature with svix + CLERK_WEBHOOK_SECRET. On user.created: upsert user in PostgreSQL via Prisma.
-- requireAuth middleware: validates Clerk JWT, attaches req.userId
-- POST /api/users/sync: upsert user, return full user record
-- PATCH /api/users/profile: update name, bio, avatarUrl
-- PATCH /api/users/fcm-token: save FCM push token
-
-Domain gating: if EXPO_PUBLIC_ALLOWED_DOMAIN is set, reject registrations where email domain does not match. Show error: "ICHOR is exclusive to [domain] accounts."
-```
-
----
-
-### PROMPT 03 — PostgreSQL Schema + PostGIS Zones
-
-```
-Implement the complete database setup for ICHOR.
-
-Prisma schema — all models:
-
-User: id, clerkId(unique), email, name, avatarUrl, bio, fcmToken, totalDistanceKm(Float,0), totalWorkouts(Int,0), totalCalories(Int,0), streakDays(Int,0), integrityPoints(Int,0), battlesWon(Int,0), battlesLost(Int,0), clanId(optional FK), createdAt
-
-Workout: id, userId(FK), sourceType(enum: HEALTH_SYNC,OCR_SCREENSHOT,MANUAL), activityType(enum: RUN,WALK,CYCLE), distanceKm(Float), durationSeconds(Int), avgPaceMinPerKm(Float,optional), caloriesBurned(Int), heartRateAvg(Int,optional), workoutDate(DateTime), externalId(String,optional — dedup key), screenshotUrl(optional), verificationStatus(enum: PENDING,VERIFIED,FLAGGED, default PENDING), createdAt
-
-Post: id, userId(FK), workoutId(unique FK), caption(optional), photoUrls(String[]), locationZoneId(optional FK to CampusZone), isPublic(Bool,true), avgFlameRating(Float,0), flameCount(Int,0), kudosCount(Int,0), flagCount(Int,0), createdAt
-
-DietCard: id, postId(unique FK), description(String), classification(enum: CLEAN,CHEAT,NEUTRAL), estimatedCalories(Int,optional), integrityBonus(Int), createdAt
-
-FlameRating: id, postId(FK), userId(FK), rating(Int 1-5), createdAt — @@unique([postId,userId])
-
-Comment: id, postId(FK), authorId(FK), parentId(optional self-FK), text, createdAt
-
-CampusZone: id, name, description, color — polygon handled via raw SQL PostGIS
-
-Territory: id, zoneId(unique FK CampusZone), ownerId(optional FK User), clanId(optional FK Clan), weeklyCalorieScore(Int,0), acquiredAt(optional), lastDefended(optional)
-
-Attack: id, attackerId(FK), defenderId(FK), zoneId(FK), status(enum: PENDING,ACCEPTED,FORFEITED,RESOLVED,EXPIRED), type(enum: STAT,SPRINT), scheduledAt(optional), resolvedAt(optional), winnerId(optional FK), createdAt
-
-Clan: id, name, tag(String — 4 chars unique), leaderId(FK), color, dietPactDescription(optional), battlesWon(Int,0), createdAt
-
-ClanMember: clanId(FK), userId(FK), role(enum: LEADER,MEMBER), joinedAt — @@id([clanId,userId])
-
-Indexes: userId on Workout and Post, status on Attack, zoneId on Territory.
-
-Raw SQL migration:
-- CREATE EXTENSION IF NOT EXISTS postgis;
-- ALTER TABLE campus_zones ADD COLUMN polygon geometry(Polygon,4326);
-- ALTER TABLE campus_zones ADD COLUMN centroid geometry(Point,4326);
-- CREATE INDEX campus_zones_polygon_gist ON campus_zones USING GIST(polygon);
-
-Seed file:
-- 5 test users with varied stats
-- 8 campus zones with realistic polygon coordinates (use a 1km x 1km college campus grid, center at 28.6139,77.2090 — New Delhi)
-- Territory records for some zones
-- 10 sample posts with workouts
-
-Create db.ts Prisma singleton and redisClient.ts ioredis singleton.
+Do not implement any logic yet — scaffold only. Show me the complete file tree when done.
 ```
 
 ---
 
-### PROMPT 04 — Health Sync + OCR Import Engine
+### PROMPT 02 — Clerk Auth + MongoDB User Sync
 
 ```
-Build the complete workout import system for ICHOR — the app's core data ingestion engine.
+Implement complete authentication for ICHOR using Clerk and MongoDB.
 
-This replaces all GPS tracking. There is no expo-location in this project.
+FRONTEND (apps/web):
 
-PART A — Apple HealthKit (iOS)
+Install @clerk/nextjs. Configure in layout.tsx with ClerkProvider.
 
-Install react-native-health. Create hooks/useHealthKit.ts:
-- Request permissions on mount: steps, workouts, calories, heart rate, distance
-- fetchRecentWorkouts(days: 7): query HKWorkoutType for the last 7 days
-- Filter to only Running, Walking, Cycling
-- Map to ICHOR Workout shape: { externalId: workout.uuid, activityType, distanceKm, durationSeconds, avgPaceMinPerKm, caloriesBurned, heartRateAvg, workoutDate }
-- Return array — dedup handled by backend
+Login page (app/(auth)/login/page.tsx):
+- Full-page dark layout (#231F20 background)
+- ICHOR logo in Neighbour font, #AE93F4 color, center
+- "Turn Sweat Into Lore" tagline in Inter Light, #FDA2DE
+- Email OTP sign-in card with lavender border glow
+- Google OAuth button
+- Styled with Tailwind using brand colors
+- Loading spinner in #AE93F4 on submit
 
-PART B — Google Health Connect (Android)
+Register page:
+- Same design
+- After Clerk registration: validate email domain against NEXT_PUBLIC_CLERK_ALLOWED_DOMAIN if set
+- On success: POST /api/users/sync to create DB record
+- Redirect to /import (onboarding starts with first workout import)
 
-Install react-native-health-connect. Create hooks/useHealthConnect.ts:
-- Request READ permissions: ExerciseSession, TotalCaloriesBurned, Distance, HeartRate
-- fetchRecentWorkouts(days: 7): query ExerciseSessionRecord
-- Map to same ICHOR Workout shape
-- Use session.metadata.id as externalId
+Middleware (middleware.ts):
+- Protect all /app/* routes with clerkMiddleware
+- Public routes: /, /login, /register, /api/webhooks/clerk
 
-PART C — Unified Import Hook
+useCurrentUser hook:
+- Fetches merged Clerk user + DB user profile
+- Caches in Zustand userSlice
+- Returns { clerkUser, dbUser, isLoading }
 
-Create hooks/useWorkoutImport.ts:
-- Detects platform (iOS → HealthKit, Android → Health Connect)
-- Calls appropriate hook
-- POSTs each workout to POST /api/workouts/sync with dedup check
-- Backend returns { created: [], alreadyExists: [] }
-- Stores new ones in importSlice Zustand store as pendingWorkouts
-- Shows approval UI
+BACKEND (apps/api):
 
-PART D — Approval UI (app/(tabs)/import.tsx)
+POST /api/webhooks/clerk:
+- Verify Svix signature with CLERK_WEBHOOK_SECRET
+- On user.created: upsert User in MongoDB (clerkId, email, name, avatarUrl)
+- On user.updated: sync name and avatarUrl
+- Return 200
 
-Two sections:
-1. "New Workouts Found" — list of pending workouts from health sync, each with: activity icon, date, distance, calories, duration, "Add to ICHOR" button and "Dismiss" button
-2. "Import from Screenshot" — camera button + gallery picker using expo-image-picker
+requireAuth middleware:
+- Use @clerk/express to verify JWT
+- Attach req.userId (clerkId) to request
+- Return 401 if invalid
 
-On "Add to ICHOR": navigate to post composer (app/post/create.tsx) with workout pre-filled.
+POST /api/users/sync:
+- Upsert user in MongoDB by clerkId
+- Initialize stats object with all zeros
+- Return full user document
 
-PART E — Screenshot OCR (POST /api/workouts/ocr)
+PATCH /api/users/profile:
+- Update name, bio, avatarUrl
+- Validate with Zod
 
-Backend endpoint:
-1. Receive image (multipart form data), upload to Cloudinary, get URL
-2. Send to Gemini 1.5 Flash Vision:
-   System: "You are a fitness data extractor. Extract workout data from this fitness app screenshot. Return ONLY valid JSON with keys: activityType (RUN|WALK|CYCLE), distanceKm (number), durationSeconds (number), avgPaceMinPerKm (number or null), caloriesBurned (number), workoutDate (ISO string). If a field cannot be determined, use null."
-3. Parse JSON response (strip markdown fences if present)
-4. Return { extracted, screenshotUrl } to frontend
-5. Frontend shows extracted data in editable form fields before user confirms
+PATCH /api/users/fcm-token:
+- Save browser push token to user.fcmToken
 
-PART F — Backend sync endpoint (POST /api/workouts/sync)
-- Body: array of workout objects with externalId
-- For each: check if externalId already exists for this user
-- If new: INSERT, set verificationStatus VERIFIED (came from health store)
-- Return { created: count, alreadyExists: count }
+GET /api/users/:id:
+- Return public user profile (no sensitive fields)
+- Include: stats, badges, recent posts count, clan info
 
-No GPS. No expo-location. No background tracking. Health store data only.
+Rate limiting on all /api/users/* routes: 60 req/min per user via express-rate-limit.
+```
+
+---
+
+### PROMPT 03 — MongoDB Models + Indexes
+
+```
+Implement all Mongoose models for ICHOR with correct indexes for performance at 500–700 concurrent users.
+
+Create each model in apps/api/src/models/ — one file per model.
+
+USER MODEL (User.ts):
+All fields from the schema in Part 5 of the PRD.
+Indexes: { clerkId: 1 } unique, { 'stats.weeklyScore': -1 } (leaderboard queries), { clanId: 1 }
+Add instance method: calculateWeeklyScore() → recomputes from posts, updates stats.weeklyScore
+
+WORKOUT MODEL (Workout.ts):
+Indexes: { userId: 1, workoutDate: -1 }, { externalId: 1, userId: 1 } unique sparse (dedup)
+
+POST MODEL (Post.ts):
+Indexes: { userId: 1, createdAt: -1 }, { 'location.territoryId': 1 }, { 'location.district': 1, createdAt: -1 }, { 'location.city': 1, createdAt: -1 }, { createdAt: -1 } (feed)
+The dietCard is embedded (not a separate collection — it is always fetched with the post).
+
+TERRITORY MODEL (Territory.ts):
+Indexes: { centroid: '2dsphere' } — CRITICAL for geospatial queries
+{ currentOwnerId: 1 }, { createdAt: -1 }
+
+ATTACK MODEL (Attack.ts):
+Indexes: { defenderId: 1, status: 1 }, { attackerId: 1, status: 1 }, { territoryId: 1 }
+
+CLAN MODEL (Clan.ts):
+Indexes: { tag: 1 } unique, { 'stats.weeklyScore': -1 }
+
+GROUPRUN MODEL (GroupRun.ts):
+Indexes: { sessionCode: 1 } unique, { hostId: 1 }, { status: 1, startAt: 1 }
+
+LEADERBOARD HISTORY (LeaderboardHistory.ts):
+Indexes: { week: 1, category: 1 }, { userId: 1, week: -1 }
+
+MONGOOSE SETUP (lib/mongoose.ts):
+- Connect with MONGODB_URI
+- Pool size: 10 (maxPoolSize: 10)
+- serverSelectionTimeoutMS: 5000
+- Log connection status
+- Export connectDB()
+
+REDIS SETUP (lib/redis.ts):
+- Use @upstash/redis (REST client — works in Node.js, no persistent connection needed)
+- Initialize with UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN
+- Export redis client
+- Helper functions: getLeaderboard(key, start, end), addToLeaderboard(key, userId, score), clearLeaderboard(key)
+
+SEED FILE (src/seed.ts):
+- 10 test users with varied stats
+- 5 territories across Delhi (use real coordinates: Lodhi Garden 28.5935,77.2229 / India Gate 28.6129,77.2295 / IIT Delhi 28.5459,77.1927 / Nehru Park 28.5969,77.1987 / Lodi Colony 28.5878,77.2215)
+- 15 sample posts across territories
+- 3 clans
+- Territory ownership assignments
+
+Run connectDB → seed → disconnect. Confirm counts logged.
+```
+
+---
+
+### PROMPT 04 — Workout Import Engine + Location System
+
+```
+Build the complete workout import system and location tagging for ICHOR.
+
+LOCATION SERVICE (apps/api/src/services/locationService.ts):
+
+reverseGeocode(lat, lng):
+- Call Google Maps Geocoding API: https://maps.googleapis.com/maps/api/geocode/json?latlng={lat},{lng}&key={GOOGLE_MAPS_API_KEY}
+- Extract from results: district (sublocality_level_1), city (locality), state (administrative_area_level_1)
+- Return { district, city, state, formattedAddress }
+
+findNearbyTerritory(lat, lng):
+- MongoDB geospatial query: Territory.findOne({ centroid: { $near: { $geometry: { type: 'Point', coordinates: [lng, lat] }, $maxDistance: 500 } } })
+- Return territory or null
+
+FRONTEND — Import Page (apps/web/app/(app)/import/page.tsx):
+
+Three-tab layout with dark card styling and lavender tab indicators:
+
+TAB 1 — Screenshot OCR:
+- Drag-and-drop zone (dashed lavender border, dark fill)
+- "Drop your Strava, RunKeeper, or Garmin screenshot here"
+- File input accepts PNG, JPG, HEIC
+- On file select: show image preview + loading spinner with "Dhruv is reading your workout..."
+- POST /api/workouts/ocr → show editable form with extracted fields
+- Fields: Activity Type (dropdown), Distance (km), Duration (h:mm:ss), Avg Pace, Calories, Heart Rate, Date
+- User can correct any field
+- "Confirm & Continue to Post" button → navigates to post composer with workout data
+
+TAB 2 — Google Fit Sync:
+- "Connect Google Fit" button → OAuth flow
+- If connected: show last 7 days of activities as cards
+- Each card has "Add to ICHOR" button
+- On click: POST /api/workouts/sync/googlefit with activityId → dedup check → navigate to post composer
+
+TAB 3 — Manual Entry:
+- Simple form for all workout fields
+- Useful for treadmill, gym cardio, etc.
+
+LOCATION TAGGING (component: LocationTagger.tsx):
+
+Called within the post composer. Shows a location card.
+
+On mount:
+1. Call navigator.geolocation.getCurrentPosition() with 10 second timeout
+2. On success: show "📍 Detecting your run location..." → call GET /api/location/detect?lat=&lng=
+3. Backend returns { district, city, territory (if exists), method: 'GPS' }
+4. Show: green chip "✓ Location detected: [Territory Name or District]"
+5. If no territory within 500m: show "🆕 You're the first here! Name this territory." → input field
+
+On failure (or user clicks "Wrong location?"):
+1. Show Google Maps JS embed (full width, 300px height, dark theme)
+2. "Click on the map to drop a pin where you ran"
+3. On map click: get coordinates → reverse geocode → same flow as GPS success
+
+BACKEND ENDPOINTS:
+
+POST /api/workouts/ocr:
+1. Receive multipart file
+2. Upload to Cloudinary (using cloudinary.uploader.upload stream)
+3. Send image URL to Gemini: gemini-1.5-flash with vision
+4. System prompt: "Extract workout data from this fitness app screenshot. Return ONLY raw JSON (no markdown): { activityType: 'RUN'|'WALK'|'CYCLE', distanceKm: number, durationSeconds: number, avgPaceMinPerKm: number|null, caloriesBurned: number, heartRateAvg: number|null, workoutDate: 'YYYY-MM-DD' }. Use null for fields not visible."
+5. Strip any markdown fences, JSON.parse
+6. Save Workout document (verificationStatus: PENDING)
+7. Return { workoutId, extracted, screenshotUrl }
+
+GET /api/location/detect?lat=&lng=:
+1. reverseGeocode(lat, lng)
+2. findNearbyTerritory(lat, lng)
+3. Return { district, city, state, territory: { id, name } | null, method: 'GPS' }
+
+POST /api/workouts/sync/googlefit:
+1. Fetch user's googleFitRefreshToken from DB
+2. Refresh access token via Google OAuth2
+3. Fetch sessions from Fitness API for last 7 days
+4. For each session: check if externalId exists (dedup)
+5. Create Workout documents for new ones (verificationStatus: VERIFIED)
+6. Return { created, alreadyExists }
+
+Rate limit all import endpoints: 20 req/min per user (OCR is expensive).
 ```
 
 ---
@@ -601,118 +967,201 @@ No GPS. No expo-location. No background tracking. Health store data only.
 ### PROMPT 05 — Post Composer + Social Feed
 
 ```
-Build the complete social posting system and activity feed for ICHOR.
+Build the complete post creation system and social feed for ICHOR.
 
-POST COMPOSER (app/post/create.tsx)
+POST COMPOSER (apps/web/app/(app)/import/compose/page.tsx):
 
-Receives workout data as navigation params (from health sync approval or OCR confirmation).
+Receives workoutId via query param. Fetches workout data on mount.
 
-Screen layout:
-1. Stats preview card at top (read-only): activity type icon, distance, duration, calories in a clean dark card
-2. Photo upload section: required — user must upload at least 1 photo. Use expo-image-picker. Max 5 photos. Show thumbnail grid. Upload to Cloudinary via POST /api/upload.
-3. Caption input: 300 char limit, character counter
-4. Location Zone picker: dropdown of CampusZone names. Optional. "Where did you work out?"
-5. Diet Honesty Card section (collapsible, titled "Fuel Log — optional but rewarded"):
-   - Text field: "What did you eat today?" 
-   - Submit to POST /api/coach/diet-analyze which calls Gemini to classify
-   - Show classification result: CLEAN (green), CHEAT (red emoji), NEUTRAL (gray)
-   - User confirms or skips
-6. isPublic toggle
-7. "Post to ICHOR" submit button
+Full-page dark layout. Sections:
 
-On submit: POST /api/posts with all data. On success: navigate to feed.
+1. WORKOUT PREVIEW CARD (read-only, top):
+Dark card with lavender border. Shows: activity icon + type, distance, duration, pace, calories in a 4-column stat strip. Cannot be edited here.
 
-ACTIVITY FEED (app/(tabs)/home.tsx)
+2. PHOTOS (required):
+Grid upload zone. Min 1 photo required. Max 5. Drag-drop + click.
+Direct Cloudinary upload: POST /api/upload → get signed URL → upload direct from browser.
+Show thumbnails with X to remove.
 
-useInfiniteQuery against GET /api/feed?cursor= (cursor = post createdAt).
-Pull to refresh. "New posts" pill badge when Socket.io signals new content.
-Filter tabs: All | Following | Clan | Top Today
+3. CAPTION: Textarea, 300 char limit with live counter.
 
-ActivityCard component (components/features/ActivityCard.tsx):
+4. LOCATION: LocationTagger component (from Prompt 04).
+If new territory: show "Name your territory" input below.
 
-Top to bottom:
-- Header: avatar (36px), name (bold), time ago, activity type badge (Run/Walk/Cycle), verification badge (green tick = Health Sync, camera icon = OCR Screenshot)
-- Hero photo (first photo, 16:9, full width, rounded 12px corners)
-- Stats strip: 4 columns — Distance | Pace | Duration | Calories
-- Diet Honesty Card (if present): small pill showing CLEAN/CHEAT emoji + estimated calories in/out balance
-- Caption (3 lines max, "See more" expand)
-- Screenshot proof (if OCR): small thumbnail labelled "Verified Screenshot" — tap to expand
-- Footer: FlameRating component (5 flame icons, tap to rate), comment count, kudos button, share
+5. DIET HONESTY CARD (collapsible section, titled "Fuel Log"):
+Toggle open shows: textarea "What did you eat today? Be honest."
+Submit button "Analyze with Dhruv" → POST /api/coach/diet-analyze → show result card:
+  CLEAN: green badge "Fuelled Right 🥗" + "+50 Integrity Points"
+  CHEAT: red badge "Cheat Day 🍕" + "-10% calorie score"
+  NEUTRAL: gray badge "Mixed Fuel" + "+25 Integrity Points"
+Calories In vs Calories Out balance bar (visual bar showing deficit/surplus).
+User can dismiss (skips diet card, no penalty).
 
-FlameRating component: shows average rating as filled/half/empty flame icons. Tap to rate 1–5.
+6. VISIBILITY TOGGLE: Public / Clan Only / Private
 
-BACKEND ENDPOINTS:
+7. POST BUTTON: Large, rounded-full, #AE93F4 fill, "Post to ICHOR"
 
-POST /api/posts: save post + workout linkage + optional diet card + optional zone claim. Trigger territory claim logic asynchronously via BullMQ.
-GET /api/feed?cursor=: paginated, 20 per page. Cursor-based on createdAt. Includes author, workout, dietCard, flameRatings average.
-POST /api/upload: sign Cloudinary upload server-side, return secure_url.
-POST /api/posts/:id/flame: upsert FlameRating (1–5). Recalculate avgFlameRating on Post.
-POST /api/posts/:id/kudos: toggle kudos, increment/decrement kudosCount.
-POST /api/posts/:id/flag: increment flagCount. If flagCount >= 3: set workout verificationStatus to FLAGGED, hide post from feed, notify admin.
-GET /api/posts/:id/comments: flat list + nested replies
-POST /api/posts/:id/comments: create comment, optional parentId for reply
+On submit:
+- POST /api/posts with all data
+- On success: redirect to /feed with toast "Your run is live. Territory updated."
 
-SOCKET.IO: On new post created, emit "feed:new_post" to all connected clients in the club room. Frontend shows "New posts" pill.
+ACTIVITY FEED (apps/web/app/(app)/feed/page.tsx):
+
+useInfiniteQuery against GET /api/feed?cursor=&filter=
+Filter tabs: All | Following | Clan | My Territory | Top Today
+
+ActivityCard (components/features/ActivityCard.tsx):
+- Dark card (#1A1619), lavender left border accent, subtle glow on hover
+- Header: Avatar (40px circle), Name (Inter Bold), time ago (Inter Light, muted), activity badge pill, VerificationBadge
+- Hero photo (16:9, rounded-xl, full width)
+- Stats strip: 4 StatChip components (Distance | Pace | Duration | Calories)
+- DietHonestyCard component (if present): shows classification badge, calories in/out bar, net balance
+- Territory chip: "📍 [Territory Name] — #[rank] on leaderboard" in lavender pill
+- Caption (3 lines, "See more" expand)
+- Screenshot proof: if OCR, small "📷 Verified Screenshot" thumbnail, tap to expand modal
+- Footer: FlameRating (5 flame icons, tap rates 1–5, shows average), comment icon + count, kudos button, share
+
+FlameRating component:
+- 5 flame icons (🔥 filled lavender, empty gray)
+- Tap to rate. Sends POST /api/posts/:id/flame { rating: 1-5 }
+- Show average rating with count "4.2 (47 ratings)"
+- Highlight user's own rating
+
+DietHonestyCard component:
+- Small card below stats strip
+- Shows: badge (color-coded), emoji + label
+- Calorie balance bar: left = in (pink), right = out (lavender), center line = balance
+- Net: "+320 cal deficit 🔥" or "-180 cal surplus 🧁"
+- Emoji reaction row (optional): 👏 💪 🍕 reactions
+
+BACKEND:
+
+POST /api/posts:
+1. Validate with Zod (workoutId, photoUrls, location, isPublic, dietCard optional)
+2. If new territory name provided: create Territory document with centroid
+3. Save Post with all fields including computed weeklyScore and territoryScore (call scoreService)
+4. Update workout.verificationStatus to VERIFIED
+5. Update User stats: totalWorkouts++, totalCalories += caloriesBurned, totalDistanceKm += distanceKm
+6. Add user score to Upstash Redis sorted set: ZADD lb:weekly:{YYYY-WW} score userId
+7. Add to district sorted set: ZADD lb:district:{district}:{YYYY-WW} score userId
+8. Add to city sorted set: ZADD lb:city:{city}:{YYYY-WW} score userId
+9. Emit Socket.io event: io.to('feed').emit('feed:new_post', { postPreview })
+10. Run territory claim async (setImmediate): check if user beats current territory owner score → update Territory
+
+GET /api/feed?cursor=&filter=:
+- cursor = last post _id (string)
+- If filter=following: match userId in user's following list
+- If filter=clan: match userId in same clan members
+- If filter=territory: match posts in user's territories
+- If filter=top: sort by (flameCount + kudosCount) desc, last 24h only
+- Default: all posts, sorted by createdAt desc
+- Limit 20. Populate: userId (name, avatarUrl), workoutId (stats), location.territoryId (name, rank)
+- Return { posts, nextCursor }
+
+POST /api/posts/:id/flame: upsert FlameRating. Recompute avgFlameRating via aggregation. Return new avg.
+POST /api/posts/:id/kudos: toggle. Return new count.
+POST /api/posts/:id/flag: increment. If flagCount >= 3: set workout.verificationStatus FLAGGED, emit admin alert.
+GET /api/posts/:id/comments: return flat list with nested replies resolved.
+POST /api/posts/:id/comments: create, return populated comment.
+POST /api/upload: generate Cloudinary signed upload params server-side. Return { signature, timestamp, cloudName, apiKey }.
 ```
 
 ---
 
-### PROMPT 06 — Territory Zone Map + Attack System
+### PROMPT 06 — Territory System + Map
 
 ```
-Build the territory system and campus zone map for ICHOR.
+Build the territory system, map display, and attack/challenge flow for ICHOR.
 
-This is zone-based territory (predefined campus polygons), not GPS-path-based.
+TERRITORY MAP PAGE (apps/web/app/(app)/map/page.tsx):
 
-CAMPUS MAP SCREEN (app/(tabs)/map.tsx)
+Uses Google Maps JavaScript API loaded via @googlemaps/js-api-loader.
 
-Full-screen react-native-maps Google Maps view.
-On mount: fetch GET /api/zones (all campus zones with territory info).
-Render each zone as a Polygon:
-- fillColor from territory owner's clan color or a default palette (40% opacity)
-- strokeColor 100% opacity, strokeWidth 2
-- Unclaimed zones: gray fill, dashed stroke
-- Current user's zone: crimson #C41E3A stroke, strokeWidth 4
-- Zone name label via Marker at centroid
+Map setup:
+- Dark map style (use Google Maps nightMode or custom JSON style matching #231F20 background)
+- On mount: fetch GET /api/territories/nearby?lat=&lng=&radius=5000
+- If no location available: show all territories, center on college campus coordinates
 
-Tap any zone: open bottom sheet (react-native-bottom-sheet) showing:
-- Zone name and description
-- If unclaimed: "Claim this zone" (requires posting a workout tagged here)
-- If owned by current user: stats panel — your weekly calorie score here, last defended date
-- If owned by another: owner avatar, name, their weekly calorie score, "Challenge" button
-- If owned by clan member: "Clan Zone" badge
+Territory markers:
+- Each territory displayed as a circle (500m radius) on the map
+- Color: owner's clan color or #AE93F4 for independent owners
+- User's own territories: #AE93F4 glow pulse animation
+- Unclaimed areas: gray, dashed border
+- Circle opacity: 0.3 fill, 0.8 stroke
 
-Challenge flow (bottom sheet → AttackSheet):
-- Show attacker vs defender calorie scores for that zone
-- If attacker score is already higher: "Your stats dominate — Claim automatically" button → POST /api/attacks (auto-resolves as attacker win)
-- If defender score is higher: "Schedule a sprint" (date/time picker) or "Request stat battle" (both log proof screenshots)
-- Confirm → POST /api/attacks
+Click territory circle: open right-side panel (not modal):
+- Territory name (Neighbour font, large)
+- Owner avatar + name + career score
+- "Territory Leaderboard" — top 5 runners this week with scores
+- User's rank on this territory this week
+- Buttons:
+  - If not user's territory: "⚔️ Challenge for Territory" button (#AE93F4)
+  - If user's territory: "🛡 Defend" button (shows incoming attacks)
+  - "View All Runs Here" → links to territory detail page
 
-TERRITORY SERVICE (backend — services/territoryService.ts):
+"Find My Area" button (top right of map):
+- GPS ping → centers map on user, fetches local territories
+- Shows "You are in [District], [City]" toast
 
-Function: claimZone(userId, zoneId, calorieScore)
-- Check if Territory record exists for zoneId
-- If not: create Territory with ownerId = userId
-- If yes and same user: update weeklyCalorieScore
-- If yes and different user: compare weeklyCalorieScore. If new score is higher: create Attack PENDING record. Else: no attack.
+TERRITORY DETAIL PAGE (app/(app)/territory/[id]/page.tsx):
+- Header: territory name, owner badge, total runs logged here
+- This week's leaderboard (full list)
+- All posts tagged to this territory (feed subset)
+- Attack history (recent battles)
 
-Function: resolveAttack(attackId, winnerId)
-- Update Territory ownerId to winnerId
-- Update battlesWon/battlesLost on both users
-- Notify both via FCM
+TERRITORY SERVICE (apps/api/src/services/territoryService.ts):
 
-BACKEND ENDPOINTS:
+claimOrUpdateTerritory(userId, lat, lng, territoryScore, newTerritoryName?):
+- findNearbyTerritory(lat, lng) within 500m
+- If none exists AND newTerritoryName provided: create Territory, set owner to userId
+- If exists: update weeklyLeaderboard array for this user (upsert by userId, update score)
+- Sort weeklyLeaderboard by score desc, assign ranks
+- If rank 1 changed: update currentOwnerId, send push notification to displaced owner
+- If top 3 are all same clan: update currentClanOwnerId
 
-GET /api/zones: all CampusZones with territory (ownerId, ownerName, ownerAvatarUrl, clanColor, weeklyCalorieScore) as GeoJSON FeatureCollection
-POST /api/attacks: create attack, notify defender
-POST /api/attacks/:id/respond: { action: ACCEPT | FORFEIT }
-POST /api/attacks/:id/resolve: { winnerId } — manual resolution after sprint with screenshot proof
-GET /api/attacks/incoming: all PENDING attacks where current user is defender
-GET /api/attacks/outgoing: all PENDING attacks where current user is attacker
+ATTACK FLOW:
 
-BullMQ job — weeklyZoneReset: every Monday 00:00, reset all Territory.weeklyCalorieScore to 0. This means every week starts fresh — last week's dominance does not automatically carry over, users must re-post to re-claim.
+"Challenge for Territory" button → opens challenge sheet:
+- Shows user's weekly score vs owner's weekly score on this territory
+- Option 1: "📊 Stat Battle" — submit at end of week, best score wins
+- Option 2: "🏃 Sprint Duel" — create a group run session for this territory
+- POST /api/attacks { territoryId, type }
 
-Incoming attack banner: persistent banner at top of map screen if user has PENDING incoming attacks. Tap → list of challenges with respond buttons.
+On accept (defender): attack status → ACCEPTED
+On forfeit (defender): transfer territory → attackerId, attacker wins, notifications sent
+
+BACKEND:
+
+GET /api/territories/nearby?lat=&lng=&radius=:
+- Territory.find({ centroid: { $near: { $geometry: { type:'Point', coordinates:[lng,lat] }, $maxDistance: radius }}})
+- Populate currentOwnerId (name, avatarUrl, clanId), currentClanOwnerId (color)
+- Return GeoJSON-compatible array with radius for circle rendering
+
+GET /api/territories/:id:
+- Full territory with weeklyLeaderboard populated (user names, avatars)
+- Recent posts tagged here (last 20)
+- Attack history (last 10)
+
+POST /api/territories (called from post flow if new territory named):
+- Validate name (3-50 chars, no profanity filter)
+- Check no territory within 500m (prevent duplicates)
+- Create with centroid, createdBy, initial owner
+
+POST /api/attacks:
+- Validate attacker has posted in this territory this week (cannot attack territories you haven't run in)
+- Check no PENDING attack already exists for this territory
+- Create Attack, notify defender via FCM
+
+POST /api/attacks/:id/respond:
+- ACCEPT: status → ACCEPTED, notify attacker
+- FORFEIT: call resolveAttack(attackId, attackerId), notify both
+
+POST /api/attacks/:id/resolve:
+- Body: { winnerId }
+- Update Territory.currentOwnerId
+- Update User.stats.battlesWon/battlesLost for both
+- FCM to both users
+- Status → RESOLVED
 ```
 
 ---
@@ -720,135 +1169,216 @@ Incoming attack banner: persistent banner at top of map screen if user has PENDI
 ### PROMPT 07 — Leaderboards + Scoring Engine
 
 ```
-Build the complete leaderboard system and scoring engine for ICHOR.
+Build all 11 leaderboard categories and the complete scoring engine for ICHOR.
 
-SCORING ENGINE (services/scoreService.ts):
+SCORING ENGINE (apps/api/src/services/scoreService.ts):
 
-Calculate user's leaderboard score for a given week:
+Apply Strategy Pattern — each scorer implements IScorer interface: { calculate(userId, week): Promise<number> }
 
-baseCalories = SUM of workout.caloriesBurned where workoutDate in current week AND post exists (only posted workouts count)
+calculateWeeklyScore(userId, week):
+1. Fetch all posts for userId in given week (workoutDate in range)
+2. baseCalories = sum caloriesBurned
+3. activeDays = count distinct days with posts
+4. consistencyMultiplier = MIN(1.0 + (activeDays-1)×0.1, 2.0)
+5. avgPace = weighted average of avgPaceMinPerKm across posts
+6. paceBonus = pace < 5 → 1.3, 5-6 → 1.15, 6-7 → 1.0, >7 → 0.9
+7. integrityBonus = count(CLEAN diet cards this week) × 50
+8. cheatPenalty = count(CHEAT diet cards) × (baseCalories × 0.10)
+9. weeklyScore = (baseCalories × consistencyMultiplier × paceBonus) + integrityBonus - cheatPenalty
+10. Update User.stats.weeklyScore in MongoDB
 
-consistencyMultiplier = MIN(1.0 + (activeDaysThisWeek - 1) × 0.1, 2.0)
-(activeDays = days with at least one verified post this week)
+calculateTerritoryScore(userId, territoryId, week):
+1. Fetch posts where location.territoryId = territoryId, userId, in week
+2. territoryScore = sum(caloriesBurned × paceBonus per post)
+3. Return score
 
-integrityBonus = COUNT(DietCard where classification = CLEAN this week) × 50
+updateAllRedisLeaderboards(userId, weeklyScore, district, city, week):
+1. ZADD lb:weekly:{week} weeklyScore userId
+2. ZADD lb:district:{district}:{week} weeklyScore userId
+3. ZADD lb:city:{city}:{week} weeklyScore userId
+4. ZADD lb:calories:{week} totalCalories userId (separate — raw calories, no multipliers)
+5. ZADD lb:distance:{week} totalDistanceKm userId
+All with TTL 8 days (covers full week + buffer)
 
-cheatPenalty = COUNT(DietCard where classification = CHEAT this week) × (baseCalories × 0.10 / cheatCount)
+LEADERBOARD PAGE (apps/web/app/(app)/leaderboard/page.tsx):
 
-finalScore = (baseCalories × consistencyMultiplier) + integrityBonus - cheatPenalty
+Tab navigator (horizontal scroll on mobile): 11 tabs
 
-Store finalScore in Redis sorted set "lb:calorie:{year}-{week}" with userId as member.
+Tabs: Global | Weekly | My District | My City | Calorie King | Pace God | Distance | Streak | Integrity | Territories | Clan Wars
 
-LEADERBOARD SCREEN (app/(tabs)/leaderboard.tsx)
+Each tab: GET /api/leaderboards/{category}?week=&lat=&lng= (lat/lng for local boards)
 
-Six tabs using a scrollable top tab navigator:
-1. Calorie King — sorted by finalScore descending
-2. Grind Streak — sorted by streakDays descending
-3. Pace God — sorted by AVG(avgPaceMinPerKm) ascending, min 3 runs this week
-4. Distance Destroyer — sorted by SUM(distanceKm) descending this week
-5. Integrity Champion — sorted by integrityPoints descending (all-time)
-6. Clan Wars — sorted by clan combined score + territory count
+"Find My Area" button (top of page): one GPS ping → auto-loads District and City tabs for user's location.
 
-Each leaderboard row:
-- Rank number (gold #D4AF37 / silver #C0C0C0 / bronze #CD7F32 for top 3, bold)
-- Avatar (28px)
-- Name + clan tag badge
-- Score value with unit
-- "YOU" highlight pill if current user
-- Delta arrow vs last week (up/down/same)
+LeaderboardRow component:
+- Rank: gold (1st), silver (2nd), bronze (3rd), plain number rest
+- Avatar (32px)
+- Name + clan tag (small badge in clan color)
+- Score value + unit
+- "YOU" pill if current user
+- Delta: ↑3 (green) / ↓2 (red) / — (gray) vs last week
 
-Clan Wars tab shows: clan color dot, tag badge, name, member count, combined score, zones held count.
+Territory leaderboard tab:
+- Dropdown: select from user's territories
+- Shows all runners who've posted in that territory this week
 
-BACKEND ENDPOINTS:
+BACKEND LEADERBOARD ENDPOINTS (all use Upstash Redis ZREVRANGE with scores, fall back to MongoDB aggregation if Redis miss):
 
-GET /api/leaderboards/calories?week= — check Redis first, build from DB if cache miss, cache for 5 minutes
-GET /api/leaderboards/streak — from DB (User.streakDays)
-GET /api/leaderboards/pace — DB query, weekly
-GET /api/leaderboards/distance — Redis sorted set "lb:distance:{year}-{week}"
-GET /api/leaderboards/integrity — from DB (User.integrityPoints all-time)
-GET /api/leaderboards/clans — aggregate from DB
+GET /api/leaderboards/weekly?week=:
+- ZREVRANGEBYSCORE lb:weekly:{week} +inf -inf WITHSCORES LIMIT 0 50
+- Batch fetch User names/avatars by userId array
 
-STREAK CALCULATION (BullMQ daily job at 23:59):
-For each user: if they have a verified post today → User.streakDays++. Else: User.streakDays = 0.
-This runs every night. Update streakDays on User model.
+GET /api/leaderboards/local?lat=&lng=&type=district|city:
+- Reverse geocode lat/lng → get district or city string
+- ZREVRANGE lb:district:{district}:{week} or lb:city:{city}:{week}
 
-BULMQ CRON JOBS:
+GET /api/leaderboards/territory/:id?week=:
+- Territory.findById → weeklyLeaderboard array (already computed and sorted in territory doc)
+- No Redis needed — stored in MongoDB
 
-weeklyLeaderboardReset (Monday 00:00):
-- Delete Redis keys: lb:calorie:{year}-{week}, lb:distance:{year}-{week}
-- Insert into LeaderboardHistory (top 3 users per category for the week)
-- Reset Territory.weeklyCalorieScore for all zones to 0
-- Log reset
+GET /api/leaderboards/calories, /distance, /streak, /integrity:
+- calories: ZREVRANGE lb:calories:{week}
+- distance: ZREVRANGE lb:distance:{week}
+- streak: User.find().sort({ 'stats.streakDays': -1 }).limit(50) — from MongoDB (not cached, changes daily)
+- integrity: User.find().sort({ 'stats.integrityPoints': -1 }).limit(50)
 
-dailyStreakCheck (every day 23:59):
-- For each active user: check if they have a post today
-- Update streakDays accordingly
+GET /api/leaderboards/clans:
+- Clan.find().sort({ 'stats.weeklyScore': -1 }).limit(20)
+- Populate: member count, territories held count
 
-challengeExpiry (every hour):
-- PENDING attacks older than 48 hours with no response → set EXPIRED, territory stays with defender, notify both
+GET /api/leaderboards/global:
+- User.find().sort({ 'stats.careerScore': -1 }).limit(50)
 
-HALL OF FAME:
-Add LeaderboardHistory model: id, week, category, userId, score, rank, createdAt
-Monthly hall-of-fame screen shows top 3 per category per month.
+NODE-CRON JOBS (apps/api/src/jobs/):
+
+weeklyReset.ts — runs Monday 00:00 IST (cron: '0 0 * * 1', timezone: 'Asia/Kolkata'):
+- Save top 3 per category to LeaderboardHistory
+- Delete all lb:* Redis keys for current week
+- Reset Territory.weeklyLeaderboard[].score = 0 for all territories
+- Reset User.stats.weeklyScore = 0 for all users
+- Recompute clan weekly scores
+- Log: "Weekly reset complete: [timestamp], [count] users affected"
+
+dailyStreak.ts — runs 23:59 IST every day:
+- For each user: check if Post created today (workoutDate = today)
+- If yes: User.stats.streakDays++, User.stats.longestStreak = MAX(longestStreak, streakDays)
+- If no: User.stats.streakDays = 0
+- Batch update (bulkWrite for performance — do NOT loop individual saves)
+
+streakReminder.ts — runs 20:00 IST every day:
+- Find users where streakDays >= 3 AND no post today
+- Send FCM push: "🔥 Keep your streak alive! You're on a [N]-day streak."
+
+challengeExpiry.ts — runs every hour:
+- Find Attacks where status=PENDING AND createdAt < 48 hours ago
+- Set status=EXPIRED, send FCM to both users, territory stays with defender
 ```
 
 ---
 
-### PROMPT 08 — Clan System
+### PROMPT 08 — Group Runs + Real-time + Clan System
 
 ```
-Build the complete clan system for ICHOR.
+Build the group run feature with live leaderboards, Socket.io real-time, and the full clan system.
 
-PRISMA ADDITIONS:
-Add dietPactDescription (optional String) to Clan.
-Add LeaderboardHistory model: id, week(String), category(String), userId(FK), score(Float), rank(Int), createdAt.
+SOCKET.IO SETUP (apps/api/src/app.ts):
 
-SCREENS:
+Initialize Socket.io with CORS for Vercel domain.
+Rooms:
+- 'feed' — all connected users (new post notifications)
+- 'grouprun:{id}' — participants of a specific group run
+- 'clan:{id}' — clan chat room
+- 'territory:{id}' — territory update notifications
 
-app/clans/index.tsx:
-- Search bar to find clans by name or 4-char tag
-- List of top 10 clans by score with: color badge, tag, name, member count, score
-- "Create Clan" button (only if user is not in a clan)
-- "My Clan" button if user is in a clan
+Auth middleware for Socket.io: verify Clerk JWT from socket.handshake.auth.token.
 
-app/clans/create.tsx:
-- Name input (max 30 chars)
-- Tag input (exactly 4 chars, auto-uppercase, unique check on blur)
-- Color picker (8 preset colors matching brand palette)
-- Diet Pact field: optional challenge text e.g. "No sugar this week"
-- Submit: POST /api/clans
+GROUP RUN FLOW:
 
-app/clans/[id].tsx:
-- Header: clan color banner, tag badge, name, member count, score
+Create Group Run (app/(app)/grouprun/page.tsx → POST /api/groupruns):
+- Form: title, type (Competitive/Friendly), location (LocationTagger), start time, max participants (2–20)
+- On create: get 6-char session code → show shareable link: ichor.app/join/{code}
+
+Lobby Page (app/(app)/grouprun/[id]/page.tsx):
+- Participant list with READY / NOT READY chips
+- "Ready Up" toggle button
+- Countdown timer to startAt
+- Session code display (large, copyable)
+- Clan chat sidebar using Socket.io 'grouprun:{id}' room
+- "Start Run" button (host only, all ready OR countdown ends)
+- On start: server emits 'grouprun:started' to room → all clients redirect to live page
+
+Live Run Page (app/(app)/grouprun/[id]/live/page.tsx):
+
+This page runs during the group run. Three mechanisms in priority order:
+
+Mechanism 1 — Google Fit Live Sync (every 60s):
+- If user has connected Google Fit (googleFitRefreshToken exists):
+- setInterval(60000): POST /api/groupruns/:id/sync with { userId, source: 'google_fit' }
+- Backend: refresh token → fetch latest running session from Fit API → extract current distance, pace, calories
+- Emit to Socket.io room: io.to('grouprun:{id}').emit('participant:update', { userId, distanceKm, pace, calories })
+- Frontend receives → updates live leaderboard
+
+Mechanism 2 — Manual Checkpoint Submit (fallback):
+- If no Google Fit: show checkpoint buttons: "🏁 1km" "🏁 2km" "🏁 3km" "🏁 4km" "🏁 5km+"
+- User taps as they pass each km
+- Sends POST /api/groupruns/:id/checkpoint { userId, distanceKm, timestamp }
+- Same Socket.io broadcast
+
+Live Leaderboard component (GroupRunLiveBoard.tsx):
+- Dark card, updates without full re-render (update Zustand slice on socket event)
+- Animated rank changes: smooth position swap animation via Reanimated-style CSS transitions
+- Shows: rank, avatar, name, current distance, current pace, calories
+- Flashes gold when rank 1 changes
+
+End of Run:
+- Each participant taps "Finish" or uploads final screenshot
+- POST /api/groupruns/:id/finish { userId, finalStats }
+- When all finish (or host ends): POST /api/groupruns/:id/end
+- COMPETITIVE: winner's stats vs territory owner → if better, initiate auto attack → territory claim
+- FRIENDLY: all participants get co-run badge
+- Final leaderboard shown on results page
+
+GROUP RUN BACKEND ENDPOINTS:
+POST /api/groupruns — create, generate sessionCode
+GET /api/groupruns/join/:code — find by sessionCode, return id
+POST /api/groupruns/:id/join
+POST /api/groupruns/:id/ready
+POST /api/groupruns/:id/start (host only)
+POST /api/groupruns/:id/sync (Google Fit update)
+POST /api/groupruns/:id/checkpoint (manual)
+POST /api/groupruns/:id/finish (individual done)
+POST /api/groupruns/:id/end (host ends session)
+
+CLAN SYSTEM:
+
+Clan List (app/(app)/clans/page.tsx):
+- Top 20 clans by weeklyScore, search by name or tag
+- "Create Clan" button if not in a clan
+
+Clan Create (modal): name, tag (4 chars, auto uppercase), color picker (8 brand-palette options), diet pact text (optional)
+
+Clan Detail (app/(app)/clans/[id]/page.tsx):
+- Hero: clan color banner, tag badge, name, weekly score, territories count
 - Diet Pact card (if set)
-- Member list: avatar, name, role badge (LEADER/MEMBER), their weekly score
-- Territory section: shows all zones owned by clan members on a mini map
-- Clan Wars: list of active attacks involving clan members
-- Action buttons based on role: 
-  - Leader: Edit Clan, Kick Member
-  - Member: Leave Clan
-  - Non-member: Join Clan button
+- Member list (Leader badge, weekly scores)
+- Territory section: list of clan-held territories
+- Clan Wars: active attacks involving any clan member
+- Chat: Socket.io room 'clan:{id}' — simple text chat, messages not persisted (ephemeral)
+- Action buttons: Join (if not in clan) / Leave / Edit (leader) / Declare War on Clan
 
-BUSINESS RULES:
-- Max 10 members per clan
-- Joining leaves old clan (confirmation dialog required)
-- Leaving: if leader, oldest member by joinedAt becomes leader automatically
-- Kicking: leader only, cannot kick self
+Clan War:
+- Leader selects enemy clan → POST /api/clans/:id/war/:enemyClanId
+- Top 3 runners of each clan this week compared by weeklyScore
+- Best-of-3: each member matchup. Clan with 2+ wins takes 1 territory from losing clan
+- Auto-resolved at end of week in weeklyReset job
 
-BACKEND ENDPOINTS:
-
-POST /api/clans: create, set creator as LEADER, add ClanMember record
-GET /api/clans: top 20 clans sorted by score
-GET /api/clans/search?q=: search by name or tag
-GET /api/clans/:id: clan detail — members with stats, territory zones, active attacks
-POST /api/clans/:id/join: join (check max 10, remove from old clan first)
-POST /api/clans/:id/leave: leave (promote next leader if leaving leader)
-DELETE /api/clans/:id/members/:userId: kick (leader only, Zod validate)
-PATCH /api/clans/:id: update name, tag, color, dietPactDescription (leader only)
-
-CLAN SCORE CALCULATION:
-Clan score = SUM(finalScore of all members this week) + (zones owned × 200 bonus)
-Cache in Redis: "clan:score:{clanId}:{year}-{week}", TTL 10 minutes.
+BACKEND CLAN ENDPOINTS:
+POST /api/clans, GET /api/clans, GET /api/clans/search?q=, GET /api/clans/:id
+POST /api/clans/:id/join (check max 15, remove from old clan)
+POST /api/clans/:id/leave (auto-promote leader)
+DELETE /api/clans/:id/members/:userId (leader only)
+PATCH /api/clans/:id (leader only)
+POST /api/clans/:id/war/:enemyClanId
 ```
 
 ---
@@ -856,196 +1386,246 @@ Cache in Redis: "clan:score:{clanId}:{year}-{week}", TTL 10 minutes.
 ### PROMPT 09 — Gemini AI Features
 
 ```
-Implement all three Gemini AI features for ICHOR.
+Implement all Gemini AI features: screenshot OCR, AI coach Dhruv, diet analyzer, training plan.
 
-Create services/geminiService.ts:
-- Initialize @google/generative-ai with GEMINI_API_KEY
-- Export three functions: chat(), parseScreenshot(), analyzeDiet()
+GEMINI SERVICE (apps/api/src/services/geminiService.ts):
 
-FEATURE 1 — AI COACH "DHRUV" (app/coach.tsx)
+Initialize @google/generative-ai with GEMINI_API_KEY.
+Model: gemini-1.5-flash for all features (fastest, free tier friendly).
+Export: parseScreenshot(imageUrl), analyzeDiet(description, caloriesBurned), chat(systemPrompt, history, message), generateTrainingPlan(workoutSummary).
 
-Chat UI:
-- Inverted FlatList (newest at bottom)
-- User messages: right-aligned, crimson #C41E3A bubble
-- Dhruv messages: left-aligned, #1A1A1A bubble, "D" avatar
-- Typing indicator: three animated dots (Reanimated 3 loop animation)
-- KeyboardAvoidingView input bar, send button
-- Starter chips before first message:
-  "How do I burn more calories?"
-  "Analyze my week"
-  "Help me beat [rival name]'s score"
-  "Generate my training plan"
-  "Should I accept this challenge?"
+FEATURE 1 — SCREENSHOT OCR (already wired in Prompt 04, finalize prompt engineering here):
 
-Backend: POST /api/coach/chat
-1. Fetch last 30 days of user workouts: distanceKm, caloriesBurned, activityType, workoutDate
-2. Fetch streak, integrityPoints, battlesWon, battlesLost, territory zones held
-3. Build system prompt:
-"You are Dhruv, the AI performance coach for ICHOR — a campus social fitness battleground. You are intense, motivating, and data-driven. Keep responses short (2-3 sentences max per point), mobile-optimized, no markdown headers. User stats: [weekly summary]. Territory: [zones held]. Battles: [won/lost]. Help them dominate the leaderboard."
-4. Call gemini-1.5-flash with conversation history + new message, temperature 0.8, maxOutputTokens 400
-5. Return { reply }
+parseScreenshot(imageUrl):
+System instruction: "You are a fitness data extraction engine. You will see a screenshot from a fitness tracking app. Extract the workout data precisely. Return ONLY a raw JSON object with no markdown fences, no explanation, no preamble. Schema: { activityType: 'RUN'|'WALK'|'CYCLE', distanceKm: number, durationSeconds: number, avgPaceMinPerKm: number|null, caloriesBurned: number, heartRateAvg: number|null, workoutDate: 'YYYY-MM-DD' }. If any field is not clearly visible in the screenshot, set it to null. Never guess. Never fabricate."
+Handle: try JSON.parse, if fails try to extract JSON from string with regex, if still fails return { error: true }.
+Log Gemini response for debugging (not in production).
 
-FEATURE 2 — SCREENSHOT OCR (POST /api/workouts/ocr)
+FEATURE 2 — DIET ANALYZER:
 
-Already scaffolded in Prompt 04 but finalize here with robust prompt engineering:
+POST /api/coach/diet-analyze:
+Request: { description: string, caloriesBurned: number }
+analyzeDiet(description, caloriesBurned):
+System instruction: "You are a sports nutritionist AI for ICHOR, a competitive fitness app. The user describes their food intake. Analyze it in the context of athletic performance. Return ONLY raw JSON: { classification: 'CLEAN'|'CHEAT'|'NEUTRAL', estimatedCaloriesIn: number, integrityBonus: number, netCalorieBalance: number, tip: string }. Rules: CLEAN = majority whole foods, lean proteins, complex carbs → integrityBonus: 50. CHEAT = junk food, excessive sugar, fried food, alcohol → integrityBonus: 0. NEUTRAL = mixed or insufficient info → integrityBonus: 25. netCalorieBalance = estimatedCaloriesIn - caloriesBurned (positive = surplus, negative = deficit). tip = one sentence, max 15 words, motivating and specific."
+Return parsed object. Save to Post.dietCard on post creation.
 
-Gemini system prompt:
-"You are a fitness data extraction AI. You will receive a screenshot from a fitness app (Strava, RunKeeper, Garmin, Nike Run Club, Apple Fitness, Samsung Health, or similar). Extract the workout metrics. Return ONLY a raw JSON object with no markdown formatting, no explanation. Schema: { activityType: 'RUN'|'WALK'|'CYCLE', distanceKm: number, durationSeconds: number, avgPaceMinPerKm: number|null, caloriesBurned: number, heartRateAvg: number|null, workoutDate: 'YYYY-MM-DD' }. If any field is not visible in the screenshot, use null. Do not guess."
+FEATURE 3 — AI COACH DHRUV:
 
-Error handling: if Gemini returns unparseable JSON or all nulls, return { error: "Could not extract data. Please enter manually." } and show manual form.
+Chat page (apps/web/app/(app)/coach/page.tsx):
+Full-page dark layout. Left sidebar: conversation history (collapsible). Main area: chat.
 
-FEATURE 3 — DIET ANALYZER (POST /api/coach/diet-analyze)
+UI:
+- DHRUV avatar: abstract lavender geometric shape (SVG), not a human face
+- User messages: right-aligned, #AE93F4 pill background, dark text
+- Dhruv messages: left-aligned, #2D2630 pill, lavender text, DHRUV label in Neighbour font
+- Typing indicator: three dots pulsing in #AE93F4
+- Input: dark rounded input bar with send button
+- Starter chips before first message (horizontal scroll):
+  "Analyze my week 📊"
+  "How do I burn more? 🔥"
+  "Plan my training 🗓"
+  "Should I accept this challenge? ⚔️"
+  "Best pace strategy for 5km? 🏃"
 
-Request: { description: string } (free text from user)
+POST /api/coach/chat:
+Request: { message: string, history: [{role: 'user'|'model', parts: [{text: string}]}][] }
+1. Fetch user's last 30 days posts: distanceKm, caloriesBurned, avgPaceMinPerKm, workoutDate, weeklyScore
+2. Compute: totalDistanceThisMonth, avgCaloriesPerRun, bestPace, currentStreak, weeklyScore, territoriesHeld, battlesWon, battlesLost
+3. Build system prompt: "You are Dhruv, the AI performance coach for ICHOR — a campus social fitness battleground. You are intense, data-driven, and motivating. Keep responses mobile-optimized: max 3 short paragraphs, no markdown headers or bullet formatting. Use the user's actual data in responses. User data: totalDistanceThisMonth={X}km, avgCaloriesPerRun={X}, bestPaceMinPerKm={X}, currentStreak={X} days, weeklyScore={X}, territoriesHeld={X}, battlesWon={X}. College: {college}."
+4. Call Gemini: generateContent with conversation history + new message. Temperature 0.8, maxOutputTokens 400.
+5. Return { reply: string }
 
-Gemini prompt:
-"You are a sports nutritionist AI. The user describes what they ate today. Classify their diet and return ONLY a raw JSON object: { classification: 'CLEAN'|'CHEAT'|'NEUTRAL', estimatedCalories: number, integrityBonus: number, suggestion: string (max 15 words) }. CLEAN = mostly healthy whole foods, gives integrityBonus 50. CHEAT = junk food, fried food, excessive sugar, gives integrityBonus 0. NEUTRAL = mixed or insufficient info, gives integrityBonus 25. EstimatedCalories is total food intake estimate."
+Frontend: keep conversation history in useState. Send full history with every message. Show typing indicator while awaiting response.
 
-Frontend: display result as a card in post composer before user confirms attaching it to the post.
+FEATURE 4 — WEEKLY TRAINING PLAN:
 
-FEATURE 4 — WEEKLY TRAINING PLAN (POST /api/coach/training-plan)
+POST /api/coach/training-plan:
+1. Fetch last 4 weeks of user posts
+2. Compute: avgWeeklyRuns, avgWeeklyDistanceKm, avgPace, trend (improving/declining/stable)
+3. Gemini prompt: "Generate a 7-day training plan for a college runner with these recent stats: {summary}. Return ONLY a JSON array (no markdown): [{ day: 'Monday', type: 'Rest'|'Easy'|'Tempo'|'Long'|'Sprint'|'Cross-train', distanceKm: number|null, targetCalories: number, durationMinutes: number, notes: string }]. Keep notes under 20 words. Progressive overload: hard days followed by easy days. Weekend = longest run."
+4. Parse JSON array. Cache result in user's profile (update User.weeklyPlan field — add this field to User model).
+5. Return array.
 
-Analyze last 4 weeks of workouts: frequency, average distance, calorie trend.
-Gemini prompt for structured JSON output:
-"Generate a 7-day training plan for a college athlete. Return ONLY a JSON array: [{ day: string, type: 'Rest'|'Easy'|'Tempo'|'Long'|'Sprint'|'Cross-train', distanceKm: number|null, targetCalories: number, notes: string (max 20 words) }]. Base it on this recent workout data: [summary]."
-Display as a horizontal week scroll card in profile screen.
+Frontend: display on profile page as horizontal 7-day card scroll. Each day: type badge (color coded), distance target, calorie target, notes. "Today" highlighted in lavender.
+
+Rate limit /api/coach/* endpoints: 10 req/min per user (Gemini free tier protection).
 ```
 
 ---
 
-### PROMPT 10 — Push Notifications + All BullMQ Jobs
+### PROMPT 10 — Push Notifications + All Cron Jobs
 
 ```
-Build the complete notification system and all background job infrastructure for ICHOR.
+Build the complete push notification system using Firebase Web Push and finalize all node-cron jobs.
 
-FCM SETUP:
-- firebase-admin initialized with FIREBASE_SERVICE_ACCOUNT_JSON
-- Create services/notificationService.ts with sendPush(userId, { title, body, data })
-- Fetch user fcmToken from DB, skip silently if null
-- All data objects include deepLink for Expo Router navigation
+FIREBASE WEB PUSH SETUP:
 
-Frontend token registration (hooks/usePushToken.ts):
-- On app launch post-login: request notification permissions via expo-notifications
-- Get Expo push token
+Frontend (apps/web):
+- Install firebase (client SDK)
+- Create lib/firebase.ts: initialize app with config from env vars
+- Request notification permission on app load (after login): Notification.requestPermission()
+- Get FCM registration token: getToken(messaging, { vapidKey: NEXT_PUBLIC_FIREBASE_VAPID_KEY })
 - PATCH /api/users/fcm-token with token
-- Set foreground notification handler: show in-app toast instead of system banner
+- Handle foreground messages: messaging().onMessage() → show in-app toast notification
 
-NOTIFICATION TYPES (implement all 8):
+Backend (apps/api):
+- firebase-admin initialized with FIREBASE_SERVICE_ACCOUNT_JSON
+- notificationService.ts: sendPush(userId, { title, body, data })
+  1. Fetch user.fcmToken from MongoDB
+  2. If null: skip
+  3. firebase-admin messaging().send({ token, notification: { title, body }, data, webpush: { fcmOptions: { link: data.deepLink } } })
+  4. On error (token invalid): clear user.fcmToken in DB
 
-1. ZONE_CHALLENGED: "⚔️ Zone Under Attack" — "[Name] is challenging your [Zone Name]!" — deepLink: /map
-2. CHALLENGE_ACCEPTED: "🔥 Challenge Accepted" — "[Name] accepted your zone challenge." — deepLink: /map
-3. ZONE_LOST: "💥 Zone Lost" — "[Name] claimed [Zone Name]. Time to reclaim it." — deepLink: /map
-4. ZONE_CLAIMED: "🏆 New Territory" — "You claimed [Zone Name]!" — deepLink: /map
-5. KUDOS_RECEIVED: "👊 Kudos" — "[Name] sent you kudos on your [distance]km workout." — deepLink: /feed
-6. CHALLENGE_EXPIRING: "⏰ Challenge Expiring" — "Your challenge for [Zone Name] expires in 24 hours." — deepLink: /map
-7. STREAK_REMINDER: "🔥 Keep your streak alive!" — "Post today's workout to keep your [N]-day streak." — deepLink: /import
-8. CLAN_WAR_UPDATE: "⚔️ Clan Alert" — "[Clan] is attacking your clan's territory!" — deepLink: /clans/[id]
+ALL NOTIFICATION TYPES (implement all 9):
 
-BULMQ JOB REGISTRY (workers/index.ts):
+1. TERRITORY_CHALLENGED: "⚔️ Your Territory is Under Attack" — "[Name] is challenging [Territory Name]. Respond within 48 hours." — deepLink: /map
+2. CHALLENGE_ACCEPTED: "✅ Challenge Accepted" — "[Name] accepted your challenge for [Territory Name]." — deepLink: /territory/{id}
+3. TERRITORY_LOST: "💥 Territory Lost" — "[Name] claimed [Territory Name]. Time to reclaim it." — deepLink: /map
+4. TERRITORY_CLAIMED: "🏆 Territory Claimed" — "You now own [Territory Name]!" — deepLink: /territory/{id}
+5. KUDOS_RECEIVED: "👊 [Name] sent you kudos" — "They loved your [X]km run." — deepLink: /feed
+6. CHALLENGE_EXPIRING: "⏰ Challenge Expiring" — "Your challenge for [Territory Name] expires in 24 hours. Respond now!" — deepLink: /map
+7. STREAK_REMINDER: "🔥 Protect Your Streak" — "You're on a [N]-day streak. Post today to keep it alive!" — deepLink: /import
+8. GROUP_RUN_STARTING: "🏁 Group Run Starts in 15 Minutes" — "[Title] — Get ready at [Location]!" — deepLink: /grouprun/{id}
+9. CLAN_WAR_DECLARED: "⚔️ Clan War!" — "[Enemy Clan] declared war on your clan. Top 3 runners, step up!" — deepLink: /clans/{id}
 
-Register all workers:
+ALL NODE-CRON JOBS (finalize apps/api/src/jobs/index.ts that starts all jobs):
 
-Job 1: processTerritoryClaimJob
-- Triggered after POST /api/posts with locationZoneId
-- Calls claimZone(userId, zoneId, calorieScore)
-- Sends appropriate FCM if attack triggered
+Job 1: weeklyReset — every Monday 00:00 IST
+Full implementation (see Prompt 07). Add:
+- Resolve any pending Clan Wars (compare top 3 vs top 3)
+- Award weekly winner badges (Calorie King, Pace God, Distance Destroyer)
+- Save LeaderboardHistory records
 
-Job 2: challengeExpiryJob (cron: every hour)
-- PENDING attacks older than 48 hours → set EXPIRED
-- Territory stays with defender
-- Notify both attacker and defender
+Job 2: dailyStreak — every day 23:59 IST
+BulkWrite update for all users. Max 200 users = fast.
 
-Job 3: weeklyLeaderboardResetJob (cron: Monday 00:00)
-- Save top 3 per category to LeaderboardHistory
-- Delete Redis leaderboard keys
-- Reset Territory.weeklyCalorieScore to 0 for all zones
+Job 3: streakReminder — every day 20:00 IST
+Find users with streakDays >= 3 + no post today. Batch FCM sends.
 
-Job 4: dailyStreakJob (cron: 23:59 every day)
-- For each user with at least one post ever: check if they posted today
-- If yes: increment streakDays
-- If no: reset streakDays to 0
-- If streakDays > 0 and no post today: send STREAK_REMINDER push at 20:00 instead (add separate cron at 20:00)
+Job 4: challengeExpiry — every hour
+PENDING attacks > 48 hours old → EXPIRED. FCM both parties.
 
-Job 5: streakReminderJob (cron: 20:00 every day)
-- Find users with streakDays >= 3 and no post today
-- Send STREAK_REMINDER push notification
+Job 5: groupRunReminder — every 5 minutes
+GroupRuns with startAt between now and now+16min, status LOBBY, reminderSentAt null.
+Send GROUP_RUN_STARTING push to all participants. Set reminderSentAt.
 
-Job 6: clanScoreCacheJob (cron: every 30 minutes)
-- Recalculate and cache all clan scores in Redis
+Job 6: territoryOwnershipRecalc — every day 02:00 IST
+For each territory: re-sort weeklyLeaderboard by score, update currentOwnerId if changed.
+Notify new owner and displaced owner.
 
-All jobs: retry 3 times with exponential backoff. Log completion time and count processed.
+Job 7: scoreSync — every 6 hours
+For top 100 users (by weekly activity): recalculate weeklyScore, update Redis sorted sets.
+Keeps leaderboards accurate even if a score update was missed.
 
-DEEP LINK HANDLING:
-In app/_layout.tsx: use expo-notifications lastNotificationResponse listener.
-Parse data.deepLink from notification and navigate with Expo Router.
+All jobs: wrap in try-catch, log start/end/duration, log errors to Sentry.
 ```
 
 ---
 
-### PROMPT 11 — Profile + Polish + Admin
+### PROMPT 11 — Profile + Admin + Polish + Launch
 
 ```
-Build the user profile screen, polish the full app, and add the admin layer.
+Build the profile system, admin dashboard, complete the UI polish, and prepare for launch.
 
-PROFILE SCREEN (app/(tabs)/profile.tsx)
+PROFILE PAGE (apps/web/app/(app)/profile/[userId]/page.tsx):
 
-Sections top to bottom:
+Header section:
+- Large avatar (96px), name in Neighbour display font
+- Clan badge (color-coded tag)
+- Career Score prominently: large number, gold gradient text, "Career Score" label
+- Follow / Message / Challenge buttons (if not own profile)
+- Edit Profile button (if own profile)
 
-1. Hero header: large avatar, name, clan tag badge (colour-coded), "Edit Profile" button
-2. Stats row: 4 chips — Total km | Total Workouts | Total Calories | Zones Held
-3. Battle record: Wins vs Losses with a simple ratio bar
-4. Streak section: current streak days (large number + flame icon), "Personal Best" streak
-5. Integrity score: integrityPoints with a tier label (Honest Athlete / Committed / Champion)
-6. Weekly Training Plan card: horizontal 7-day scroll from Gemini (POST /api/coach/training-plan on load if none cached)
-7. Activity heatmap: GitHub-style 52-week grid, each cell = calories burned that day (color intensity from 0 to max)
-8. Badges section: horizontal scroll of earned badges (icon + name)
-9. My Posts: grid of activity card thumbnails (tap to open full post)
+Stats row (4 cards, dark with lavender accent):
+- Total Distance (km) | Total Workouts | Total Calories | Territories Held
 
-BADGE SYSTEM (backend): 
-Award badges on these triggers — check and award in background after relevant actions:
-- First Workout: posted first workout
-- Streak 7: 7-day streak
-- Streak 30: 30-day streak  
-- Calorie King: finished #1 on weekly calorie leaderboard
-- Conqueror: held 5+ zones simultaneously
-- Integrity Champion: 30 consecutive diet logs all CLEAN
-- Battle Hardened: 10 battles won
+Battle record: Wins vs Losses — horizontal bar, wins in lavender, losses in muted pink.
+Streak display: current streak (flame icon + number), personal best streak.
+Integrity tier: based on integrityPoints — Novice / Committed / Honest Athlete / Integrity Champion.
 
-Store badges in UserBadge model: userId, badgeName, awardedAt.
+Weekly Training Plan card (collapsible):
+- Auto-fetches from POST /api/coach/training-plan on profile load if none cached
+- 7-day horizontal scroll, each day a mini card
 
-ADMIN DASHBOARD (web — separate Express route group /admin):
+Activity heatmap (GitHub-style, 52 weeks):
+- Each cell = calorie score that day (0 = dark gray, max = bright lavender)
+- Hover shows date + calories + workout type
 
-Protect with a hardcoded ADMIN_SECRET header check (simple for now).
+Badges section: horizontal scroll, earned badges only:
+- First Run, Streak 7, Streak 30, Streak 100
+- Calorie King (won weekly lb), Territory Conqueror (5+ zones), Battle Hardened (10 wins)
+- Integrity Champion (30 consecutive CLEAN logs), Clan Chief (created a clan)
+- Speed Demon (sub-5 pace), Distance King (100km month)
 
-Pages (return JSON for a simple web UI):
-- GET /admin/flagged-posts: posts with flagCount >= 3, include screenshot URL and reporter count
-- POST /admin/posts/:id/restore: reset flagCount, set verificationStatus VERIFIED
-- POST /admin/posts/:id/remove: delete post and associated workout
-- GET /admin/zones: list all campus zones with territory info
-- POST /admin/zones: create new campus zone with polygon (GeoJSON input)
-- GET /admin/stats: total users, posts today, workouts this week, active clan count
+My Territories: list of territories owned + rank on each.
+My Posts grid: 3-column photo grid, tap to open post.
 
-GENERAL POLISH:
+BADGE SYSTEM (apps/api/src/services/badgeService.ts):
+checkAndAwardBadges(userId) — call after every post save, score update, or battle resolution.
+For each badge: check condition from User stats → if met and not already awarded → push to user.badges array + send FCM notification.
 
-Error boundaries: wrap all tab screens in ErrorBoundary components
-Loading skeletons: every list and card should show skeleton placeholders while loading (use a shimmer animation via Reanimated)
-Empty states: every screen with a list needs a designed empty state (icon + message + action button)
-Haptic feedback: on flame rating tap, on kudos tap, on challenge confirm — use expo-haptics
-Offline banner: detect network state with @react-native-community/netinfo, show red banner when offline
-Image caching: use expo-image instead of Image for automatic disk caching
+ADMIN DASHBOARD (/admin route group, protected by ADMIN_SECRET header):
+
+GET /admin — summary stats: total users, posts today, active group runs, total territories, flagged posts count
+GET /admin/flagged — posts with flagCount >= 3, with screenshot URL and flagger count
+POST /admin/posts/:id/verify — reset flagCount, set verificationStatus VERIFIED
+POST /admin/posts/:id/remove — delete post, decrement user stats
+GET /admin/territories — all territories with owner info
+POST /admin/territories — create territory manually (with GeoJSON polygon or point + radius)
+DELETE /admin/territories/:id
+GET /admin/users — paginated user list with stats
+POST /admin/users/:id/ban — set user.isBanned, revoke all sessions via Clerk API
+
+GLOBAL UI POLISH (apply across all pages):
+
+Error Boundaries: wrap every page in ErrorBoundary component. Custom error page showing ICHOR logo + "Something broke. We're on it." in brand style.
+
+Loading skeletons: every list, card, and stat uses skeleton animation (Tailwind animate-pulse, dark background shimmer). No blank pages ever.
+
+Empty states: every list with no data shows branded empty state:
+- Icon (SVG), headline in Neighbour font, subtext in Inter Light, action button
+- Examples: "No runs posted yet. Import your first workout." / "No territories claimed. Tag a location on your next post."
+
+Toast notifications: bottom-center toast system for all actions. Success = lavender, Error = pink, Info = gray. Auto-dismiss 4 seconds.
+
+Offline detection: window.addEventListener('offline') → show top banner "You're offline. Data will sync when reconnected." in amber.
+
+Image optimization: all images via Next.js <Image> component with Cloudinary URLs using f_auto,q_auto transformation params.
+
+Page transitions: subtle fade-in on route change via CSS animation.
+
+Mobile responsiveness: all pages mobile-first. Test at 375px width. Bottom navigation bar on mobile (Feed, Import, Map, Leaderboard, Profile).
 
 SENTRY INTEGRATION:
-- Install @sentry/react-native
-- Initialize in app/_layout.tsx with SENTRY_DSN
-- Wrap root with Sentry.wrap()
-- Add Sentry.captureException in all catch blocks
+- Install @sentry/nextjs and @sentry/node
+- Next.js: sentry.client.config.ts, sentry.server.config.ts
+- Express: Sentry.init in app.ts, add requestHandler and errorHandler middleware
+- All catch blocks: Sentry.captureException(err)
+- Source maps uploaded on build
 
-POSTHOG ANALYTICS:
-- Install posthog-react-native
-- Track events: workout_imported, post_created, flame_rated, challenge_sent, challenge_responded, zone_claimed, ai_coach_opened, leaderboard_viewed
+RATE LIMITING SUMMARY (express-rate-limit on all routes):
+- /api/feed: 120 req/min
+- /api/leaderboards: 60 req/min
+- /api/workouts/ocr: 20 req/min (Gemini expensive)
+- /api/coach/*: 10 req/min
+- /api/posts: 30 req/min
+- All other /api/*: 100 req/min
+
+LAUNCH CHECKLIST:
+1. All env vars set in Vercel and Railway dashboards
+2. MongoDB Atlas: enable network access for Railway IP (or allow all: 0.0.0.0/0)
+3. 2dsphere index confirmed on Territory.centroid
+4. Clerk webhook pointing to production /api/webhooks/clerk URL
+5. Firebase: add Vercel domain to authorized domains
+6. Google Maps API: restrict key to Vercel domain
+7. Cloudinary: set upload preset to signed
+8. node-cron timezone confirmed as Asia/Kolkata
+9. Sentry project configured, test error captured
+10. Load test: simulate 500 concurrent users with k6 (free) before launch
 ```
 
 ---
 
-*End of ICHOR PRD and Antigravity Build Guide*  
-*App: ICHOR | Version: 1.0 | Stack: Expo + Node.js + PostGIS + Gemini*
+*ICHOR PRD v2.0 — Complete*
+*Stack: Next.js + Express + MongoDB + Upstash Redis + Gemini + Clerk | Cost: $0*
+*Capacity: 500–700 concurrent users | Principles: SOLID throughout*
