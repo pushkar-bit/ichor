@@ -94,7 +94,7 @@ export default function RegisterScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} className="flex-1 justify-center px-6">
         <View className="mb-10 items-center">
           <View className="w-20 h-20 bg-brand/20 rounded-full items-center justify-center mb-4">
-            <UserPlus size={40} color="#E8520A" />
+            <UserPlus size={40} color="#A855F7" />
           </View>
           <Text className="text-3xl font-bold text-white mb-2">Join Dhaav</Text>
           <Text className="text-gray-400 text-center">Create an account to start your journey</Text>

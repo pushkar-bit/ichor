@@ -111,7 +111,7 @@ export default function LoginScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} className="flex-1 justify-center px-6">
         <View className="mb-10 items-center">
           <View className="w-20 h-20 bg-brand/20 rounded-full items-center justify-center mb-4">
-            <LogIn size={40} color="#E8520A" />
+            <LogIn size={40} color="#A855F7" />
           </View>
           <Text className="text-3xl font-bold text-white mb-2">Welcome Back</Text>
           <Text className="text-gray-400 text-center">Enter your email to sign in to Dhaav</Text>
