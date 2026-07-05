@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+:root {
+  --ichor-momentum: #ae93f4;
+  --ichor-momentum-dim: #8a72d9;
+  --ichor-midnight: #171516;
+  --ichor-midnight-raised: #231f20;
+  --ichor-midnight-card: #2a2527;
+  --ichor-afterrun: #fda2de;
+  --ichor-lime: #d7f24c;
+  --ichor-ignite: #ff5e1a;
+  --ichor-border: #383334;
+
+  --background: var(--ichor-midnight);
+  --foreground: #f5f3f6;
+}
+
+@theme inline {
+  --color-momentum: var(--ichor-momentum);
+  --color-momentum-dim: var(--ichor-momentum-dim);
+  --color-midnight: var(--ichor-midnight);
+  --color-midnight-raised: var(--ichor-midnight-raised);
+  --color-midnight-card: var(--ichor-midnight-card);
+  --color-afterrun: var(--ichor-afterrun);
+  --color-lime: var(--ichor-lime);
+  --color-ignite: var(--ichor-ignite);
+  --color-border-ichor: var(--ichor-border);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-oswald);
+}
+
+* {
+  border-color: var(--ichor-border);
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+}
+
+::selection {
+  background: var(--ichor-momentum);
+  color: var(--ichor-midnight);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--ichor-midnight);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--ichor-border);
+  border-radius: 8px;
+}
+
+.font-display {
+  font-family: var(--font-oswald), sans-serif;
+  font-style: italic;
+  letter-spacing: -0.01em;
+}
+
+.text-gradient-momentum {
+  background: linear-gradient(90deg, var(--ichor-momentum) 0%, var(--ichor-afterrun) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--ichor-midnight-raised) 0%, var(--ichor-midnight-card) 50%, var(--ichor-midnight-raised) 100%);
+  background-size: 800px 100%;
+  animation: shimmer 1.6s infinite linear;
+}

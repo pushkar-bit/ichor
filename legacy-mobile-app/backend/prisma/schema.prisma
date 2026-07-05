@@ -1,0 +1,315 @@
+// Dhaav — Complete Prisma Schema
+// All models derived from PRD Part 5 database specification.
+// PostGIS columns (polygon, centroid) are added via raw SQL migration.
+// NO gpxPath, NO GPS data, NO expo-location references.
+
+datasource db {
+  provider          = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum SourceType {
+  HEALTH_SYNC
+  OCR_SCREENSHOT
+  MANUAL
+}
+
+enum ActivityType {
+  RUN
+  WALK
+  CYCLE
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  FLAGGED
+}
+
+enum DietClassification {
+  CLEAN
+  CHEAT
+  NEUTRAL
+}
+
+enum AttackStatus {
+  PENDING
+  ACCEPTED
+  FORFEITED
+  RESOLVED
+  EXPIRED
+}
+
+enum AttackType {
+  STAT
+  SPRINT
+}
+
+enum ClanRole {
+  LEADER
+  MEMBER
+}
+
+// ─── User ─────────────────────────────────────────────────────────────────────
+
+model User {
+  id              String   @id @default(uuid())
+  clerkId         String   @unique
+  email           String   @unique
+  name            String?
+  avatarUrl       String?
+  bio             String?
+  fcmToken        String?
+  totalDistanceKm Float    @default(0)
+  totalWorkouts   Int      @default(0)
+  totalCalories   Int      @default(0)
+  streakDays      Int      @default(0)
+  integrityPoints Int      @default(0)
+  battlesWon      Int      @default(0)
+  battlesLost     Int      @default(0)
+  clanId          String?
+  createdAt       DateTime @default(now())
+
+  // Relations
+  clan             Clan?              @relation("ClanMembers", fields: [clanId], references: [id])
+  ledClan          Clan?              @relation("ClanLeader")
+  clanMembership   ClanMember[]
+  workouts         Workout[]
+  posts            Post[]
+  flameRatings     FlameRating[]
+  comments         Comment[]
+  attacksInitiated Attack[]           @relation("Attacker")
+  attacksDefended  Attack[]           @relation("Defender")
+  attacksWon       Attack[]           @relation("Winner")
+  territories      Territory[]        @relation("TerritoryOwner")
+  leaderboardHistory LeaderboardHistory[]
+  badges           UserBadge[]
+
+  @@index([clanId])
+}
+
+// ─── Workout ──────────────────────────────────────────────────────────────────
+// Source of truth for all athletic activity data.
+// Data comes ONLY from HealthKit, Health Connect, or Gemini OCR.
+// NO GPS tracking. NO live recording.
+
+model Workout {
+  id                 String             @id @default(uuid())
+  userId             String
+  user               User               @relation(fields: [userId], references: [id])
+  sourceType         SourceType
+  activityType       ActivityType
+  distanceKm         Float
+  durationSeconds    Int
+  avgPaceMinPerKm    Float?
+  caloriesBurned     Int
+  heartRateAvg       Int?
+  workoutDate        DateTime
+  externalId         String?            // Deduplication key (HealthKit UUID or session ID)
+  screenshotUrl      String?            // Proof artifact for OCR imports
+  verificationStatus VerificationStatus @default(PENDING)
+  createdAt          DateTime           @default(now())
+
+  post Post?
+
+  @@unique([userId, externalId]) // Prevent duplicate imports
+  @@index([userId])
+  @@index([workoutDate])
+}
+
+// ─── Post ─────────────────────────────────────────────────────────────────────
+// Every workout must be posted before it counts toward leaderboards or territory.
+
+model Post {
+  id             String      @id @default(uuid())
+  userId         String
+  user           User        @relation(fields: [userId], references: [id])
+  workoutId      String      @unique // One post per workout
+  workout        Workout     @relation(fields: [workoutId], references: [id])
+  caption        String?
+  photoUrls      String[]    // Required: at least 1 photo
+  locationZoneId String?
+  locationZone   CampusZone? @relation(fields: [locationZoneId], references: [id])
+  isPublic       Boolean     @default(true)
+  avgFlameRating Float       @default(0)
+  flameCount     Int         @default(0)
+  kudosCount     Int         @default(0)
+  flagCount      Int         @default(0)
+  createdAt      DateTime    @default(now())
+
+  dietCard     DietCard?
+  flameRatings FlameRating[]
+  comments     Comment[]
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([locationZoneId])
+}
+
+// ─── Diet Honesty Card ────────────────────────────────────────────────────────
+// Core differentiating feature. Attached to a post voluntarily.
+// Gemini classifies the user's food description.
+
+model DietCard {
+  id                String             @id @default(uuid())
+  postId            String             @unique
+  post              Post               @relation(fields: [postId], references: [id])
+  description       String             // User's free-text food description
+  classification    DietClassification
+  estimatedCalories Int?
+  integrityBonus    Int                @default(0)
+  createdAt         DateTime           @default(now())
+}
+
+// ─── Flame Rating ─────────────────────────────────────────────────────────────
+
+model FlameRating {
+  id        String   @id @default(uuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  rating    Int      // 1–5
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId]) // One rating per user per post
+}
+
+// ─── Comment ─────────────────────────────────────────────────────────────────
+
+model Comment {
+  id        String    @id @default(uuid())
+  postId    String
+  post      Post      @relation(fields: [postId], references: [id])
+  authorId  String
+  author    User      @relation(fields: [authorId], references: [id])
+  parentId  String?   // Nullable for nested replies
+  parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies   Comment[] @relation("CommentReplies")
+  text      String
+  createdAt DateTime  @default(now())
+
+  @@index([postId])
+}
+
+// ─── Campus Zone ──────────────────────────────────────────────────────────────
+// Predefined campus polygons — seeded by admin.
+// polygon (PostGIS geometry) and centroid are added via raw SQL migration.
+
+model CampusZone {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String?
+  color       String  @default("#A855F7")
+
+  // polygon geometry(Polygon,4326) — added via raw SQL migration
+  // centroid geometry(Point,4326) — added via raw SQL migration
+  centroidLat Float?  // Denormalised for quick map label placement
+  centroidLng Float?
+
+  territory Territory?
+  posts     Post[]
+  attacks   Attack[]
+}
+
+// ─── Territory ────────────────────────────────────────────────────────────────
+
+model Territory {
+  id                 String     @id @default(uuid())
+  zoneId             String     @unique
+  zone               CampusZone @relation(fields: [zoneId], references: [id])
+  ownerId            String?
+  owner              User?      @relation("TerritoryOwner", fields: [ownerId], references: [id])
+  clanId             String?
+  clan               Clan?      @relation(fields: [clanId], references: [id])
+  weeklyCalorieScore Int        @default(0)
+  acquiredAt         DateTime?
+  lastDefended       DateTime?
+}
+
+// ─── Attack ───────────────────────────────────────────────────────────────────
+
+model Attack {
+  id          String       @id @default(uuid())
+  attackerId  String
+  attacker    User         @relation("Attacker", fields: [attackerId], references: [id])
+  defenderId  String
+  defender    User         @relation("Defender", fields: [defenderId], references: [id])
+  zoneId      String
+  zone        CampusZone   @relation(fields: [zoneId], references: [id])
+  status      AttackStatus @default(PENDING)
+  type        AttackType
+  scheduledAt DateTime?
+  resolvedAt  DateTime?
+  winnerId    String?
+  winner      User?        @relation("Winner", fields: [winnerId], references: [id])
+  createdAt   DateTime     @default(now())
+
+  @@index([status])
+  @@index([attackerId])
+  @@index([defenderId])
+}
+
+// ─── Clan ─────────────────────────────────────────────────────────────────────
+
+model Clan {
+  id                  String   @id @default(uuid())
+  name                String
+  tag                 String   @unique // Exactly 4 chars, auto-uppercase
+  leaderId            String   @unique
+  leader              User     @relation("ClanLeader", fields: [leaderId], references: [id])
+  color               String
+  dietPactDescription String?  // Weekly diet challenge e.g. "No sugar this week"
+  battlesWon          Int      @default(0)
+  createdAt           DateTime @default(now())
+
+  members     User[]       @relation("ClanMembers")
+  memberships ClanMember[]
+  territories Territory[]
+}
+
+// ─── Clan Member ─────────────────────────────────────────────────────────────
+
+model ClanMember {
+  clanId   String
+  clan     Clan     @relation(fields: [clanId], references: [id])
+  userId   String
+  user     User     @relation(fields: [userId], references: [id])
+  role     ClanRole @default(MEMBER)
+  joinedAt DateTime @default(now())
+
+  @@id([clanId, userId])
+}
+
+// ─── Leaderboard History ─────────────────────────────────────────────────────
+// Monthly hall-of-fame — top 3 per category per week stored on weekly reset.
+
+model LeaderboardHistory {
+  id        String   @id @default(uuid())
+  week      String   // e.g. "2026-W01"
+  category  String   // CALORIES | STREAK | PACE | DISTANCE | INTEGRITY | CLAN
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  score     Float
+  rank      Int      // 1, 2, or 3
+  createdAt DateTime @default(now())
+
+  @@index([week, category])
+}
+
+// ─── User Badge ───────────────────────────────────────────────────────────────
+
+model UserBadge {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  badgeName String   // FIRST_WORKOUT | STREAK_7 | STREAK_30 | CALORIE_KING | etc.
+  awardedAt DateTime @default(now())
+
+  @@unique([userId, badgeName]) // Each badge awarded once
+}

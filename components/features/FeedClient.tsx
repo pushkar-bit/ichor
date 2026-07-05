@@ -1,0 +1,112 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { Flame, PlusCircle } from "lucide-react";
+import { ActivityCard, type ActivityCardData } from "./ActivityCard";
+import { EmptyState, SkeletonCard } from "@/components/ui/StatChip";
+import { cn } from "@/lib/utils";
+
+const TABS = [
+  { key: "all", label: "All" },
+  { key: "following", label: "Following" },
+  { key: "clan", label: "Clan" },
+  { key: "top", label: "Top Today" },
+];
+
+export function FeedClient() {
+  const [tab, setTab] = useState("all");
+  const [posts, setPosts] = useState<ActivityCardData[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  const load = useCallback(async (filter: string, cursorParam: string | null, replace: boolean) => {
+    const params = new URLSearchParams({ filter });
+    if (cursorParam) params.set("cursor", cursorParam);
+    const res = await fetch(`/api/feed?${params.toString()}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    setPosts((prev) => (replace ? data.posts : [...prev, ...data.posts]));
+    setCursor(data.nextCursor);
+    setHasMore(Boolean(data.nextCursor));
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    load(tab, null, true).finally(() => setLoading(false));
+  }, [tab, load]);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
+          setLoadingMore(true);
+          load(tab, cursor, false).finally(() => setLoadingMore(false));
+        }
+      },
+      { rootMargin: "400px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [tab, cursor, hasMore, loadingMore, loading, load]);
+
+  return (
+    <div className="max-w-xl mx-auto px-4 py-6">
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="font-display italic font-bold text-3xl">Feed</h1>
+        <Link
+          href="/post/create"
+          className="inline-flex items-center gap-1.5 bg-momentum text-midnight text-sm font-semibold px-3.5 py-2 rounded-full"
+        >
+          <PlusCircle className="w-4 h-4" /> Post
+        </Link>
+      </div>
+
+      <div className="flex items-center gap-1.5 mb-6 overflow-x-auto no-scrollbar">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={cn(
+              "shrink-0 text-sm font-medium px-3.5 py-1.5 rounded-full transition-colors",
+              tab === t.key ? "bg-momentum text-midnight" : "bg-midnight-raised text-white/50 hover:text-white",
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="space-y-4">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      ) : posts.length === 0 ? (
+        <EmptyState
+          icon={<Flame className="w-6 h-6" />}
+          title="No posts yet"
+          description="Be the first to import a workout and post it to the club."
+          action={
+            <Link href="/post/create" className="bg-momentum text-midnight text-sm font-semibold px-4 py-2 rounded-full">
+              Create a post
+            </Link>
+          }
+        />
+      ) : (
+        <div className="space-y-4">
+          {posts.map((post) => (
+            <ActivityCard key={post.id} post={post} />
+          ))}
+          <div ref={sentinelRef} className="h-4" />
+          {loadingMore && <SkeletonCard />}
+        </div>
+      )}
+    </div>
+  );
+}
