@@ -1,19 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { Swords, X, ShieldAlert, Loader2, Crown } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { cn } from "@/lib/utils";
 
-type Zone = {
+const LeafletZoneMap = dynamic(
+  () => import("./LeafletZoneMap").then((mod) => mod.LeafletZoneMap),
+  { ssr: false, loading: () => <div className="w-full h-full skeleton" /> },
+);
+
+export type Zone = {
   id: string;
   name: string;
   description: string;
   color: string;
-  gridX: number;
-  gridY: number;
-  gridW: number;
-  gridH: number;
+  lat: number;
+  lng: number;
+  radiusMeters: number;
   territory: {
     ownerId: string | null;
     ownerName: string | null;
@@ -109,45 +114,7 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
         <div className="aspect-square w-full rounded-2xl skeleton" />
       ) : (
         <div className="relative w-full aspect-square rounded-2xl border border-border-ichor bg-midnight-raised overflow-hidden">
-          <svg viewBox="0 0 100 100" className="w-full h-full">
-            <defs>
-              <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
-                <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#383334" strokeWidth="0.3" />
-              </pattern>
-            </defs>
-            <rect width="100" height="100" fill="url(#grid)" />
-            {zones.map((zone) => {
-              const isMine = zone.territory?.ownerId === currentUserId;
-              const fill = zone.territory ? zone.territory.clanColor ?? zone.color : "#4a4548";
-              return (
-                <g key={zone.id} onClick={() => setSelected(zone)} className="cursor-pointer">
-                  <rect
-                    x={zone.gridX}
-                    y={zone.gridY}
-                    width={zone.gridW}
-                    height={zone.gridH}
-                    rx={2}
-                    fill={fill}
-                    fillOpacity={zone.territory ? 0.35 : 0.12}
-                    stroke={isMine ? "#AE93F4" : fill}
-                    strokeWidth={isMine ? 1.2 : 0.5}
-                    strokeDasharray={zone.territory ? undefined : "2,1.5"}
-                  />
-                  <text
-                    x={zone.gridX + zone.gridW / 2}
-                    y={zone.gridY + zone.gridH / 2}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    fontSize="2.6"
-                    fill="#f5f3f6"
-                    fontWeight={600}
-                  >
-                    {zone.name}
-                  </text>
-                </g>
-              );
-            })}
-          </svg>
+          <LeafletZoneMap zones={zones} currentUserId={currentUserId} onZoneClick={setSelected} />
         </div>
       )}
 

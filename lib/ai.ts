@@ -1,8 +1,10 @@
 /**
- * Simulated Gemini integration. Mirrors the exact JSON contracts specified in the
- * ICHOR PRD (services/geminiService.ts) so a real @google/generative-ai call can be
- * swapped in later without touching any caller.
+ * Gemini-backed AI features with deterministic rule-based fallbacks.
+ * Every exported function tries the real Gemini API first (gemini-2.5-flash) and
+ * falls back to a rule-based equivalent if the key is missing or the call fails,
+ * so the app degrades gracefully instead of breaking.
  */
+import { getGeminiModel, extractJson } from "./gemini";
 
 const CHEAT_WORDS = [
   "pizza", "burger", "fries", "fried", "chips", "soda", "coke", "candy", "chocolate",
@@ -15,12 +17,14 @@ const CLEAN_WORDS = [
   "smoothie", "yogurt", "greek yogurt", "fish", "lean", "clean",
 ];
 
-export function classifyDiet(description: string): {
+export type DietResult = {
   classification: "CLEAN" | "CHEAT" | "NEUTRAL";
   estimatedCalories: number;
   integrityBonus: number;
   suggestion: string;
-} {
+};
+
+function classifyDietFallback(description: string): DietResult {
   const text = description.toLowerCase();
   const cheatHits = CHEAT_WORDS.filter((w) => text.includes(w)).length;
   const cleanHits = CLEAN_WORDS.filter((w) => text.includes(w)).length;
@@ -46,7 +50,28 @@ export function classifyDiet(description: string): {
   return { classification, estimatedCalories, integrityBonus, suggestion };
 }
 
-export function parseScreenshot(filename: string): {
+export async function classifyDiet(description: string): Promise<DietResult> {
+  const model = getGeminiModel();
+  if (!model) return classifyDietFallback(description);
+
+  try {
+    const prompt = `You are a sports nutritionist AI for ICHOR, a competitive fitness app for college athletes. The user describes their food intake for today. Analyze it in the context of athletic performance and recovery. Return ONLY a raw JSON object with no markdown: { "classification": "CLEAN"|"CHEAT"|"NEUTRAL", "estimatedCalories": number, "integrityBonus": number, "suggestion": string }. Rules: CLEAN means majority whole foods, lean proteins, complex carbs, adequate hydration -> integrityBonus 50. CHEAT means junk food, fried food, excessive sugar, alcohol, fast food -> integrityBonus 0. NEUTRAL means mixed quality or insufficient description -> integrityBonus 25. suggestion must be exactly one sentence, maximum 15 words, specific and motivating.
+
+Description: "${description}"`;
+
+    const result = await model.generateContent(prompt);
+    const parsed = extractJson<DietResult>(result.response.text());
+    if (!parsed.classification || typeof parsed.estimatedCalories !== "number") {
+      throw new Error("malformed diet response");
+    }
+    return parsed;
+  } catch (err) {
+    console.error("[gemini] classifyDiet failed, using fallback:", (err as Error).message);
+    return classifyDietFallback(description);
+  }
+}
+
+export type ParsedWorkout = {
   activityType: "RUN" | "WALK" | "CYCLE";
   distanceKm: number;
   durationSeconds: number;
@@ -54,8 +79,9 @@ export function parseScreenshot(filename: string): {
   caloriesBurned: number;
   heartRateAvg: number | null;
   workoutDate: string;
-} {
-  // Deterministic pseudo-OCR: real integration point is @google/generative-ai vision.
+};
+
+function parseScreenshotFallback(filename: string): ParsedWorkout {
   const seed = Array.from(filename).reduce((a, c) => a + c.charCodeAt(0), 0);
   const distanceKm = Math.round((3 + (seed % 12)) * 10) / 10;
   const durationSeconds = Math.round(distanceKm * (5 + (seed % 3)) * 60);
@@ -72,6 +98,40 @@ export function parseScreenshot(filename: string): {
   };
 }
 
+/** Real Gemini Vision OCR. base64Data excludes the `data:image/...;base64,` prefix. */
+export async function parseScreenshot(
+  filename: string,
+  image?: { base64Data: string; mimeType: string },
+): Promise<ParsedWorkout> {
+  const model = getGeminiModel();
+  if (!model || !image) return parseScreenshotFallback(filename);
+
+  try {
+    const prompt = `You are a precise fitness data extraction engine. Analyze this screenshot from a fitness tracking application (may be Strava, RunKeeper, Garmin Connect, Nike Run Club, Apple Fitness, Samsung Health, or similar). Extract the workout metrics shown. Return ONLY a raw JSON object with absolutely no markdown formatting, no code fences, no explanation, no text before or after the JSON. Use this exact schema: { "activityType": "RUN"|"WALK"|"CYCLE", "distanceKm": number, "durationSeconds": number, "avgPaceMinPerKm": number|null, "caloriesBurned": number, "heartRateAvg": number|null, "workoutDate": "YYYY-MM-DD" }. If a field is not clearly visible, use null. Do not estimate. Do not fabricate any value.`;
+
+    const result = await model.generateContent([
+      prompt,
+      { inlineData: { data: image.base64Data, mimeType: image.mimeType } },
+    ]);
+    const parsed = extractJson<Partial<ParsedWorkout>>(result.response.text());
+    if (parsed.distanceKm == null && parsed.caloriesBurned == null) {
+      throw new Error("Gemini could not extract workout data from screenshot");
+    }
+    return {
+      activityType: parsed.activityType ?? "RUN",
+      distanceKm: parsed.distanceKm ?? 0,
+      durationSeconds: parsed.durationSeconds ?? 0,
+      avgPaceMinPerKm: parsed.avgPaceMinPerKm ?? null,
+      caloriesBurned: parsed.caloriesBurned ?? 0,
+      heartRateAvg: parsed.heartRateAvg ?? null,
+      workoutDate: parsed.workoutDate ?? new Date().toISOString().slice(0, 10),
+    };
+  } catch (err) {
+    console.error("[gemini] parseScreenshot failed, using fallback:", (err as Error).message);
+    return parseScreenshotFallback(filename);
+  }
+}
+
 type CoachContext = {
   name: string;
   weeklyCaloriesBurned: number;
@@ -82,7 +142,7 @@ type CoachContext = {
   zonesHeld: number;
 };
 
-export function coachReply(message: string, ctx: CoachContext): string {
+function coachReplyFallback(message: string, ctx: CoachContext): string {
   const m = message.toLowerCase();
 
   if (m.includes("burn more calories") || m.includes("burn calories")) {
@@ -106,6 +166,23 @@ export function coachReply(message: string, ctx: CoachContext): string {
   return `Heard. Post your next workout and I'll read the numbers — right now give me a real question about training, diet, or territory strategy.`;
 }
 
+export async function coachReply(message: string, ctx: CoachContext): Promise<string> {
+  const model = getGeminiModel();
+  if (!model) return coachReplyFallback(message, ctx);
+
+  try {
+    const systemPrompt = `You are Dhruv, the AI performance coach for ICHOR — a campus social fitness battleground where college athletes compete for territory, leaderboard dominance, and glory. You are intense, data-driven, and motivating. You speak like a performance coach, not a wellness app. Keep responses mobile-optimized: maximum 3 short paragraphs. No markdown headers, no bullet points — flowing sentences only. Always reference the user's actual numbers when relevant. User stats: ${ctx.weeklyCaloriesBurned} calories this week, ${ctx.streakDays}-day streak, ${ctx.integrityPoints} integrity points, ${ctx.zonesHeld} zones held, ${ctx.battlesWon} battles won, ${ctx.battlesLost} battles lost.`;
+
+    const result = await model.generateContent(`${systemPrompt}\n\nUser: ${message}`);
+    const text = result.response.text().trim();
+    if (!text) throw new Error("empty coach reply");
+    return text;
+  } catch (err) {
+    console.error("[gemini] coachReply failed, using fallback:", (err as Error).message);
+    return coachReplyFallback(message, ctx);
+  }
+}
+
 export type TrainingDay = {
   day: string;
   type: "Rest" | "Easy" | "Tempo" | "Long" | "Sprint" | "Cross-train";
@@ -114,7 +191,7 @@ export type TrainingDay = {
   notes: string;
 };
 
-export function generateTrainingPlan(avgWeeklyDistanceKm: number): TrainingDay[] {
+function generateTrainingPlanFallback(avgWeeklyDistanceKm: number): TrainingDay[] {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   const base = Math.max(avgWeeklyDistanceKm / 5, 3);
   const pattern: Array<[TrainingDay["type"], number]> = [
@@ -146,4 +223,21 @@ export function generateTrainingPlan(avgWeeklyDistanceKm: number): TrainingDay[]
                 : "Bike or swim, keep heart rate in zone 2.",
     };
   });
+}
+
+export async function generateTrainingPlan(avgWeeklyDistanceKm: number): Promise<TrainingDay[]> {
+  const model = getGeminiModel();
+  if (!model) return generateTrainingPlanFallback(avgWeeklyDistanceKm);
+
+  try {
+    const prompt = `Generate a personalized 7-day training plan for a college runner. Return ONLY a raw JSON array with no markdown: [{ "day": string, "type": "Rest"|"Easy"|"Tempo"|"Long"|"Sprint"|"Cross-train", "distanceKm": number|null, "targetCalories": number, "notes": string }]. Rules: notes maximum 20 words. Hard days must be followed by easy or rest days. Saturday or Sunday = longest run. Base the plan on this athlete's recent data: average weekly distance ${avgWeeklyDistanceKm.toFixed(1)}km.`;
+
+    const result = await model.generateContent(prompt);
+    const parsed = extractJson<TrainingDay[]>(result.response.text());
+    if (!Array.isArray(parsed) || parsed.length !== 7) throw new Error("malformed training plan");
+    return parsed;
+  } catch (err) {
+    console.error("[gemini] generateTrainingPlan failed, using fallback:", (err as Error).message);
+    return generateTrainingPlanFallback(avgWeeklyDistanceKm);
+  }
 }

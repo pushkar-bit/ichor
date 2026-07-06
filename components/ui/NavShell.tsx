@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import { IchorLogo } from "./IchorMark";
 import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, ShieldAlert } from "lucide-react";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 const NAV_ITEMS = [
   { href: "/feed", label: "Feed", icon: Flame },
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
 
 export function NavShell({ children, isAdmin }: { children: React.ReactNode; isAdmin?: boolean }) {
   const pathname = usePathname();
+  usePushNotifications();
   const items = isAdmin ? [...NAV_ITEMS, { href: "/admin", label: "Admin", icon: ShieldAlert }] : NAV_ITEMS;
 
   return (

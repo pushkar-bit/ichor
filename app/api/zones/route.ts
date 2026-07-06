@@ -22,10 +22,9 @@ export async function GET() {
       name: z.name,
       description: z.description,
       color: z.color,
-      gridX: z.gridX,
-      gridY: z.gridY,
-      gridW: z.gridW,
-      gridH: z.gridH,
+      lat: z.centroid.coordinates[1],
+      lng: z.centroid.coordinates[0],
+      radiusMeters: 150,
       territory: t
         ? {
             id: String(t._id),

@@ -18,6 +18,7 @@ const UserSchema = new Schema(
     clanId: { type: Schema.Types.ObjectId, ref: "Clan", default: null },
     badges: [{ type: String }],
     lastPostDate: { type: Date, default: null },
+    fcmToken: { type: String, default: null },
   },
   { timestamps: true },
 );

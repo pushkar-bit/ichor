@@ -6,5 +6,5 @@ export async function POST(req: NextRequest) {
   if (!description || !description.trim()) {
     return NextResponse.json({ error: "description required" }, { status: 400 });
   }
-  return NextResponse.json(classifyDiet(description));
+  return NextResponse.json(await classifyDiet(description));
 }

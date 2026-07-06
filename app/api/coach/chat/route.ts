@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   const score = await computeUserWeeklyScore(String(me._id));
   const zonesHeld = await Territory.countDocuments({ ownerId: me._id });
 
-  const reply = coachReply(message, {
+  const reply = await coachReply(message, {
     name: me.name,
     weeklyCaloriesBurned: score.baseCalories,
     streakDays: me.streakDays,

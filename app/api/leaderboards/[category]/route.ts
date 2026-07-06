@@ -5,43 +5,69 @@ import { User } from "@/models/User";
 import { Clan, ClanMember } from "@/models/Clan";
 import { Territory } from "@/models/Territory";
 import { computeAllWeeklyScores } from "@/lib/scoring";
+import { addScore, getLeaderboard } from "@/lib/redis";
+import { weekKey } from "@/lib/week";
+
+async function caloriesOrDistanceRows(category: "calories" | "distance") {
+  const redisKey = `lb:${category}:${weekKey()}`;
+  const cached = await getLeaderboard(redisKey, 50);
+
+  if (cached.length > 0) {
+    const users = await User.find({ _id: { $in: cached.map((c) => c.member) } }).lean();
+    const byId = new Map(users.map((u: any) => [String(u._id), u]));
+    return cached
+      .filter((c) => byId.has(c.member))
+      .map((c) => ({
+        userId: c.member,
+        name: byId.get(c.member).name,
+        avatarUrl: byId.get(c.member).avatarUrl,
+        value: c.score,
+        unit: category === "calories" ? "pts" : "km",
+      }));
+  }
+
+  // Cache miss (first read this week) — compute from MongoDB (source of truth) and populate Redis.
+  const rows = await computeAllWeeklyScores();
+  await Promise.all(
+    rows.map((r) =>
+      addScore(redisKey, String(r.user._id), category === "calories" ? r.score.finalScore : r.score.totalDistanceKm),
+    ),
+  );
+  const sorted =
+    category === "calories"
+      ? rows.sort((a, b) => b.score.finalScore - a.score.finalScore)
+      : rows.sort((a, b) => b.score.totalDistanceKm - a.score.totalDistanceKm);
+  return sorted.map((r) => ({
+    userId: String(r.user._id),
+    name: r.user.name,
+    avatarUrl: r.user.avatarUrl,
+    value: category === "calories" ? r.score.finalScore : r.score.totalDistanceKm,
+    unit: category === "calories" ? "pts" : "km",
+  }));
+}
 
 export async function GET(_req: Request, { params }: { params: Promise<{ category: string }> }) {
   await connectDB();
   const me = await getOrCreateCurrentUser();
   const { category } = await params;
 
-  if (category === "calories" || category === "pace" || category === "distance") {
+  if (category === "calories" || category === "distance") {
+    const sorted = await caloriesOrDistanceRows(category);
+    return NextResponse.json({ rows: sorted.slice(0, 50), me: me ? String(me._id) : null });
+  }
+
+  if (category === "pace") {
     const rows = await computeAllWeeklyScores();
-    let sorted;
-    if (category === "calories") {
-      sorted = rows.sort((a, b) => b.score.finalScore - a.score.finalScore).map((r) => ({
+    const sorted = rows
+      .filter((r) => r.score.avgPaceMinPerKm !== null)
+      .sort((a, b) => (a.score.avgPaceMinPerKm ?? 999) - (b.score.avgPaceMinPerKm ?? 999))
+      .map((r) => ({
         userId: String(r.user._id),
         name: r.user.name,
         avatarUrl: r.user.avatarUrl,
-        value: r.score.finalScore,
-        unit: "pts",
+        value: r.score.avgPaceMinPerKm,
+        unit: "min/km",
       }));
-    } else if (category === "distance") {
-      sorted = rows.sort((a, b) => b.score.totalDistanceKm - a.score.totalDistanceKm).map((r) => ({
-        userId: String(r.user._id),
-        name: r.user.name,
-        avatarUrl: r.user.avatarUrl,
-        value: r.score.totalDistanceKm,
-        unit: "km",
-      }));
-    } else {
-      sorted = rows
-        .filter((r) => r.score.avgPaceMinPerKm !== null)
-        .sort((a, b) => (a.score.avgPaceMinPerKm ?? 999) - (b.score.avgPaceMinPerKm ?? 999))
-        .map((r) => ({
-          userId: String(r.user._id),
-          name: r.user.name,
-          avatarUrl: r.user.avatarUrl,
-          value: r.score.avgPaceMinPerKm,
-          unit: "min/km",
-        }));
-    }
     return NextResponse.json({ rows: sorted.slice(0, 50), me: me ? String(me._id) : null });
   }
 

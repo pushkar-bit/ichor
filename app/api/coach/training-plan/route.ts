@@ -18,6 +18,6 @@ export async function POST() {
   const totalDistance = posts.reduce((s: number, p: any) => s + (p.workoutId?.distanceKm ?? 0), 0);
   const avgWeeklyDistanceKm = totalDistance / 4;
 
-  const plan = generateTrainingPlan(avgWeeklyDistanceKm || 15);
+  const plan = await generateTrainingPlan(avgWeeklyDistanceKm || 15);
   return NextResponse.json({ plan });
 }

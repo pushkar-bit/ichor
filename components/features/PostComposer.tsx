@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Camera, Upload, X, ChevronDown, Loader2, HeartPulse } from "lucide-react";
+import { Camera, Upload, X, ChevronDown, Loader2, HeartPulse, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Zone = { id: string; name: string };
@@ -38,6 +38,9 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
   const [caption, setCaption] = useState("");
   const [zoneId, setZoneId] = useState("");
   const [isPublic, setIsPublic] = useState(true);
+  const [locating, setLocating] = useState(false);
+  const [locationLabel, setLocationLabel] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   const [dietOpen, setDietOpen] = useState(false);
   const [dietText, setDietText] = useState("");
@@ -90,6 +93,38 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
     setDistanceKm(String(distance));
     setDurationMin(String(duration));
     setCaloriesBurned(String(Math.round(distance * 62)));
+  }
+
+  function detectLocation() {
+    if (!("geolocation" in navigator)) {
+      setLocationError("Location unavailable — pick a zone manually below.");
+      return;
+    }
+    setLocating(true);
+    setLocationError(null);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const res = await fetch(`/api/location/detect?lat=${latitude}&lng=${longitude}`);
+          const data = await res.json();
+          if (res.ok) {
+            const cityLine = [data.district, data.city].filter(Boolean).join(", ");
+            setLocationLabel(cityLine || "Location detected");
+            if (data.zone) setZoneId(data.zone.id);
+          } else {
+            setLocationError("Could not resolve location — pick a zone manually below.");
+          }
+        } finally {
+          setLocating(false);
+        }
+      },
+      () => {
+        setLocating(false);
+        setLocationError("Location unavailable — pick a zone manually below.");
+      },
+      { timeout: 10000, maximumAge: 0 },
+    );
   }
 
   async function analyzeDiet() {
@@ -252,7 +287,20 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
 
       {/* Zone picker */}
       <div className="mb-4">
-        <label className="text-xs font-medium text-white/50 mb-2 block">Where did you work out?</label>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs font-medium text-white/50 block">Where did you work out?</label>
+          <button
+            type="button"
+            onClick={detectLocation}
+            disabled={locating}
+            className="inline-flex items-center gap-1 text-xs font-medium text-momentum disabled:opacity-50"
+          >
+            {locating ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
+            Detect my location
+          </button>
+        </div>
+        {locationLabel && <p className="text-xs text-lime mb-2">📍 {locationLabel}</p>}
+        {locationError && <p className="text-xs text-white/40 mb-2">{locationError}</p>}
         <select
           value={zoneId}
           onChange={(e) => setZoneId(e.target.value)}

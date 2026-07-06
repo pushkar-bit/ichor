@@ -8,7 +8,9 @@ import { User } from "@/models/User";
 import { classifyDiet } from "@/lib/ai";
 import { claimZone } from "@/lib/territory";
 import { evaluateBadges } from "@/lib/badges";
-import { dayKey } from "@/lib/week";
+import { dayKey, weekKey } from "@/lib/week";
+import { computeUserWeeklyScore } from "@/lib/scoring";
+import { addScore } from "@/lib/redis";
 
 export async function POST(req: NextRequest) {
   await connectDB();
@@ -65,7 +67,7 @@ export async function POST(req: NextRequest) {
 
   let dietCard = null;
   if (dietDescription && dietDescription.trim().length > 0) {
-    const result = classifyDiet(dietDescription);
+    const result = await classifyDiet(dietDescription);
     dietCard = await DietCard.create({
       postId: post._id,
       description: dietDescription,
@@ -100,6 +102,13 @@ export async function POST(req: NextRequest) {
   if (newBadges.length) {
     await User.updateOne({ _id: me._id }, { $addToSet: { badges: { $each: newBadges } } });
   }
+
+  const updatedScore = await computeUserWeeklyScore(String(me._id));
+  const week = weekKey();
+  await Promise.all([
+    addScore(`lb:calories:${week}`, String(me._id), updatedScore.finalScore),
+    addScore(`lb:distance:${week}`, String(me._id), updatedScore.totalDistanceKm),
+  ]);
 
   return NextResponse.json({
     postId: String(post._id),
