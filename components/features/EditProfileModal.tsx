@@ -1,39 +1,63 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { X, Loader2 } from "lucide-react";
+import { X, Loader2, Camera } from "lucide-react";
+import { Avatar } from "@/components/ui/Avatar";
+import { resizeToDataUrl } from "@/lib/image";
+
+const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 
 export function EditProfileModal({
   initialName,
   initialBio,
+  initialUsername,
+  initialAvatarUrl,
   initialWeight,
   initialHeight,
 }: {
   initialName: string;
   initialBio: string;
+  initialUsername?: string | null;
+  initialAvatarUrl?: string | null;
   initialWeight?: number | null;
   initialHeight?: number | null;
 }) {
   const router = useRouter();
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(initialName);
   const [bio, setBio] = useState(initialBio);
+  const [username, setUsername] = useState(initialUsername ?? "");
+  const [newAvatarUrl, setNewAvatarUrl] = useState<string | null>(null);
   const [weightKg, setWeightKg] = useState(initialWeight ? String(initialWeight) : "");
   const [heightUnit, setHeightUnit] = useState<"cm" | "ft">("cm");
   const [heightCm, setHeightCm] = useState(initialHeight ? String(initialHeight) : "");
   const [heightFt, setHeightFt] = useState(initialHeight ? String(Math.floor(initialHeight / 30.48)) : "");
   const [heightIn, setHeightIn] = useState(initialHeight ? String(Math.round((initialHeight / 2.54) % 12)) : "");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleAvatarSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setNewAvatarUrl(await resizeToDataUrl(file, 400));
+  }
 
   async function save() {
+    if (!USERNAME_PATTERN.test(username)) {
+      setError("Username must be 3-20 characters: lowercase letters, numbers, underscores.");
+      return;
+    }
     setSaving(true);
+    setError(null);
     let finalHeightCm = heightCm;
     if (heightUnit === "ft" && heightFt) {
       const inches = heightIn ? parseInt(heightIn) : 0;
       finalHeightCm = String(Math.round((parseInt(heightFt) * 12 + inches) * 2.54));
     }
-    
+
     try {
       const res = await fetch("/api/users/profile", {
         method: "PATCH",
@@ -41,6 +65,8 @@ export function EditProfileModal({
         body: JSON.stringify({
           name,
           bio,
+          username,
+          ...(newAvatarUrl ? { avatarUrl: newAvatarUrl } : {}),
           weightKg: weightKg ? Number(weightKg) : null,
           heightCm: finalHeightCm ? Number(finalHeightCm) : null,
         }),
@@ -48,6 +74,9 @@ export function EditProfileModal({
       if (res.ok) {
         setOpen(false);
         router.refresh();
+      } else {
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? "Failed to save. Please try again.");
       }
     } finally {
       setSaving(false);
@@ -69,11 +98,35 @@ export function EditProfileModal({
               </button>
             </div>
             <div className="space-y-3">
+              <div className="flex justify-center mb-1">
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  className="relative"
+                  aria-label="Change profile picture"
+                >
+                  <Avatar src={newAvatarUrl ?? initialAvatarUrl} name={name} size={72} />
+                  <span className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-momentum text-midnight flex items-center justify-center border-2 border-midnight-raised">
+                    <Camera className="w-3 h-3" />
+                  </span>
+                </button>
+                <input ref={avatarInputRef} type="file" accept="image/*" hidden onChange={handleAvatarSelect} />
+              </div>
               <div>
                 <label className="text-xs font-medium text-white/50 mb-1.5 block">Name</label>
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-midnight border border-border-ichor rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-momentum/50"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-white/50 mb-1.5 block">Username</label>
+                <input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                  minLength={3}
+                  maxLength={20}
                   className="w-full bg-midnight border border-border-ichor rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-momentum/50"
                 />
               </div>
@@ -148,6 +201,7 @@ export function EditProfileModal({
                   )}
                 </div>
               </div>
+              {error && <p className="text-xs text-ignite">{error}</p>}
               <button
                 onClick={save}
                 disabled={saving}

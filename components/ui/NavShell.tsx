@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { UserButton, useUser } from "@clerk/nextjs";
+import { UserButton, useUser, SignOutButton } from "@clerk/nextjs";
 import { IchorLogo } from "./IchorMark";
-import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, ShieldAlert } from "lucide-react";
+import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, ShieldAlert, Search, LogOut } from "lucide-react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 const NAV_ITEMS = [
@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { href: "/clans", label: "Clans", icon: Users },
   { href: "/coach", label: "Coach", icon: MessageCircle },
   { href: "/profile", label: "Profile", icon: User },
+  { href: "/search", label: "Search", icon: Search },
 ];
 
 export function NavShell({ children, isAdmin }: { children: React.ReactNode; isAdmin?: boolean }) {
@@ -52,9 +53,17 @@ export function NavShell({ children, isAdmin }: { children: React.ReactNode; isA
             );
           })}
         </nav>
-        <div className="px-2 pt-4 border-t border-border-ichor flex items-center gap-2">
-          <UserButton />
-          <span className="text-xs text-white/40 truncate">{user?.fullName || "Account"}</span>
+        <div className="px-2 pt-4 border-t border-border-ichor space-y-2">
+          <div className="flex items-center gap-2">
+            <UserButton />
+            <span className="text-xs text-white/40 truncate">{user?.fullName || "Account"}</span>
+          </div>
+          <SignOutButton redirectUrl="/sign-in">
+            <button className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-white/60 hover:text-white hover:bg-midnight-raised transition-colors">
+              <LogOut className="w-[18px] h-[18px]" />
+              Log out
+            </button>
+          </SignOutButton>
         </div>
       </aside>
 
@@ -62,7 +71,12 @@ export function NavShell({ children, isAdmin }: { children: React.ReactNode; isA
         {/* Mobile top bar */}
         <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border-ichor sticky top-0 bg-midnight/95 backdrop-blur z-20">
           <IchorLogo textClassName="text-lg" />
-          <UserButton />
+          <div className="flex items-center gap-3">
+            <Link href="/search" className="text-white/60 hover:text-white">
+              <Search className="w-5 h-5" />
+            </Link>
+            <UserButton />
+          </div>
         </header>
 
         <main className="flex-1 min-w-0 pb-20 md:pb-0">{children}</main>

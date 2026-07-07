@@ -1,9 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, ArrowRight, Scale, Ruler } from "lucide-react";
+import { Loader2, ArrowRight, Scale, Ruler, AtSign } from "lucide-react";
+
+const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 
 export default function OnboardingPage() {
+  const [username, setUsername] = useState("");
   const [weightKg, setWeightKg] = useState("");
   const [heightUnit, setHeightUnit] = useState<"cm" | "ft">("cm");
   const [heightCm, setHeightCm] = useState("");
@@ -29,19 +32,25 @@ export default function OnboardingPage() {
       return;
     }
 
+    if (!USERNAME_PATTERN.test(username.trim().toLowerCase())) {
+      setError("Username must be 3-20 characters: lowercase letters, numbers, underscores.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/users/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ weightKg, heightCm: finalHeightCm }),
+        body: JSON.stringify({ weightKg, heightCm: finalHeightCm, username: username.trim().toLowerCase() }),
       });
       if (res.ok) {
         // Force hard refresh to update server-side layout redirect checks
         window.location.href = "/feed";
       } else {
-        setError("Failed to save. Please try again.");
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? "Failed to save. Please try again.");
         setLoading(false);
       }
     } catch (err) {
@@ -59,6 +68,21 @@ export default function OnboardingPage() {
         </p>
 
         <form onSubmit={submit} className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-white/50 block mb-1.5 flex items-center gap-1.5">
+              <AtSign className="w-3.5 h-3.5" /> Username
+            </label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+              placeholder="e.g. arjun_runs"
+              required
+              minLength={3}
+              maxLength={20}
+              className="w-full bg-midnight border border-border-ichor rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-momentum"
+            />
+          </div>
           <div>
             <label className="text-xs font-medium text-white/50 block mb-1.5 flex items-center gap-1.5">
               <Scale className="w-3.5 h-3.5" /> Weight (kg)

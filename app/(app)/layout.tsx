@@ -5,7 +5,7 @@ import { NavShell } from "@/components/ui/NavShell";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getOrCreateCurrentUser();
   if (!user) redirect("/sign-in");
-  if (!user.weightKg || !user.heightCm) redirect("/onboarding");
+  if (!user.weightKg || !user.heightCm || !user.username) redirect("/onboarding");
 
   return <NavShell isAdmin>{children}</NavShell>;
 }

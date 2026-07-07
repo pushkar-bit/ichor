@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
-import { Inter, Barlow_Condensed } from "next/font/google";
+import { Poppins, Barlow_Condensed } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { dark } from "@clerk/themes";
 import "./globals.css";
 
-const inter = Inter({
-  variable: "--font-inter",
+const poppins = Poppins({
+  variable: "--font-poppins",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "700", "800"],
+  weight: ["300", "400", "500", "600", "700"],
 });
 
 const barlowCondensed = Barlow_Condensed({
-  variable: "--font-oswald",
+  variable: "--font-barlow",
   subsets: ["latin"],
   weight: ["500", "600", "700", "800"],
   style: ["normal", "italic"],
@@ -26,18 +27,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <ClerkProvider
       appearance={{
+        baseTheme: dark,
         variables: {
           colorPrimary: "#AE93F4",
           colorPrimaryForeground: "#171516",
           colorBackground: "#171516",
-          colorForeground: "#f5f3f6",
-          colorInput: "#231F20",
-          colorInputForeground: "#f5f3f6",
+          colorText: "#f5f3f6",
+          colorInputText: "#f5f3f6",
+          colorNeutral: "#2a2527", // ichor-midnight-card (lighter than background)
           borderRadius: "0.75rem",
         },
       }}
     >
-      <html lang="en" className={`${inter.variable} ${barlowCondensed.variable} h-full`}>
+      <html lang="en" className={`${poppins.variable} ${barlowCondensed.variable} h-full`}>
         <body className="min-h-full flex flex-col antialiased">{children}</body>
       </html>
     </ClerkProvider>

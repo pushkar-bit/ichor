@@ -6,21 +6,11 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Camera, Upload, X, ChevronDown, Loader2, HeartPulse, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { resizeToDataUrl } from "@/lib/image";
 
 type Zone = { id: string; name: string };
 
 const ACTIVITIES = ["RUN", "WALK", "CYCLE"] as const;
-
-async function resizeToDataUrl(file: File, maxWidth = 900): Promise<string> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, maxWidth / bitmap.width);
-  const canvas = document.createElement("canvas");
-  canvas.width = bitmap.width * scale;
-  canvas.height = bitmap.height * scale;
-  const ctx = canvas.getContext("2d");
-  ctx?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.75);
-}
 
 export function PostComposer({ zones }: { zones: Zone[] }) {
   const router = useRouter();
@@ -101,18 +91,29 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
   }
 
   useEffect(() => {
-    function onDragOver(e: DragEvent) {
+    let dragCounter = 0;
+
+    function onDragEnter(e: DragEvent) {
+      if (!e.dataTransfer?.types.includes("Files")) return;
       e.preventDefault();
+      dragCounter++;
       setIsDragging(true);
     }
-    function onDragLeave(e: DragEvent) {
+    function onDragOver(e: DragEvent) {
+      if (!e.dataTransfer?.types.includes("Files")) return;
       e.preventDefault();
-      if (!e.relatedTarget) {
+    }
+    function onDragLeave(e: DragEvent) {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      e.preventDefault();
+      dragCounter = Math.max(0, dragCounter - 1);
+      if (dragCounter === 0) {
         setIsDragging(false);
       }
     }
     function onDrop(e: DragEvent) {
       e.preventDefault();
+      dragCounter = 0;
       setIsDragging(false);
       const file = e.dataTransfer?.files?.[0];
       if (file && file.type.startsWith("image/")) {
@@ -120,11 +121,13 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
       }
     }
 
+    window.addEventListener("dragenter", onDragEnter);
     window.addEventListener("dragover", onDragOver);
     window.addEventListener("dragleave", onDragLeave);
     window.addEventListener("drop", onDrop);
 
     return () => {
+      window.removeEventListener("dragenter", onDragEnter);
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("dragleave", onDragLeave);
       window.removeEventListener("drop", onDrop);
@@ -242,13 +245,13 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
   return (
     <div className="max-w-xl mx-auto px-4 py-6 pb-24 relative">
       {isDragging && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-md pointer-events-none">
-          <div className="text-center p-10 border-2 border-dashed border-momentum rounded-3xl bg-momentum/10 max-w-lg mx-4 w-full shadow-2xl">
-            <div className="w-20 h-20 bg-momentum/20 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Camera className="w-10 h-10 text-momentum" />
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-black/90 backdrop-blur-md pointer-events-none p-4">
+          <div className="text-center p-6 sm:p-10 border-2 border-dashed border-momentum rounded-3xl bg-momentum/10 max-w-lg w-full shadow-2xl my-auto">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-momentum/20 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
+              <Camera className="w-8 h-8 sm:w-10 sm:h-10 text-momentum" />
             </div>
-            <h2 className="text-4xl font-bold italic font-display text-white mb-3">Drop your screenshot</h2>
-            <p className="text-white/60 text-lg max-w-[350px] mx-auto">
+            <h2 className="text-2xl sm:text-4xl font-bold italic font-display text-white mb-2 sm:mb-3">Drop your screenshot</h2>
+            <p className="text-white/60 text-base sm:text-lg max-w-[350px] mx-auto">
               Release to instantly extract distance, duration, and pace using AI.
             </p>
           </div>
@@ -428,15 +431,15 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
 
       {/* Public toggle */}
       <div className="flex items-center justify-between mb-6">
-        <span className="text-sm text-white/60">Post publicly to the club</span>
+        <span className="text-sm text-white/60">Post publicly to the clan</span>
         <button
           onClick={() => setIsPublic((v) => !v)}
-          className={cn("w-11 h-6 rounded-full relative transition-colors", isPublic ? "bg-momentum" : "bg-white/15")}
+          className={cn("w-11 h-6 rounded-full relative transition-colors shrink-0", isPublic ? "bg-momentum" : "bg-white/15")}
         >
           <span
             className={cn(
-              "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform",
-              isPublic ? "translate-x-5" : "translate-x-0.5",
+              "absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white transition-transform",
+              isPublic ? "translate-x-5" : "translate-x-0",
             )}
           />
         </button>
