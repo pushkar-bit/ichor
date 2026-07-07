@@ -4,25 +4,24 @@ import { useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Camera, Upload, X, ChevronDown, Loader2, HeartPulse, MapPin } from "lucide-react";
+import { Camera, Upload, X, ChevronDown, Loader2, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resizeToDataUrl } from "@/lib/image";
 
 type Zone = { id: string; name: string };
-
-const ACTIVITIES = ["RUN", "WALK", "CYCLE"] as const;
 
 export function PostComposer({ zones }: { zones: Zone[] }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
 
-  const [sourceType, setSourceType] = useState<"MANUAL" | "OCR_SCREENSHOT" | "HEALTH_SYNC">("MANUAL");
-  const [activityType, setActivityType] = useState<(typeof ACTIVITIES)[number]>("RUN");
-  const [distanceKm, setDistanceKm] = useState("5.0");
-  const [durationMin, setDurationMin] = useState("28");
+  // Workout stats are only ever populated by OCR-extracting a screenshot — there's no
+  // manual entry path, so these are display-only once set, never directly editable.
+  const [activityType, setActivityType] = useState<"RUN" | "WALK" | "CYCLE" | null>(null);
+  const [distanceKm, setDistanceKm] = useState("");
+  const [durationMin, setDurationMin] = useState("");
   const [avgPace, setAvgPace] = useState("");
-  const [caloriesBurned, setCaloriesBurned] = useState("320");
+  const [caloriesBurned, setCaloriesBurned] = useState("");
   const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
 
@@ -56,7 +55,6 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
 
   async function processScreenshot(file: File) {
     setOcrLoading(true);
-    setSourceType("OCR_SCREENSHOT");
     try {
       const form = new FormData();
       form.append("file", file);
@@ -135,18 +133,6 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
   }, []);
 
 
-  function simulateHealthSync() {
-    setSourceType("HEALTH_SYNC");
-    setScreenshotUrl(null);
-    const distance = Math.round((3 + Math.random() * 8) * 10) / 10;
-    const duration = Math.round(distance * (5 + Math.random() * 1.2));
-    setActivityType("RUN");
-    setDistanceKm(String(distance));
-    setDurationMin(String(duration));
-    setAvgPace(String(Math.round((duration / distance) * 100) / 100));
-    setCaloriesBurned(String(Math.round(distance * 62)));
-  }
-
   function detectLocation() {
     if (!("geolocation" in navigator)) {
       setLocationError("Location unavailable — pick a zone manually below.");
@@ -180,7 +166,7 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
   }
 
   async function analyzeDiet() {
-    if (!dietText.trim()) return;
+    if (!dietText.trim()) return dietResult;
     setDietLoading(true);
     try {
       const res = await fetch("/api/coach/diet-analyze", {
@@ -188,7 +174,12 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ description: dietText }),
       });
-      if (res.ok) setDietResult(await res.json());
+      if (res.ok) {
+        const result = await res.json();
+        setDietResult(result);
+        return result;
+      }
+      return dietResult;
     } finally {
       setDietLoading(false);
     }
@@ -196,21 +187,25 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
 
   async function submit() {
     setError(null);
-    if (photos.length === 0 && !screenshotUrl) {
-      setError("Add at least one photo or screenshot before posting.");
+    if (!screenshotUrl || !activityType) {
+      setError("Upload a screenshot to extract your workout stats before posting.");
       return;
     }
     const distance = parseFloat(distanceKm);
     const duration = parseFloat(durationMin) * 60;
     const calories = parseInt(caloriesBurned, 10);
-    
+
     if (isNaN(distance) || isNaN(duration) || isNaN(calories)) {
-      setError("Fill in valid numbers for distance, duration, and calories.");
+      setError("Couldn't read valid stats from that screenshot — try another one.");
       return;
     }
 
     setSubmitting(true);
     try {
+      // If the user typed a fuel log but never clicked "Analyze diet", run it now
+      // rather than silently dropping what they wrote.
+      const finalDietResult = dietResult ?? (await analyzeDiet());
+
       const res = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -220,13 +215,13 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
           durationSeconds: duration,
           avgPaceMinPerKm: avgPace ? parseFloat(avgPace) : activityType === "RUN" && distance > 0 ? Math.round((duration / 60 / distance) * 100) / 100 : null,
           caloriesBurned: calories,
-          sourceType,
+          sourceType: "OCR_SCREENSHOT",
           screenshotUrl,
           caption,
           photoUrls: screenshotUrl ? [screenshotUrl, ...photos] : photos,
           locationZoneId: zoneId || null,
           isPublic,
-          dietDescription: dietResult ? dietText : undefined,
+          dietDescription: finalDietResult ? dietText : undefined,
         }),
       });
       if (!res.ok) {
@@ -261,62 +256,43 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
 
       <h1 className="font-display italic font-bold text-3xl mb-6">Post a workout</h1>
 
-      {/* Import method */}
-      <div className="flex items-center gap-2 mb-4">
-        <button
-          onClick={simulateHealthSync}
-          className={cn(
-            "flex-1 flex items-center justify-center gap-1.5 text-sm font-medium py-2.5 rounded-xl border",
-            sourceType === "HEALTH_SYNC" ? "border-lime bg-lime/10 text-lime" : "border-border-ichor text-white/60",
-          )}
-        >
-          <HeartPulse className="w-4 h-4" /> Sync from Health
-        </button>
+      {/* Screenshot upload — the only source of workout stats */}
+      <div className="mb-4">
         <button
           onClick={() => screenshotInputRef.current?.click()}
+          disabled={ocrLoading}
           className={cn(
-            "flex-1 flex items-center justify-center gap-1.5 text-sm font-medium py-2.5 rounded-xl border",
-            sourceType === "OCR_SCREENSHOT" ? "border-momentum bg-momentum/10 text-momentum" : "border-border-ichor text-white/60",
+            "w-full flex items-center justify-center gap-1.5 text-sm font-medium py-2.5 rounded-xl border disabled:opacity-60",
+            screenshotUrl ? "border-momentum bg-momentum/10 text-momentum" : "border-border-ichor text-white/60",
           )}
         >
           {ocrLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
-          Screenshot
+          {ocrLoading ? "Reading screenshot..." : screenshotUrl ? "Replace screenshot" : "Upload workout screenshot"}
         </button>
         <input ref={screenshotInputRef} type="file" accept="image/*" hidden onChange={handleScreenshotSelect} />
       </div>
 
-      {/* Stats preview / manual entry */}
-      <div className="bg-midnight-raised border border-border-ichor rounded-2xl p-4 mb-4 space-y-3">
-        <div className="flex items-center gap-2">
-          {ACTIVITIES.map((a) => (
-            <button
-              key={a}
-              onClick={() => setActivityType(a)}
-              className={cn(
-                "flex-1 text-xs font-semibold py-2 rounded-lg border",
-                activityType === a ? "border-momentum bg-momentum/10 text-momentum" : "border-border-ichor text-white/50",
-              )}
-            >
-              {a}
-            </button>
-          ))}
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Distance (km)" value={distanceKm} onChange={setDistanceKm} />
-          <Field label="Duration (min)" value={durationMin} onChange={setDurationMin} />
-          <Field label="Pace (min/km)" value={avgPace} onChange={setAvgPace} />
-          <Field label="Calories" value={caloriesBurned} onChange={setCaloriesBurned} />
-        </div>
-        {screenshotUrl && (
-          <div className="flex items-center gap-2 text-xs text-white/50 border border-border-ichor rounded-lg p-2">
-            <Camera className="w-3.5 h-3.5" /> Screenshot attached as proof
+      {/* Stats — read-only, extracted from the screenshot */}
+      {screenshotUrl && activityType && (
+        <div className="bg-midnight-raised border border-border-ichor rounded-2xl p-4 mb-4 space-y-3">
+          <div className="flex items-center gap-2 text-xs font-semibold text-momentum">
+            <Camera className="w-3.5 h-3.5" /> {activityType} · extracted from screenshot
           </div>
-        )}
-      </div>
+          <div className="grid grid-cols-2 gap-3">
+            <StatDisplay label="Distance (km)" value={distanceKm} />
+            <StatDisplay label="Duration (min)" value={durationMin} />
+            <StatDisplay label="Pace (min/km)" value={avgPace || "-"} />
+            <StatDisplay label="Calories" value={caloriesBurned} />
+          </div>
+        </div>
+      )}
+      {!screenshotUrl && (
+        <p className="text-xs text-white/30 mb-4 -mt-2">Upload a screenshot of your run to auto-fill distance, duration, pace, and calories.</p>
+      )}
 
       {/* Photos */}
       <div className="mb-4">
-        <label className="text-xs font-medium text-white/50 mb-2 block">Photos (optional if screenshot attached, max 5)</label>
+        <label className="text-xs font-medium text-white/50 mb-2 block">Additional photos (optional, max 5)</label>
         <div className="grid grid-cols-3 gap-2">
           {photos.map((p, i) => (
             <div key={i} className="relative aspect-square rounded-xl overflow-hidden bg-midnight-card">
@@ -459,16 +435,11 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
   );
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function StatDisplay({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <label className="text-[10px] uppercase tracking-wide text-white/40 block mb-1">{label}</label>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        inputMode="decimal"
-        className="w-full bg-midnight border border-border-ichor rounded-lg px-2.5 py-2 text-sm text-center focus:outline-none focus:border-momentum/50"
-      />
+    <div className="bg-midnight border border-border-ichor rounded-lg px-2.5 py-2 text-center">
+      <div className="text-[10px] uppercase tracking-wide text-white/40 mb-1">{label}</div>
+      <div className="text-sm font-semibold">{value}</div>
     </div>
   );
 }

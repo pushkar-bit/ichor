@@ -18,6 +18,7 @@ import { KudosButton } from "@/components/features/KudosButton";
 import { CommentSection } from "@/components/features/CommentSection";
 import { FlagButton } from "@/components/features/FlagButton";
 import { DietPill } from "@/components/features/ActivityCard";
+import { EditCaption } from "@/components/features/EditCaption";
 import { timeAgo, formatPace, formatDuration } from "@/lib/utils";
 
 export default async function PostDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -91,7 +92,7 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
           {post.dietCard && (
             <DietPill classification={post.dietCard.classification} estimatedCalories={post.dietCard.estimatedCalories} />
           )}
-          {post.caption && <p className="text-sm text-white/80 leading-relaxed">{post.caption}</p>}
+          <EditCaption postId={post.id} initialCaption={post.caption} isOwner={me ? String(me._id) === post.author.id : false} />
 
           {post.workout.screenshotUrl && (
             <div className="border border-border-ichor rounded-xl p-3 flex items-center gap-2 text-xs text-white/50">

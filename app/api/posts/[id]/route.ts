@@ -30,3 +30,26 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     ),
   );
 }
+
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  await connectDB();
+  const me = await getOrCreateCurrentUser();
+  if (!me) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  const { id } = await params;
+
+  const post = await Post.findById(id);
+  if (!post) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (String(post.userId) !== String(me._id)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  const { caption } = await req.json();
+  if (typeof caption !== "string") {
+    return NextResponse.json({ error: "caption must be a string" }, { status: 400 });
+  }
+
+  post.caption = caption.slice(0, 300);
+  await post.save();
+
+  return NextResponse.json({ ok: true, caption: post.caption });
+}
