@@ -4,20 +4,46 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { X, Loader2 } from "lucide-react";
 
-export function EditProfileModal({ initialName, initialBio }: { initialName: string; initialBio: string }) {
+export function EditProfileModal({
+  initialName,
+  initialBio,
+  initialWeight,
+  initialHeight,
+}: {
+  initialName: string;
+  initialBio: string;
+  initialWeight?: number | null;
+  initialHeight?: number | null;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(initialName);
   const [bio, setBio] = useState(initialBio);
+  const [weightKg, setWeightKg] = useState(initialWeight ? String(initialWeight) : "");
+  const [heightUnit, setHeightUnit] = useState<"cm" | "ft">("cm");
+  const [heightCm, setHeightCm] = useState(initialHeight ? String(initialHeight) : "");
+  const [heightFt, setHeightFt] = useState(initialHeight ? String(Math.floor(initialHeight / 30.48)) : "");
+  const [heightIn, setHeightIn] = useState(initialHeight ? String(Math.round((initialHeight / 2.54) % 12)) : "");
   const [saving, setSaving] = useState(false);
 
   async function save() {
     setSaving(true);
+    let finalHeightCm = heightCm;
+    if (heightUnit === "ft" && heightFt) {
+      const inches = heightIn ? parseInt(heightIn) : 0;
+      finalHeightCm = String(Math.round((parseInt(heightFt) * 12 + inches) * 2.54));
+    }
+    
     try {
       const res = await fetch("/api/users/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, bio }),
+        body: JSON.stringify({
+          name,
+          bio,
+          weightKg: weightKg ? Number(weightKg) : null,
+          heightCm: finalHeightCm ? Number(finalHeightCm) : null,
+        }),
       });
       if (res.ok) {
         setOpen(false);
@@ -59,6 +85,68 @@ export function EditProfileModal({ initialName, initialBio }: { initialName: str
                   rows={3}
                   className="w-full bg-midnight border border-border-ichor rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-momentum/50 resize-none"
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-white/50 mb-1.5 block">Weight (kg)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={weightKg}
+                    onChange={(e) => setWeightKg(e.target.value)}
+                    className="w-full bg-midnight border border-border-ichor rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-momentum/50"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-medium text-white/50">Height</label>
+                    <div className="flex bg-midnight border border-border-ichor rounded-lg overflow-hidden text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => setHeightUnit("cm")}
+                        className={`px-2 py-0.5 ${heightUnit === "cm" ? "bg-white/20 text-white font-bold" : "text-white/50"}`}
+                      >
+                        cm
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHeightUnit("ft")}
+                        className={`px-2 py-0.5 ${heightUnit === "ft" ? "bg-white/20 text-white font-bold" : "text-white/50"}`}
+                      >
+                        ft/in
+                      </button>
+                    </div>
+                  </div>
+                  {heightUnit === "cm" ? (
+                    <input
+                      type="number"
+                      value={heightCm}
+                      onChange={(e) => setHeightCm(e.target.value)}
+                      className="w-full bg-midnight border border-border-ichor rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-momentum/50"
+                    />
+                  ) : (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div className="relative">
+                        <input
+                          type="number"
+                          value={heightFt}
+                          onChange={(e) => setHeightFt(e.target.value)}
+                          placeholder="ft"
+                          className="w-full bg-midnight border border-border-ichor rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-momentum/50"
+                        />
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          value={heightIn}
+                          onChange={(e) => setHeightIn(e.target.value)}
+                          placeholder="in"
+                          className="w-full bg-midnight border border-border-ichor rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-momentum/50"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
               <button
                 onClick={save}

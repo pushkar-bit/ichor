@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseScreenshot } from "@/lib/ai";
+import { getOrCreateCurrentUser } from "@/lib/currentUser";
+import { connectDB } from "@/lib/mongodb";
 
 /**
  * Screenshot OCR: sends the uploaded image to Gemini Vision (gemini-2.5-flash) and
@@ -7,6 +9,9 @@ import { parseScreenshot } from "@/lib/ai";
  * unavailable or fails — see lib/ai.ts parseScreenshot.
  */
 export async function POST(req: NextRequest) {
+  await connectDB();
+  const me = await getOrCreateCurrentUser();
+  
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
   if (!file) return NextResponse.json({ error: "file required" }, { status: 400 });
@@ -15,7 +20,7 @@ export async function POST(req: NextRequest) {
   const base64 = Buffer.from(arrayBuffer).toString("base64");
   const screenshotUrl = `data:${file.type};base64,${base64}`;
 
-  const extracted = await parseScreenshot(file.name, { base64Data: base64, mimeType: file.type });
+  const extracted = await parseScreenshot(file.name, { base64Data: base64, mimeType: file.type }, me?.weightKg);
 
   return NextResponse.json({ extracted, screenshotUrl });
 }

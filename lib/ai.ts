@@ -72,6 +72,7 @@ Description: "${description}"`;
 }
 
 export type ParsedWorkout = {
+  runName: string | null;
   activityType: "RUN" | "WALK" | "CYCLE";
   distanceKm: number;
   durationSeconds: number;
@@ -81,13 +82,15 @@ export type ParsedWorkout = {
   workoutDate: string;
 };
 
-function parseScreenshotFallback(filename: string): ParsedWorkout {
+function parseScreenshotFallback(filename: string, weightKg?: number | null): ParsedWorkout {
   const seed = Array.from(filename).reduce((a, c) => a + c.charCodeAt(0), 0);
   const distanceKm = Math.round((3 + (seed % 12)) * 10) / 10;
   const durationSeconds = Math.round(distanceKm * (5 + (seed % 3)) * 60);
   const avgPaceMinPerKm = Math.round((durationSeconds / 60 / distanceKm) * 100) / 100;
-  const caloriesBurned = Math.round(distanceKm * 62 + (seed % 40));
+  const w = weightKg || 62;
+  const caloriesBurned = Math.round(distanceKm * w * 1.036 + (seed % 40));
   return {
+    runName: null,
     activityType: "RUN",
     distanceKm,
     durationSeconds,
@@ -102,12 +105,13 @@ function parseScreenshotFallback(filename: string): ParsedWorkout {
 export async function parseScreenshot(
   filename: string,
   image?: { base64Data: string; mimeType: string },
+  weightKg?: number | null
 ): Promise<ParsedWorkout> {
   const model = getGeminiModel();
-  if (!model || !image) return parseScreenshotFallback(filename);
+  if (!model || !image) return parseScreenshotFallback(filename, weightKg);
 
   try {
-    const prompt = `You are a precise fitness data extraction engine. Analyze this screenshot from a fitness tracking application (may be Strava, RunKeeper, Garmin Connect, Nike Run Club, Apple Fitness, Samsung Health, or similar). Extract the workout metrics shown. Return ONLY a raw JSON object with absolutely no markdown formatting, no code fences, no explanation, no text before or after the JSON. Use this exact schema: { "activityType": "RUN"|"WALK"|"CYCLE", "distanceKm": number, "durationSeconds": number, "avgPaceMinPerKm": number|null, "caloriesBurned": number, "heartRateAvg": number|null, "workoutDate": "YYYY-MM-DD" }. If a field is not clearly visible, use null. Do not estimate. Do not fabricate any value.`;
+    const prompt = `You are a precise fitness data extraction engine. Analyze this screenshot from a fitness tracking application (may be Strava, RunKeeper, Garmin Connect, Nike Run Club, Apple Fitness, Samsung Health, or similar). Extract the workout metrics shown. Return ONLY a raw JSON object with absolutely no markdown formatting, no code fences, no explanation, no text before or after the JSON. Use this exact schema: { "runName": string|null, "activityType": "RUN"|"WALK"|"CYCLE", "distanceKm": number, "durationSeconds": number, "avgPaceMinPerKm": number|null, "caloriesBurned": number, "heartRateAvg": number|null, "workoutDate": "YYYY-MM-DD" }. If a field is not clearly visible, use null. Do not estimate, EXCEPT for caloriesBurned: if calories are missing from the screenshot but distance is visible, estimate the calories using the formula: distanceKm * ${weightKg || 62} * 1.036. For runName, extract the main title or caption of the activity (e.g. "Morning Run").`;
 
     const result = await model.generateContent([
       prompt,
@@ -118,6 +122,7 @@ export async function parseScreenshot(
       throw new Error("Gemini could not extract workout data from screenshot");
     }
     return {
+      runName: parsed.runName ?? null,
       activityType: parsed.activityType ?? "RUN",
       distanceKm: parsed.distanceKm ?? 0,
       durationSeconds: parsed.durationSeconds ?? 0,
@@ -128,7 +133,7 @@ export async function parseScreenshot(
     };
   } catch (err) {
     console.error("[gemini] parseScreenshot failed, using fallback:", (err as Error).message);
-    return parseScreenshotFallback(filename);
+    return parseScreenshotFallback(filename, weightKg);
   }
 }
 

@@ -7,6 +7,8 @@ const UserSchema = new Schema(
     name: { type: String, required: true },
     avatarUrl: { type: String, default: "" },
     bio: { type: String, default: "" },
+    weightKg: { type: Number, default: null },
+    heightCm: { type: Number, default: null },
     totalDistanceKm: { type: Number, default: 0 },
     totalWorkouts: { type: Number, default: 0 },
     totalCalories: { type: Number, default: 0 },
@@ -24,4 +26,9 @@ const UserSchema = new Schema(
 );
 
 export type UserDoc = InferSchemaType<typeof UserSchema>;
-export const User = models.User || model("User", UserSchema);
+
+if (models.User) {
+  delete models.User;
+}
+
+export const User = model("User", UserSchema);

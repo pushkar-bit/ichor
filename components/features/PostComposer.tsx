@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Camera, Upload, X, ChevronDown, Loader2, HeartPulse, MapPin } from "lucide-react";
@@ -30,6 +31,7 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
   const [activityType, setActivityType] = useState<(typeof ACTIVITIES)[number]>("RUN");
   const [distanceKm, setDistanceKm] = useState("5.0");
   const [durationMin, setDurationMin] = useState("28");
+  const [avgPace, setAvgPace] = useState("");
   const [caloriesBurned, setCaloriesBurned] = useState("320");
   const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -41,6 +43,7 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
   const [locating, setLocating] = useState(false);
   const [locationLabel, setLocationLabel] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const [dietOpen, setDietOpen] = useState(false);
   const [dietText, setDietText] = useState("");
@@ -61,9 +64,7 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
     e.target.value = "";
   }
 
-  async function handleScreenshotSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  async function processScreenshot(file: File) {
     setOcrLoading(true);
     setSourceType("OCR_SCREENSHOT");
     try {
@@ -73,16 +74,63 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
       const data = await res.json();
       if (res.ok) {
         setActivityType(data.extracted.activityType);
-        setDistanceKm(String(data.extracted.distanceKm));
-        setDurationMin(String(Math.round(data.extracted.durationSeconds / 60)));
-        setCaloriesBurned(String(data.extracted.caloriesBurned));
+        setDistanceKm(String(data.extracted.distanceKm ?? 0));
+        setDurationMin(String(Math.round((data.extracted.durationSeconds ?? 0) / 60)));
+        if (data.extracted.avgPaceMinPerKm) {
+          setAvgPace(String(data.extracted.avgPaceMinPerKm));
+        } else if (data.extracted.distanceKm > 0 && data.extracted.durationSeconds > 0) {
+          const calcPace = Math.round((data.extracted.durationSeconds / 60 / data.extracted.distanceKm) * 100) / 100;
+          setAvgPace(String(calcPace));
+        }
+        if (data.extracted.runName) {
+          setCaption(data.extracted.runName);
+        }
+        setCaloriesBurned(String(data.extracted.caloriesBurned ?? 0));
         setScreenshotUrl(data.screenshotUrl);
       }
     } finally {
       setOcrLoading(false);
-      e.target.value = "";
     }
   }
+
+  async function handleScreenshotSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await processScreenshot(file);
+    e.target.value = "";
+  }
+
+  useEffect(() => {
+    function onDragOver(e: DragEvent) {
+      e.preventDefault();
+      setIsDragging(true);
+    }
+    function onDragLeave(e: DragEvent) {
+      e.preventDefault();
+      if (!e.relatedTarget) {
+        setIsDragging(false);
+      }
+    }
+    function onDrop(e: DragEvent) {
+      e.preventDefault();
+      setIsDragging(false);
+      const file = e.dataTransfer?.files?.[0];
+      if (file && file.type.startsWith("image/")) {
+        processScreenshot(file);
+      }
+    }
+
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
+
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, []);
+
 
   function simulateHealthSync() {
     setSourceType("HEALTH_SYNC");
@@ -92,6 +140,7 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
     setActivityType("RUN");
     setDistanceKm(String(distance));
     setDurationMin(String(duration));
+    setAvgPace(String(Math.round((duration / distance) * 100) / 100));
     setCaloriesBurned(String(Math.round(distance * 62)));
   }
 
@@ -144,15 +193,16 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
 
   async function submit() {
     setError(null);
-    if (photos.length === 0) {
-      setError("Add at least one photo before posting.");
+    if (photos.length === 0 && !screenshotUrl) {
+      setError("Add at least one photo or screenshot before posting.");
       return;
     }
     const distance = parseFloat(distanceKm);
     const duration = parseFloat(durationMin) * 60;
     const calories = parseInt(caloriesBurned, 10);
-    if (!distance || !duration || !calories) {
-      setError("Fill in distance, duration, and calories.");
+    
+    if (isNaN(distance) || isNaN(duration) || isNaN(calories)) {
+      setError("Fill in valid numbers for distance, duration, and calories.");
       return;
     }
 
@@ -165,12 +215,12 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
           activityType,
           distanceKm: distance,
           durationSeconds: duration,
-          avgPaceMinPerKm: activityType === "RUN" ? Math.round((duration / 60 / distance) * 100) / 100 : null,
+          avgPaceMinPerKm: avgPace ? parseFloat(avgPace) : activityType === "RUN" && distance > 0 ? Math.round((duration / 60 / distance) * 100) / 100 : null,
           caloriesBurned: calories,
           sourceType,
           screenshotUrl,
           caption,
-          photoUrls: photos,
+          photoUrls: screenshotUrl ? [screenshotUrl, ...photos] : photos,
           locationZoneId: zoneId || null,
           isPublic,
           dietDescription: dietResult ? dietText : undefined,
@@ -190,7 +240,22 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
   }
 
   return (
-    <div className="max-w-xl mx-auto px-4 py-6 pb-24">
+    <div className="max-w-xl mx-auto px-4 py-6 pb-24 relative">
+      {isDragging && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-md pointer-events-none">
+          <div className="text-center p-10 border-2 border-dashed border-momentum rounded-3xl bg-momentum/10 max-w-lg mx-4 w-full shadow-2xl">
+            <div className="w-20 h-20 bg-momentum/20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Camera className="w-10 h-10 text-momentum" />
+            </div>
+            <h2 className="text-4xl font-bold italic font-display text-white mb-3">Drop your screenshot</h2>
+            <p className="text-white/60 text-lg max-w-[350px] mx-auto">
+              Release to instantly extract distance, duration, and pace using AI.
+            </p>
+          </div>
+        </div>,
+        document.body
+      )}
+
       <h1 className="font-display italic font-bold text-3xl mb-6">Post a workout</h1>
 
       {/* Import method */}
@@ -233,9 +298,10 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
             </button>
           ))}
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <Field label="Distance (km)" value={distanceKm} onChange={setDistanceKm} />
           <Field label="Duration (min)" value={durationMin} onChange={setDurationMin} />
+          <Field label="Pace (min/km)" value={avgPace} onChange={setAvgPace} />
           <Field label="Calories" value={caloriesBurned} onChange={setCaloriesBurned} />
         </div>
         {screenshotUrl && (
@@ -247,7 +313,7 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
 
       {/* Photos */}
       <div className="mb-4">
-        <label className="text-xs font-medium text-white/50 mb-2 block">Photos (required, max 5)</label>
+        <label className="text-xs font-medium text-white/50 mb-2 block">Photos (optional if screenshot attached, max 5)</label>
         <div className="grid grid-cols-3 gap-2">
           {photos.map((p, i) => (
             <div key={i} className="relative aspect-square rounded-xl overflow-hidden bg-midnight-card">

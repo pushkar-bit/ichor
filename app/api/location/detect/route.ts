@@ -12,17 +12,22 @@ export async function GET(req: NextRequest) {
 
   await connectDB();
 
-  const [geo, nearestZone] = await Promise.all([
-    reverseGeocode(lat, lng),
-    CampusZone.findOne({
-      centroid: { $near: { $geometry: { type: "Point", coordinates: [lng, lat] }, $maxDistance: 500 } },
-    }).lean(),
-  ]);
+  try {
+    const [geo, nearestZone] = await Promise.all([
+      reverseGeocode(lat, lng),
+      CampusZone.findOne({
+        centroid: { $near: { $geometry: { type: "Point", coordinates: [lng, lat] }, $maxDistance: 500 } },
+      }).lean(),
+    ]);
 
-  return NextResponse.json({
-    district: geo?.district ?? null,
-    city: geo?.city ?? null,
-    state: geo?.state ?? null,
-    zone: nearestZone ? { id: String((nearestZone as any)._id), name: (nearestZone as any).name } : null,
-  });
+    return NextResponse.json({
+      district: geo?.district ?? null,
+      city: geo?.city ?? null,
+      state: geo?.state ?? null,
+      zone: nearestZone ? { id: String((nearestZone as any)._id), name: (nearestZone as any).name } : null,
+    });
+  } catch (err) {
+    console.error("Location detect error:", err);
+    return NextResponse.json({ error: "Failed to detect location" }, { status: 500 });
+  }
 }

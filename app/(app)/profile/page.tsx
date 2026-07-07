@@ -58,10 +58,15 @@ export default async function ProfilePage() {
           </div>
           {me.bio && <p className="text-sm text-white/40 truncate">{me.bio}</p>}
         </div>
-        <EditProfileModal initialName={me.name} initialBio={me.bio ?? ""} />
+        <EditProfileModal initialName={me.name} initialBio={me.bio ?? ""} initialWeight={me.weightKg} initialHeight={me.heightCm} />
       </div>
 
       {/* Stats row */}
+      <div className="flex bg-midnight-raised border border-border-ichor rounded-2xl py-4">
+        <StatChip label="Weight" value={me.weightKg ? `${me.weightKg}kg` : "-"} />
+        <StatChip label="Height" value={me.heightCm ? `${me.heightCm}cm` : "-"} />
+      </div>
+
       <div className="flex bg-midnight-raised border border-border-ichor rounded-2xl py-4">
         <StatChip label="Total km" value={Math.round(me.totalDistanceKm)} />
         <StatChip label="Workouts" value={me.totalWorkouts} />

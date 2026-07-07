@@ -23,5 +23,6 @@ const CampusZoneSchema = new Schema(
 );
 
 CampusZoneSchema.index({ polygon: "2dsphere" });
+CampusZoneSchema.index({ centroid: "2dsphere" });
 
 export const CampusZone = models.CampusZone || model("CampusZone", CampusZoneSchema);
