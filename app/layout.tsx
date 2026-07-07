@@ -27,13 +27,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <ClerkProvider
       appearance={{
+        // @ts-expect-error - baseTheme type might be mismatched between clerk/nextjs and clerk/themes
         baseTheme: dark,
         variables: {
           colorPrimary: "#AE93F4",
           colorPrimaryForeground: "#171516",
           colorBackground: "#171516",
-          colorText: "#f5f3f6",
-          colorInputText: "#f5f3f6",
           colorNeutral: "#2a2527", // ichor-midnight-card (lighter than background)
           borderRadius: "0.75rem",
         },
