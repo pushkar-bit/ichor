@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { UserButton, useUser, SignOutButton } from "@clerk/nextjs";
 import { IchorLogo } from "./IchorMark";
 import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, ShieldAlert, Search, LogOut } from "lucide-react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { Avatar } from "./Avatar";
 
 const NAV_ITEMS = [
   { href: "/feed", label: "Feed", icon: Flame },
@@ -18,10 +18,19 @@ const NAV_ITEMS = [
   { href: "/search", label: "Search", icon: Search },
 ];
 
-export function NavShell({ children, isAdmin }: { children: React.ReactNode; isAdmin?: boolean }) {
+type NavUser = { name: string; avatarUrl: string };
+
+export function NavShell({
+  children,
+  isAdmin,
+  user,
+}: {
+  children: React.ReactNode;
+  isAdmin?: boolean;
+  user: NavUser;
+}) {
   const pathname = usePathname();
   usePushNotifications();
-  const { user } = useUser();
   const items = isAdmin ? [...NAV_ITEMS, { href: "/admin", label: "Admin", icon: ShieldAlert }] : NAV_ITEMS;
 
   return (
@@ -43,8 +52,8 @@ export function NavShell({ children, isAdmin }: { children: React.ReactNode; isA
                   active ? "bg-momentum text-midnight" : "text-white/60 hover:text-white hover:bg-midnight-raised"
                 }`}
               >
-                {item.label === "Profile" && user?.imageUrl ? (
-                  <img src={user.imageUrl} alt="Profile" className="w-[18px] h-[18px] rounded-full object-cover shrink-0 bg-midnight-raised" />
+                {item.label === "Profile" && user.avatarUrl ? (
+                  <Avatar src={user.avatarUrl} name={user.name} size={18} />
                 ) : (
                   <Icon className="w-[18px] h-[18px]" />
                 )}
@@ -54,16 +63,19 @@ export function NavShell({ children, isAdmin }: { children: React.ReactNode; isA
           })}
         </nav>
         <div className="px-2 pt-4 border-t border-border-ichor space-y-2">
-          <div className="flex items-center gap-2">
-            <UserButton />
-            <span className="text-xs text-white/40 truncate">{user?.fullName || "Account"}</span>
-          </div>
-          <SignOutButton redirectUrl="/sign-in">
-            <button className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-white/60 hover:text-white hover:bg-midnight-raised transition-colors">
+          <Link href="/profile" className="flex items-center gap-2 rounded-xl px-1 py-1 hover:bg-midnight-raised transition-colors">
+            <Avatar src={user.avatarUrl} name={user.name} size={28} />
+            <span className="text-xs text-white/40 truncate">{user.name || "Account"}</span>
+          </Link>
+          <form action="/api/auth/logout" method="POST">
+            <button
+              type="submit"
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-white/60 hover:text-white hover:bg-midnight-raised transition-colors"
+            >
               <LogOut className="w-[18px] h-[18px]" />
               Log out
             </button>
-          </SignOutButton>
+          </form>
         </div>
       </aside>
 
@@ -75,7 +87,9 @@ export function NavShell({ children, isAdmin }: { children: React.ReactNode; isA
             <Link href="/search" className="text-white/60 hover:text-white">
               <Search className="w-5 h-5" />
             </Link>
-            <UserButton />
+            <Link href="/profile">
+              <Avatar src={user.avatarUrl} name={user.name} size={28} />
+            </Link>
           </div>
         </header>
 

@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { getSessionUserId } from "@/lib/session";
 import { IchorLogo, IchorMark } from "@/components/ui/IchorMark";
 import { Flame, Map, Trophy, MessageCircle, Users, Camera, ArrowRight } from "lucide-react";
 
 export default async function LandingPage() {
-  const { userId } = await auth();
+  const userId = await getSessionUserId();
   if (userId) redirect("/feed");
 
   return (

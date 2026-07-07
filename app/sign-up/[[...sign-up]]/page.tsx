@@ -1,7 +1,9 @@
-import { SignUp } from "@clerk/nextjs";
 import { IchorLogo } from "@/components/ui/IchorMark";
+import { GoogleSignInButton, GoogleNotConfiguredNotice } from "@/components/features/GoogleSignInButton";
 
 export default function SignUpPage() {
+  const googleConfigured = Boolean(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID);
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-midnight px-4">
       <div className="w-full max-w-sm">
@@ -9,29 +11,11 @@ export default function SignUpPage() {
           <IchorLogo className="justify-center mb-4" textClassName="text-2xl" />
           <p className="text-sm text-white/50">Turn sweat into lore.</p>
         </div>
-        <SignUp
-          fallbackRedirectUrl="/feed"
-          appearance={{
-            elements: {
-              card: "bg-midnight-raised border border-border-ichor shadow-xl",
-              // Same as the sign-in page: this Clerk version has no client-side override for
-              // the built-in header text (it renders the Dashboard's stale "dhaav" Application
-              // name), so it's hidden in favor of the page's own ICHOR-branded header above.
-              headerTitle: "hidden",
-              headerSubtitle: "hidden",
-              formButtonPrimary: "bg-momentum hover:bg-momentum-dim text-midnight font-semibold",
-              footerActionLink: "text-momentum hover:text-afterrun",
-              socialButtonsBlockButton: "border border-border-ichor hover:bg-white/5 transition-colors",
-              socialButtonsIconButton: "border border-border-ichor hover:bg-white/5 transition-colors",
-              socialButtonsBlockButtonText: "text-white font-medium",
-              formFieldInput: "bg-midnight border-border-ichor text-foreground",
-              formFieldLabel: "text-white/60",
-              identityPreviewText: "text-white/70",
-              dividerLine: "bg-border-ichor",
-              dividerText: "text-white/40",
-            },
-          }}
-        />
+        <div className="bg-midnight-raised border border-border-ichor shadow-xl rounded-2xl p-6">
+          <h1 className="font-display italic text-foreground text-xl text-center mb-1">Create your ICHOR account</h1>
+          <p className="text-sm text-white/50 text-center mb-6">Turn sweat into lore.</p>
+          {googleConfigured ? <GoogleSignInButton /> : <GoogleNotConfiguredNotice />}
+        </div>
       </div>
     </div>
   );

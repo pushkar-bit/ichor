@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Poppins, Barlow_Condensed } from "next/font/google";
-import { ClerkProvider } from "@clerk/nextjs";
-import { dark } from "@clerk/themes";
+import { GoogleOAuthProvider } from "@react-oauth/google";
 import "./globals.css";
 
 const poppins = Poppins({
@@ -25,22 +24,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ClerkProvider
-      appearance={{
-        // @ts-expect-error - baseTheme type might be mismatched between clerk/nextjs and clerk/themes
-        baseTheme: dark,
-        variables: {
-          colorPrimary: "#AE93F4",
-          colorPrimaryForeground: "#171516",
-          colorBackground: "#171516",
-          colorNeutral: "#2a2527", // ichor-midnight-card (lighter than background)
-          borderRadius: "0.75rem",
-        },
-      }}
-    >
+    <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? ""}>
       <html lang="en" className={`${poppins.variable} ${barlowCondensed.variable} h-full`}>
         <body className="min-h-full flex flex-col antialiased">{children}</body>
       </html>
-    </ClerkProvider>
+    </GoogleOAuthProvider>
   );
 }

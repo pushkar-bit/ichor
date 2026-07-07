@@ -10,15 +10,15 @@
     "seed": "tsx --env-file=.env scripts/seed.ts"
   },
   "dependencies": {
-    "@clerk/nextjs": "^7.5.12",
-    "@clerk/themes": "^2.4.57",
     "@google/generative-ai": "^0.24.1",
+    "@react-oauth/google": "^0.13.5",
     "@sentry/nextjs": "^10.63.0",
     "@upstash/redis": "^1.38.0",
     "cloudinary": "^2.10.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "firebase": "^12.15.0",
+    "jose": "^6.2.3",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.23.0",
     "mongoose": "^9.7.3",

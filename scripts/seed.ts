@@ -127,7 +127,7 @@ async function main() {
   console.log("Seeding users...");
   const users = await User.insertMany(
     USER_DEFS.map((u, i) => ({
-      clerkId: u.handle,
+      googleId: u.handle,
       email: u.email,
       name: u.name,
       avatarUrl: `https://api.dicebear.com/9.x/notionists/svg?seed=${u.handle}`,
