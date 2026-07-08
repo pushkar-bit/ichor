@@ -22,6 +22,7 @@ type RawJoinedPost = {
   challengeUserIds?: unknown[];
   commentCount?: number;
   zoneName?: string | null;
+  reactionSummary?: { featuredName: string; featuredAvatarUrl: string; totalCount: number } | null;
 };
 
 export function serializePost(post: RawJoinedPost, currentUserId?: string) {
@@ -57,5 +58,6 @@ export function serializePost(post: RawJoinedPost, currentUserId?: string) {
     challengeGiven: currentUserId ? (post.challengeUserIds ?? []).some((id) => String(id) === String(currentUserId)) : false,
     commentCount: post.commentCount ?? 0,
     zoneName: post.zoneName ?? null,
+    reactionSummary: post.reactionSummary ?? null,
   };
 }

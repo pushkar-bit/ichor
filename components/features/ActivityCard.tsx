@@ -1,11 +1,12 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Footprints, Bike, Timer, Flame as FlameIcon, MapPin, MessageSquare, BadgeCheck, Camera } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { RunVisualizer } from "./RunVisualizer";
 import { ReactionBar } from "./ReactionBar";
+import { ReactionSummary } from "./ReactionSummary";
 import { timeAgo, formatPace, formatDuration } from "@/lib/utils";
 
 import { motion } from "framer-motion";
@@ -35,14 +36,19 @@ export type ActivityCardData = {
   commentCount: number;
   zoneName?: string | null;
   linkToDetail?: boolean;
+  reactionSummary?: { featuredName: string; featuredAvatarUrl: string; totalCount: number } | null;
 };
 
 const ACTIVITY_ICON = { RUN: Footprints, WALK: Footprints, CYCLE: Bike };
 
 export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; maxDistance?: number }) {
+  const router = useRouter();
   const ActivityIcon = ACTIVITY_ICON[post.workout.activityType];
   const isVerified = post.workout.sourceType === "HEALTH_SYNC";
   const isOcr = post.workout.sourceType === "OCR_SCREENSHOT";
+  const openDetail = () => {
+    if (post.linkToDetail !== false) router.push(`/post/${post.id}`);
+  };
 
   // Calculate width based on distance (cap at 100%)
   const fallbackMax = post.workout.activityType === "CYCLE" ? 40 : 15;
@@ -94,9 +100,14 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
         </span>
       </div>
 
-      {post.photoUrls[0] && (
-        <div className="relative w-full aspect-video bg-midnight-card">
-          <Image src={post.photoUrls[0]} alt="" fill unoptimized className="object-cover" />
+      {post.photoUrls.length > 0 && (
+        <div className={`relative w-full bg-black ${post.linkToDetail !== false ? "cursor-pointer" : ""}`}>
+          <div onClick={openDetail} className="flex gap-0.5 overflow-x-auto no-scrollbar">
+            {post.photoUrls.map((url, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={i} src={url} alt="" className="h-72 sm:h-80 w-auto shrink-0 bg-midnight-card" />
+            ))}
+          </div>
           {post.zoneName && (
             <span className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 text-xs font-medium bg-black/60 backdrop-blur px-3 py-1.5 rounded-none border border-white/20">
               <MapPin className="w-3.5 h-3.5" /> {post.zoneName}
@@ -124,8 +135,11 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
           style={{ backgroundColor: `hsl(${hue}, 100%, 60%)` }}
         />
         
-        <div className="flex-1 min-w-0 relative z-10">
-          <RunVisualizer 
+        <div
+          className={`flex-1 min-w-0 relative z-10 ${post.linkToDetail !== false ? "cursor-pointer" : ""}`}
+          onClick={openDetail}
+        >
+          <RunVisualizer
             activityType={post.workout.activityType}
             distanceKm={post.workout.distanceKm}
             durationSeconds={post.workout.durationSeconds}
@@ -137,6 +151,12 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
           {post.dietCard && (
             <div className="pt-3">
               <DietPill classification={post.dietCard.classification} estimatedCalories={post.dietCard.estimatedCalories} />
+            </div>
+          )}
+
+          {post.reactionSummary && (
+            <div className="pt-3" onClick={(e) => e.stopPropagation()}>
+              <ReactionSummary postId={post.id} summary={post.reactionSummary} />
             </div>
           )}
         </div>

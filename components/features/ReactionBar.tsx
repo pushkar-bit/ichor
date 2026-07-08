@@ -11,9 +11,13 @@ type ReactionBarProps = {
   initialHype: { count: number; given: boolean };
   initialRespect: { count: number; given: boolean };
   initialChallenge: { count: number; given: boolean };
+  // "vertical" (default) is the feed card's narrow sidebar stack; "horizontal" is a compact
+  // inline row, used where the bar sits next to another control (e.g. Report on post detail).
+  layout?: "vertical" | "horizontal";
 };
 
-export function ReactionBar({ postId, initialHype, initialRespect, initialChallenge }: ReactionBarProps) {
+export function ReactionBar({ postId, initialHype, initialRespect, initialChallenge, layout = "vertical" }: ReactionBarProps) {
+  const isHorizontal = layout === "horizontal";
   const router = useRouter();
   const [hype, setHype] = useState(initialHype);
   const [respect, setRespect] = useState(initialRespect);
@@ -69,13 +73,15 @@ export function ReactionBar({ postId, initialHype, initialRespect, initialChalle
     }
   };
 
+  const buttonSize = isHorizontal ? "px-3 py-1.5" : "w-full px-4 py-2";
+
   return (
-    <div className="flex flex-col items-center gap-3 w-full">
+    <div className={isHorizontal ? "flex items-center gap-2" : "flex flex-col items-center gap-3 w-full"}>
       <motion.button
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.9 }}
         onClick={(e) => handleReact(e, "HYPE", hype, setHype, "#fda2de")}
-        className={`inline-flex w-full justify-center items-center gap-2 text-sm font-bold px-4 py-2 rounded-none border-2 transition-colors ${
+        className={`inline-flex justify-center items-center gap-2 text-sm font-bold ${buttonSize} rounded-none border-2 transition-colors ${
           hype.given
             ? "border-afterrun bg-afterrun/20 text-afterrun"
             : "border-border-ichor text-white/60 hover:bg-white/5 hover:text-white"
@@ -89,7 +95,7 @@ export function ReactionBar({ postId, initialHype, initialRespect, initialChalle
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.9 }}
         onClick={(e) => handleReact(e, "RESPECT", respect, setRespect, "#d7f24c")}
-        className={`inline-flex w-full justify-center items-center gap-2 text-sm font-bold px-4 py-2 rounded-none border-2 transition-colors ${
+        className={`inline-flex justify-center items-center gap-2 text-sm font-bold ${buttonSize} rounded-none border-2 transition-colors ${
           respect.given
             ? "border-lime bg-lime/20 text-lime"
             : "border-border-ichor text-white/60 hover:bg-white/5 hover:text-white"
@@ -103,7 +109,7 @@ export function ReactionBar({ postId, initialHype, initialRespect, initialChalle
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.9 }}
         onClick={(e) => handleReact(e, "CHALLENGE", challenge, setChallenge, "#ff5e1a")}
-        className={`inline-flex w-full justify-center items-center gap-2 text-sm font-bold px-4 py-2 rounded-none border-2 transition-colors ${
+        className={`inline-flex justify-center items-center gap-2 text-sm font-bold ${buttonSize} rounded-none border-2 transition-colors ${
           challenge.given
             ? "border-ignite bg-ignite/20 text-ignite"
             : "border-border-ichor text-white/60 hover:bg-white/5 hover:text-white"

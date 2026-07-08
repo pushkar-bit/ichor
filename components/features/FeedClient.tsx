@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Flame, PlusCircle } from "lucide-react";
 import { ActivityCard, type ActivityCardData } from "./ActivityCard";
 import { LeaderboardWidget } from "./LeaderboardWidget";
+import { FollowWidget } from "./FollowWidget";
 import { EmptyState, SkeletonCard } from "@/components/ui/StatChip";
 import { cn } from "@/lib/utils";
 
@@ -119,6 +120,7 @@ export function FeedClient() {
           on narrow ones. Always rendered (never `hidden`) so it can't just fail to appear. */}
       <aside className="max-w-xl w-full mx-auto mt-8 lg:mt-32 lg:w-80 lg:max-w-none lg:shrink-0 lg:sticky lg:top-8">
         <LeaderboardWidget />
+        <FollowWidget />
       </aside>
     </div>
   );

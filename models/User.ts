@@ -28,6 +28,8 @@ const UserSchema = new Schema(
     battlesWon: { type: Number, default: 0 },
     battlesLost: { type: Number, default: 0 },
     clanId: { type: Schema.Types.ObjectId, ref: "Clan", default: null },
+    followerCount: { type: Number, default: 0 },
+    followingCount: { type: Number, default: 0 },
     badges: [{ type: String }],
     lastPostDate: { type: Date, default: null },
     fcmToken: { type: String, default: null },

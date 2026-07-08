@@ -5,6 +5,7 @@ import { User } from "@/models/User";
 import { Post } from "@/models/Post";
 import { Territory } from "@/models/Territory";
 import { Clan } from "@/models/Clan";
+import { Follow } from "@/models/Follow";
 import "@/models/Workout";
 import { dayKey } from "@/lib/week";
 import { getPersonalBests } from "@/lib/personalBests";
@@ -20,7 +21,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   const user = await User.findOne({ username }).lean();
   if (!user) notFound();
 
-  const [zonesHeld, clan, posts] = await Promise.all([
+  const [zonesHeld, clan, posts, isFollowing] = await Promise.all([
     Territory.countDocuments({ ownerId: (user as any)._id }),
     (user as any).clanId ? Clan.findById((user as any).clanId).lean() : null,
     // photoUrls sliced to just the first photo (the grid never shows more) and workoutId
@@ -32,6 +33,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       .sort({ createdAt: -1 })
       .populate({ path: "workoutId", select: "activityType distanceKm avgPaceMinPerKm caloriesBurned workoutDate" })
       .lean(),
+    me ? Follow.exists({ followerId: me._id, followingId: (user as any)._id }) : null,
   ]);
 
   const heatmapData: Record<string, number> = {};
@@ -48,6 +50,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
     <ProfileView
       user={user as any}
       isOwnProfile={false}
+      isFollowing={Boolean(isFollowing)}
       clan={clan}
       zonesHeld={zonesHeld}
       posts={posts}

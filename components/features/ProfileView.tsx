@@ -8,6 +8,7 @@ import { StatChip, EmptyState } from "@/components/ui/StatChip";
 import { EditProfileModal } from "@/components/features/EditProfileModal";
 import { TrainingPlanCard } from "@/components/features/TrainingPlanCard";
 import { ActivityHeatmap } from "@/components/features/ActivityHeatmap";
+import { FollowButton } from "@/components/features/FollowButton";
 
 type ProfileUser = {
   name: string;
@@ -30,6 +31,7 @@ type ProfileUser = {
 export function ProfileView({
   user,
   isOwnProfile,
+  isFollowing = false,
   clan,
   zonesHeld,
   posts,
@@ -38,6 +40,7 @@ export function ProfileView({
 }: {
   user: ProfileUser;
   isOwnProfile: boolean;
+  isFollowing?: boolean;
   clan: any | null;
   zonesHeld: number;
   posts: any[];
@@ -69,7 +72,7 @@ export function ProfileView({
           {user.username && <p className="text-sm text-white/40 truncate">@{user.username}</p>}
           {user.bio && <p className="text-sm text-white/40 truncate">{user.bio}</p>}
         </div>
-        {isOwnProfile && (
+        {isOwnProfile ? (
           <EditProfileModal
             initialName={user.name}
             initialBio={user.bio ?? ""}
@@ -78,6 +81,8 @@ export function ProfileView({
             initialWeight={user.weightKg}
             initialHeight={user.heightCm}
           />
+        ) : (
+          <FollowButton userId={(user as any)._id ? String((user as any)._id) : ""} initialFollowing={isFollowing} />
         )}
       </div>
 

@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
-import Image from "next/image";
-import { ArrowLeft, MapPin, Camera } from "lucide-react";
+import { ArrowLeft, MapPin } from "lucide-react";
 import Link from "next/link";
 import { connectDB } from "@/lib/mongodb";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
@@ -8,12 +7,14 @@ import { Post } from "@/models/Post";
 import { DietCard } from "@/models/DietCard";
 import { Comment } from "@/models/Comment";
 import { CampusZone } from "@/models/CampusZone";
-import "@/models/User";
+import { User } from "@/models/User";
 import "@/models/Workout";
 import { serializePost } from "@/lib/serialize";
+import { getInterestSets, combineReactorIds, pickFeaturedReactorId } from "@/lib/reactionSummary";
 import { Avatar } from "@/components/ui/Avatar";
 import { StatChip } from "@/components/ui/StatChip";
 import { ReactionBar } from "@/components/features/ReactionBar";
+import { ReactionSummary } from "@/components/features/ReactionSummary";
 import { CommentSection } from "@/components/features/CommentSection";
 import { FlagButton } from "@/components/features/FlagButton";
 import { DietPill } from "@/components/features/ActivityCard";
@@ -29,14 +30,27 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
   const postDoc = await Post.findById(id).populate("userId").populate("workoutId").lean();
   if (!postDoc) notFound();
 
-  const [dietCard, comments, zone] = await Promise.all([
+  const [dietCard, comments, zone, interestSets] = await Promise.all([
     DietCard.findOne({ postId: id }).lean(),
     Comment.find({ postId: id }).sort({ createdAt: 1 }).populate("authorId").lean(),
     (postDoc as any).locationZoneId ? CampusZone.findById((postDoc as any).locationZoneId).lean() : null,
+    me ? getInterestSets(String(me._id), me.clanId) : null,
   ]);
 
+  const reactorIds = combineReactorIds(postDoc as any);
+  let reactionSummary = null;
+  if (reactorIds.length > 0) {
+    const featuredId = interestSets ? pickFeaturedReactorId(reactorIds, interestSets, String(me!._id)) : reactorIds[0];
+    const featuredUser = featuredId ? await User.findById(featuredId).select("name avatarUrl").lean() : null;
+    reactionSummary = {
+      featuredName: me && featuredId === String(me._id) ? "You" : ((featuredUser as any)?.name ?? "Athlete"),
+      featuredAvatarUrl: (featuredUser as any)?.avatarUrl ?? "",
+      totalCount: reactorIds.length,
+    };
+  }
+
   const post = serializePost(
-    { ...postDoc, dietCard, commentCount: comments.length, zoneName: (zone as any)?.name ?? null },
+    { ...postDoc, dietCard, commentCount: comments.length, zoneName: (zone as any)?.name ?? null, reactionSummary },
     me ? String(me._id) : undefined,
   );
 
@@ -67,11 +81,10 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
         </div>
 
         {post.photoUrls.length > 0 && (
-          <div className="grid grid-cols-1 gap-0.5">
+          <div className="flex gap-0.5 overflow-x-auto no-scrollbar bg-black">
             {post.photoUrls.map((url: string, i: number) => (
-              <div key={i} className="relative w-full aspect-video bg-midnight-card">
-                <Image src={url} alt="" fill unoptimized className="object-cover" />
-              </div>
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={i} src={url} alt="" className="h-80 sm:h-96 w-auto shrink-0 bg-midnight-card" />
             ))}
           </div>
         )}
@@ -100,14 +113,9 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
             </div>
           )}
 
-          {post.workout.screenshotUrl && (
-            <div className="border border-border-ichor rounded-xl p-3 flex items-center gap-2 text-xs text-white/50">
-              <Camera className="w-4 h-4" /> Verified screenshot attached
-            </div>
-          )}
-
           <div className="flex items-center justify-between pt-2">
             <ReactionBar
+              layout="horizontal"
               postId={post.id}
               initialHype={{ count: post.hypeCount, given: post.hypeGiven }}
               initialRespect={{ count: post.respectCount, given: post.respectGiven }}
@@ -115,6 +123,8 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
             />
             <FlagButton postId={post.id} />
           </div>
+
+          {post.reactionSummary && <ReactionSummary postId={post.id} summary={post.reactionSummary} />}
         </div>
       </article>
 

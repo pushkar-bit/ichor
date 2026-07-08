@@ -8,6 +8,7 @@ import { DietCard } from "@/models/DietCard";
 import { User } from "@/models/User";
 import { Workout } from "@/models/Workout";
 import { serializePost } from "@/lib/serialize";
+import { getInterestSets, combineReactorIds, pickFeaturedReactorId } from "@/lib/reactionSummary";
 
 const PAGE_SIZE = 20;
 
@@ -46,11 +47,12 @@ export async function GET(req: NextRequest) {
   const posts = await cursorQuery.lean();
 
   const postIds = posts.map((p: any) => p._id);
-  const [dietCards, commentCounts, zones, maxAgg] = await Promise.all([
+  const [dietCards, commentCounts, zones, maxAgg, interestSets] = await Promise.all([
     DietCard.find({ postId: { $in: postIds } }).select("postId classification estimatedCalories").lean(),
     Comment.aggregate([{ $match: { postId: { $in: postIds } } }, { $group: { _id: "$postId", count: { $sum: 1 } } }]),
     CampusZone.find({ _id: { $in: posts.map((p: any) => p.locationZoneId).filter(Boolean) } }).select("name").lean(),
     Workout.aggregate([{ $group: { _id: "$activityType", maxDist: { $max: "$distanceKm" } } }]),
+    getInterestSets(String(me._id), me.clanId),
   ]);
 
   const dietByPost = new Map(dietCards.map((d: any) => [String(d.postId), d]));
@@ -59,17 +61,43 @@ export async function GET(req: NextRequest) {
   const globalMaxDistances: Record<string, number> = {};
   for (const agg of maxAgg) globalMaxDistances[agg._id] = agg.maxDist;
 
-  const serialized = posts.map((p: any) =>
-    serializePost(
+  // "Liked by X and N others" — pick a featured reactor per post using the viewer's interest
+  // signals computed once above, then batch-fetch just the featured users' name/avatar.
+  const reactorIdsByPost = new Map(posts.map((p: any) => [String(p._id), combineReactorIds(p)]));
+  const featuredIdByPost = new Map<string, string | null>();
+  const allFeaturedIds = new Set<string>();
+  for (const [postId, reactorIds] of reactorIdsByPost) {
+    const featuredId = pickFeaturedReactorId(reactorIds, interestSets, String(me._id));
+    featuredIdByPost.set(postId, featuredId);
+    if (featuredId) allFeaturedIds.add(featuredId);
+  }
+  const featuredUsers = await User.find({ _id: { $in: [...allFeaturedIds] } }).select("name avatarUrl").lean();
+  const featuredUserById = new Map(featuredUsers.map((u: any) => [String(u._id), u]));
+
+  const serialized = posts.map((p: any) => {
+    const postId = String(p._id);
+    const reactorIds = reactorIdsByPost.get(postId) ?? [];
+    const featuredId = featuredIdByPost.get(postId);
+    const featuredUser = featuredId ? featuredUserById.get(featuredId) : null;
+    const reactionSummary =
+      reactorIds.length > 0
+        ? {
+            featuredName: featuredId === String(me._id) ? "You" : (featuredUser?.name ?? "Athlete"),
+            featuredAvatarUrl: featuredUser?.avatarUrl ?? "",
+            totalCount: reactorIds.length,
+          }
+        : null;
+    return serializePost(
       {
         ...p,
-        dietCard: dietByPost.get(String(p._id)) ?? null,
-        commentCount: commentCountByPost.get(String(p._id)) ?? 0,
+        dietCard: dietByPost.get(postId) ?? null,
+        commentCount: commentCountByPost.get(postId) ?? 0,
         zoneName: p.locationZoneId ? zoneById.get(String(p.locationZoneId)) : null,
+        reactionSummary,
       },
       String(me._id),
-    ),
-  );
+    );
+  });
 
   const nextCursor = filter !== "top" && posts.length === PAGE_SIZE ? posts[posts.length - 1].createdAt : null;
 
