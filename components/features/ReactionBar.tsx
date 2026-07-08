@@ -70,18 +70,18 @@ export function ReactionBar({ postId, initialHype, initialRespect, initialChalle
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-col items-center gap-3 w-full">
       <motion.button
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.9 }}
         onClick={(e) => handleReact(e, "HYPE", hype, setHype, "#fda2de")}
-        className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-full border transition-colors ${
+        className={`inline-flex w-full justify-center items-center gap-2 text-sm font-bold px-4 py-2 rounded-none border-2 transition-colors ${
           hype.given
             ? "border-afterrun bg-afterrun/20 text-afterrun"
-            : "border-border-ichor text-white/50 hover:bg-white/5 hover:text-white"
+            : "border-border-ichor text-white/60 hover:bg-white/5 hover:text-white"
         }`}
       >
-        <Flame className={`w-3.5 h-3.5 ${hype.given ? "fill-current" : ""}`} />
+        <Flame className={`w-4 h-4 ${hype.given ? "fill-current" : ""}`} />
         {hype.count}
       </motion.button>
 
@@ -89,13 +89,13 @@ export function ReactionBar({ postId, initialHype, initialRespect, initialChalle
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.9 }}
         onClick={(e) => handleReact(e, "RESPECT", respect, setRespect, "#d7f24c")}
-        className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-full border transition-colors ${
+        className={`inline-flex w-full justify-center items-center gap-2 text-sm font-bold px-4 py-2 rounded-none border-2 transition-colors ${
           respect.given
             ? "border-lime bg-lime/20 text-lime"
-            : "border-border-ichor text-white/50 hover:bg-white/5 hover:text-white"
+            : "border-border-ichor text-white/60 hover:bg-white/5 hover:text-white"
         }`}
       >
-        <Handshake className={`w-3.5 h-3.5 ${respect.given ? "fill-current" : ""}`} />
+        <Handshake className={`w-4 h-4 ${respect.given ? "fill-current" : ""}`} />
         {respect.count}
       </motion.button>
 
@@ -103,13 +103,13 @@ export function ReactionBar({ postId, initialHype, initialRespect, initialChalle
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.9 }}
         onClick={(e) => handleReact(e, "CHALLENGE", challenge, setChallenge, "#ff5e1a")}
-        className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-full border transition-colors ${
+        className={`inline-flex w-full justify-center items-center gap-2 text-sm font-bold px-4 py-2 rounded-none border-2 transition-colors ${
           challenge.given
             ? "border-ignite bg-ignite/20 text-ignite"
-            : "border-border-ichor text-white/50 hover:bg-white/5 hover:text-white"
+            : "border-border-ichor text-white/60 hover:bg-white/5 hover:text-white"
         }`}
       >
-        <Swords className={`w-3.5 h-3.5 ${challenge.given ? "fill-current" : ""}`} />
+        <Swords className={`w-4 h-4 ${challenge.given ? "fill-current" : ""}`} />
         {challenge.count}
       </motion.button>
     </div>

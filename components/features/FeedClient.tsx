@@ -61,8 +61,8 @@ export function FeedClient() {
   }, [tab, cursor, hasMore, loadingMore, loading, load]);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 lg:pl-24 py-6 lg:flex lg:items-start lg:justify-center lg:gap-20">
-      <div className="max-w-xl w-full mx-auto lg:mx-0 lg:flex-1">
+    <div className="max-w-6xl mx-auto px-4 lg:pl-24 py-6 lg:flex lg:items-start lg:justify-center lg:gap-16">
+      <div className="max-w-2xl w-full mx-auto lg:mx-0 lg:flex-1">
         <div className="flex items-center justify-between mb-5">
           <h1 className="font-display italic font-bold text-3xl">Feed</h1>
           <Link

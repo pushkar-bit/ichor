@@ -11,11 +11,12 @@ type RunVisualizerProps = {
   durationSeconds: number;
   avgPaceMinPerKm: number | null;
   caloriesBurned: number;
+  caption?: string | null;
 };
 
 const ACTIVITY_ICON = { RUN: Footprints, WALK: Footprints, CYCLE: Bike };
 
-export function RunVisualizer({ activityType, distanceKm, durationSeconds, avgPaceMinPerKm, caloriesBurned }: RunVisualizerProps) {
+export function RunVisualizer({ activityType, distanceKm, durationSeconds, avgPaceMinPerKm, caloriesBurned, caption }: RunVisualizerProps) {
   const Icon = ACTIVITY_ICON[activityType] || Footprints;
   
   // Calculate width based on distance (cap at 100%)
@@ -26,53 +27,67 @@ export function RunVisualizer({ activityType, distanceKm, durationSeconds, avgPa
   const hue = Math.max(0, 120 - (widthPercent * 1.2));
 
   return (
-    <div className="flex flex-col relative w-full pt-6 pb-5 px-4 overflow-hidden">
+    <div className="flex flex-col relative w-full pt-6 pb-2 overflow-hidden">
       
-      {/* Absolute faint background glow */}
-      <div 
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] blur-3xl opacity-[0.06] rounded-full mix-blend-screen pointer-events-none transition-colors duration-1000"
-        style={{ backgroundColor: `hsl(${hue}, 100%, 60%)` }}
-      />
-      
-      {/* Hero Metric: Distance */}
-      <div className="relative flex flex-col items-center justify-center mb-6">
-        <div className="flex items-center gap-1.5 mb-1 text-momentum/80 font-medium text-xs tracking-widest uppercase">
-          <Icon className="w-4 h-4" />
-          {activityType}
-        </div>
-        <div className="flex items-baseline gap-1">
-          <span className="font-display font-bold text-6xl text-white tracking-tighter shadow-black/50 drop-shadow-lg">
-            <CountUp end={distanceKm} decimals={2} duration={2.5} />
-          </span>
-          <span className="text-xl font-medium text-white/50">km</span>
-        </div>
-      </div>
-      
-      {/* The Data Shelf: Glassmorphism Pill */}
-      <div className="relative flex items-center justify-between bg-white/[0.03] backdrop-blur-xl border border-white/[0.08] rounded-2xl px-5 py-4 shadow-xl">
-        <div className="flex flex-col items-center flex-1 border-r border-white/10">
-          <span className="text-[10px] text-white/40 uppercase tracking-widest font-semibold mb-1 flex items-center gap-1">
-            <Activity className="w-3 h-3" /> Pace
-          </span>
-          <span className="font-sans font-medium text-base text-white">
-            {formatPace(avgPaceMinPerKm)}
-          </span>
+      {/* Hero Metrics: Distance, Pace & Time */}
+      <div className="relative flex items-center justify-between gap-4 mb-4 px-1">
+        
+        {/* Distance */}
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1.5 mb-1 text-momentum/80 font-medium text-xs tracking-widest uppercase">
+            <Icon className="w-4 h-4" />
+            Dist
+          </div>
+          <div className="flex items-baseline gap-0.5">
+            <span className="font-display font-bold text-4xl md:text-5xl text-white tracking-tighter shadow-black/50 drop-shadow-lg">
+              <CountUp end={distanceKm} decimals={2} duration={2.5} />
+            </span>
+            <span className="text-sm font-medium text-white/50 mb-1">km</span>
+          </div>
         </div>
 
-        <div className="flex flex-col items-center flex-1 border-r border-white/10">
-          <span className="text-[10px] text-white/40 uppercase tracking-widest font-semibold mb-1 flex items-center gap-1">
-            <Timer className="w-3 h-3" /> Time
-          </span>
-          <span className="font-sans font-medium text-base text-white">
+        {/* Pace */}
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1.5 mb-1 text-ignite/80 font-medium text-xs tracking-widest uppercase">
+            <Activity className="w-4 h-4" />
+            Pace
+          </div>
+          <div className="flex items-baseline gap-0.5">
+            <span className="font-display font-bold text-4xl md:text-5xl text-white tracking-tighter shadow-black/50 drop-shadow-lg">
+              {formatPace(avgPaceMinPerKm)}
+            </span>
+            <span className="text-sm font-medium text-white/50 mb-1">/km</span>
+          </div>
+        </div>
+
+        {/* Time */}
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1.5 mb-1 text-blue-400/90 font-medium text-xs tracking-widest uppercase">
+            <Timer className="w-4 h-4" />
+            Time
+          </div>
+          <span className="font-display font-bold text-4xl md:text-5xl text-white tracking-tighter shadow-black/50 drop-shadow-lg">
             {formatDuration(durationSeconds)}
           </span>
         </div>
 
-        <div className="flex flex-col items-center flex-1">
-          <span className="text-[10px] text-white/40 uppercase tracking-widest font-semibold mb-1 flex items-center gap-1">
-            <Flame className="w-3 h-3 text-ignite/80" /> Cals
+      </div>
+      
+      {/* The Data Shelf: Glassmorphism Brutalist Box */}
+      <div className="relative flex items-center justify-between bg-white/[0.03] backdrop-blur-xl border-[3px] border-border-ichor rounded-none px-5 py-5 shadow-[6px_6px_0_var(--ichor-border)] mt-2">
+        <div className="flex-1 pr-4 min-w-0">
+          {caption ? (
+            <p className="text-[18px] font-bold text-white leading-snug break-words">{caption}</p>
+          ) : (
+            <p className="text-sm italic text-white/40 font-semibold">No description</p>
+          )}
+        </div>
+
+        <div className="flex flex-col items-end pl-4 border-l-[3px] border-border-ichor shrink-0">
+          <span className="text-[11px] text-white/50 uppercase tracking-widest font-bold flex items-center gap-1 mb-1">
+            <Flame className="w-3.5 h-3.5 text-ignite" /> Cals
           </span>
-          <span className="font-sans font-medium text-base text-white">
+          <span className="font-display font-bold text-2xl text-white">
             <CountUp end={caloriesBurned} duration={2.5} />
           </span>
         </div>

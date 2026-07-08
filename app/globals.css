@@ -4,13 +4,13 @@
 :root {
   --ichor-momentum: #ae93f4;
   --ichor-momentum-dim: #8a72d9;
-  --ichor-midnight: #171516;
-  --ichor-midnight-raised: #231f20;
-  --ichor-midnight-card: #2a2527;
+  --ichor-midnight: #000000;
+  --ichor-midnight-raised: #0a0a0a;
+  --ichor-midnight-card: #121212;
   --ichor-afterrun: #fda2de;
   --ichor-lime: #d7f24c;
   --ichor-ignite: #ff5e1a;
-  --ichor-border: #383334;
+  --ichor-border: #222222;
 
   --background: var(--ichor-midnight);
   --foreground: #f5f3f6;

@@ -59,7 +59,7 @@ export function LeaderboardWidget() {
   const isClan = category === "clans";
 
   return (
-    <div className="bg-midnight-raised border border-border-ichor rounded-2xl p-4">
+    <div className="bg-midnight-raised border-2 border-border-ichor rounded-none p-4 shadow-[6px_6px_0_var(--ichor-border)]">
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-display italic font-bold text-lg flex items-center gap-1.5">
           <Trophy className="w-4 h-4 text-momentum" /> Leaderboards
