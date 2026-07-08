@@ -46,7 +46,8 @@ export function GoogleSignInButton({ label = "Continue with Google" }: { label?:
           router.push("/feed");
           router.refresh();
         } else {
-          setError("Couldn't continue with Google. Please try again.");
+          const data = await res.json().catch(() => null);
+          setError(data?.error ?? "Couldn't continue with Google. Please try again.");
           setLoading(false);
         }
       } catch {
