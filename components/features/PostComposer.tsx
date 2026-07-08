@@ -7,6 +7,7 @@ import Image from "next/image";
 import { Camera, Upload, X, ChevronDown, Loader2, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resizeToDataUrl } from "@/lib/image";
+import { uploadToCloudinary } from "@/lib/cloudinaryClient";
 
 type Zone = { id: string; name: string };
 
@@ -54,7 +55,12 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
     // Process each file independently — Promise.all would let one bad file (e.g. a HEIC
     // photo createImageBitmap can't decode in some browsers) silently drop the whole batch
     // with zero feedback, which is exactly what "photo picked but never appears" looks like.
-    const results = await Promise.allSettled(files.map((f) => resizeToDataUrl(f)));
+    const results = await Promise.allSettled(
+      files.map(async (f) => {
+        const dataUrl = await resizeToDataUrl(f);
+        return await uploadToCloudinary(dataUrl);
+      })
+    );
     const urls = results.filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled").map((r) => r.value);
     const failures = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
 
@@ -75,11 +81,13 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
     try {
       // Convert everything (HEIF, PNG, JPG) to a standardized JPEG to ensure OCR accuracy and save bandwidth
       const dataUrl = await resizeToDataUrl(file, 1500);
-      const blob = await (await fetch(dataUrl)).blob();
+      const cloudinaryUrl = await uploadToCloudinary(dataUrl);
 
-      const form = new FormData();
-      form.append("file", blob, "screenshot.jpg");
-      const res = await fetch("/api/workouts/ocr", { method: "POST", body: form });
+      const res = await fetch("/api/workouts/ocr", { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl: cloudinaryUrl }) 
+      });
       
       if (!res.ok) {
         let msg = "Failed to extract screenshot data.";

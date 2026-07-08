@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { X, Loader2, Camera } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { resizeToDataUrl } from "@/lib/image";
+import { uploadToCloudinary } from "@/lib/cloudinaryClient";
 
 const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 
@@ -43,7 +44,8 @@ export function EditProfileModal({
     e.target.value = "";
     if (!file) return;
     try {
-      setNewAvatarUrl(await resizeToDataUrl(file, 400));
+      const dataUrl = await resizeToDataUrl(file, 400);
+      setNewAvatarUrl(await uploadToCloudinary(dataUrl));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to process that photo.");
     }
