@@ -48,18 +48,35 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
 
   async function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []).slice(0, 5 - photos.length);
-    const urls = await Promise.all(files.map((f) => resizeToDataUrl(f)));
-    setPhotos((prev) => [...prev, ...urls].slice(0, 5));
     e.target.value = "";
+    if (files.length === 0) return;
+
+    // Process each file independently — Promise.all would let one bad file (e.g. a HEIC
+    // photo createImageBitmap can't decode in some browsers) silently drop the whole batch
+    // with zero feedback, which is exactly what "photo picked but never appears" looks like.
+    const results = await Promise.allSettled(files.map((f) => resizeToDataUrl(f)));
+    const urls = results.filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled").map((r) => r.value);
+    const failures = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+
+    if (urls.length > 0) {
+      setPhotos((prev) => [...prev, ...urls].slice(0, 5));
+    }
+    if (failures.length > 0) {
+      // Surface the real reason (e.g. "couldn't convert from HEIC") instead of a generic
+      // message — this is the only feedback we get since the picker itself gives nothing.
+      const reasons = [...new Set(failures.map((f) => (f.reason instanceof Error ? f.reason.message : String(f.reason))))];
+      setError(reasons.join(" "));
+    }
   }
 
   async function processScreenshot(file: File) {
     setOcrLoading(true);
+    setError(null);
     try {
       // Convert everything (HEIF, PNG, JPG) to a standardized JPEG to ensure OCR accuracy and save bandwidth
-      const dataUrl = await resizeToDataUrl(file, 1500); 
+      const dataUrl = await resizeToDataUrl(file, 1500);
       const blob = await (await fetch(dataUrl)).blob();
-      
+
       const form = new FormData();
       form.append("file", blob, "screenshot.jpg");
       const res = await fetch("/api/workouts/ocr", { method: "POST", body: form });
@@ -96,6 +113,8 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
         }
         setCaloriesBurned(String(data.extracted.caloriesBurned ?? 0));
         setScreenshotUrl(data.screenshotUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to process that screenshot.");
     } finally {
       setOcrLoading(false);
     }

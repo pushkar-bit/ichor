@@ -30,7 +30,7 @@ async function bestPaceRows(range: DateRange) {
 
   const posts = await Post.find({ isHidden: false, ...(Object.keys(createdAt).length ? { createdAt } : {}) })
     .select("userId workoutId")
-    .populate("workoutId")
+    .populate({ path: "workoutId", select: "activityType avgPaceMinPerKm" })
     .lean();
   const bestByUser = new Map<string, number>();
   for (const p of posts as any[]) {

@@ -34,11 +34,10 @@ export async function POST(req: NextRequest) {
   if (!dbUser) {
     // A returning user whose Google account produces the same email but (rarely) a
     // different sub isn't expected here, but reconcile by email defensively anyway
-    // rather than silently creating a duplicate profile.
+    // rather than silently creating a duplicate profile. Leave dbUser.googleId unset
+    // here — mutating it in memory would mask the diff check below and the real
+    // googleId would never actually get persisted to the database.
     dbUser = await User.findOne({ email: profile.email });
-    if (dbUser) {
-      dbUser.googleId = profile.sub;
-    }
   }
 
   if (!dbUser) {

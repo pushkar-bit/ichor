@@ -24,6 +24,6 @@ const PostSchema = new Schema(
 PostSchema.index({ createdAt: -1 });
 PostSchema.index({ isPublic: 1, isHidden: 1, createdAt: -1 }); // main feed query
 PostSchema.index({ userId: 1, isHidden: 1, createdAt: -1 }); // per-user posts
-PostSchema.index({ avgFlameRating: -1, kudosCount: -1 }); // top-today sort
+PostSchema.index({ isPublic: 1, isHidden: 1, hypeCount: -1, respectCount: -1 }); // top-today sort
 
 export const Post = models.Post || model("Post", PostSchema);

@@ -37,8 +37,4 @@ const UserSchema = new Schema(
 
 export type UserDoc = InferSchemaType<typeof UserSchema>;
 
-if (models.User) {
-  delete models.User;
-}
-
-export const User = model("User", UserSchema);
+export const User = models.User || model("User", UserSchema);

@@ -20,11 +20,18 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   const user = await User.findOne({ username }).lean();
   if (!user) notFound();
 
-  const [zonesHeld, clan, posts, personalBests] = await Promise.all([
+  const [zonesHeld, clan, posts] = await Promise.all([
     Territory.countDocuments({ ownerId: (user as any)._id }),
     (user as any).clanId ? Clan.findById((user as any).clanId).lean() : null,
-    Post.find({ userId: (user as any)._id, isHidden: false }).sort({ createdAt: -1 }).populate("workoutId").lean(),
-    getPersonalBests(String((user as any)._id)),
+    // photoUrls sliced to just the first photo (the grid never shows more) and workoutId
+    // trimmed to the fields actually used — the full documents include a large base64
+    // screenshotUrl per photo/workout that was previously fetched (twice — see below) for
+    // nothing.
+    Post.find({ userId: (user as any)._id, isHidden: false })
+      .select({ photoUrls: { $slice: 1 }, workoutId: 1, createdAt: 1 })
+      .sort({ createdAt: -1 })
+      .populate({ path: "workoutId", select: "activityType distanceKm avgPaceMinPerKm caloriesBurned workoutDate" })
+      .lean(),
   ]);
 
   const heatmapData: Record<string, number> = {};
@@ -33,6 +40,9 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
     const key = dayKey(new Date(p.workoutId.workoutDate));
     heatmapData[key] = (heatmapData[key] ?? 0) + (p.workoutId.caloriesBurned ?? 0);
   }
+  // Reuses the workoutId data already fetched above instead of re-running the same
+  // Post.find({userId}).populate("workoutId") query a second time just for these two numbers.
+  const personalBests = getPersonalBests((posts as any[]).map((p) => p.workoutId));
 
   return (
     <ProfileView

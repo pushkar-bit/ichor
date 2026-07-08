@@ -42,7 +42,11 @@ export function EditProfileModal({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    setNewAvatarUrl(await resizeToDataUrl(file, 400));
+    try {
+      setNewAvatarUrl(await resizeToDataUrl(file, 400));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to process that photo.");
+    }
   }
 
   async function save() {

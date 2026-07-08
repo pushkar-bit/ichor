@@ -12,7 +12,8 @@ export async function POST() {
 
   const fourWeeksAgo = new Date(Date.now() - 28 * 86400000);
   const posts = await Post.find({ userId: me._id, isHidden: false, createdAt: { $gte: fourWeeksAgo } })
-    .populate("workoutId")
+    .select("workoutId")
+    .populate({ path: "workoutId", select: "distanceKm" })
     .lean();
 
   const totalDistance = posts.reduce((s: number, p: any) => s + (p.workoutId?.distanceKm ?? 0), 0);
