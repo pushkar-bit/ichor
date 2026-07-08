@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Trophy } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
 
 const CATEGORIES = [
   { key: "calories", label: "Calorie King" },
@@ -135,13 +136,26 @@ export function LeaderboardWidget() {
               isMe && "bg-momentum/10",
             );
             return !isClan && row.username ? (
-              <Link key={row.userId} href={`/profile/${row.username}`} className={cn(rowClassName, "hover:bg-white/5")}>
-                {content}
-              </Link>
+              <motion.div
+                key={row.userId}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: i * 0.05 }}
+              >
+                <Link href={`/profile/${row.username}`} className={cn(rowClassName, "hover:bg-white/5")}>
+                  {content}
+                </Link>
+              </motion.div>
             ) : (
-              <div key={row.userId ?? row.clanId} className={rowClassName}>
+              <motion.div 
+                key={row.clanId || row.userId} 
+                className={rowClassName}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: i * 0.05 }}
+              >
                 {content}
-              </div>
+              </motion.div>
             );
           })}
         </div>

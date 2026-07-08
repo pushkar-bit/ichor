@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion } from "framer-motion";
 import { IchorLogo } from "./IchorMark";
 import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, Search, LogOut } from "lucide-react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
@@ -43,22 +44,27 @@ export function NavShell({
             const active = pathname === item.href || (item.href !== "/feed" && pathname?.startsWith(item.href));
             const Icon = item.icon;
             return (
-              <Link
+              <motion.div 
                 key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 outline-none transition-all ${
-                  active 
-                    ? "rounded-none border-2 border-border-ichor shadow-[4px_4px_0_var(--ichor-border)] bg-momentum text-midnight -translate-y-0.5" 
-                    : "rounded-none text-white/60 hover:text-white hover:bg-midnight-raised"
-                }`}
+                whileHover={{ x: 4 }} 
+                whileTap={{ scale: 0.96 }}
               >
-                {item.label === "Profile" && user.avatarUrl ? (
-                  <Avatar src={user.avatarUrl} name={user.name} size={18} />
-                ) : (
-                  <Icon className="w-[18px] h-[18px]" />
-                )}
-                {item.label}
-              </Link>
+                <Link
+                  href={item.href}
+                  className={`flex items-center gap-3 px-3 py-2.5 outline-none transition-all ${
+                    active 
+                      ? "rounded-none border-2 border-border-ichor shadow-[4px_4px_0_var(--ichor-border)] bg-momentum text-midnight -translate-y-0.5" 
+                      : "rounded-none text-white/60 hover:text-white hover:bg-midnight-raised"
+                  }`}
+                >
+                  {item.label === "Profile" && user.avatarUrl ? (
+                    <Avatar src={user.avatarUrl} name={user.name} size={18} />
+                  ) : (
+                    <Icon className="w-[18px] h-[18px]" />
+                  )}
+                  {item.label}
+                </Link>
+              </motion.div>
             );
           })}
         </nav>

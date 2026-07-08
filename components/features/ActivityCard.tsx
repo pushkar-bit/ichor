@@ -8,6 +8,8 @@ import { RunVisualizer } from "./RunVisualizer";
 import { ReactionBar } from "./ReactionBar";
 import { timeAgo, formatPace, formatDuration } from "@/lib/utils";
 
+import { motion } from "framer-motion";
+
 export type ActivityCardData = {
   id: string;
   author: { name: string; avatarUrl?: string };
@@ -51,7 +53,14 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
   const hue = Math.max(0, 120 - (widthPercent * 1.2));
 
   return (
-    <article className="bg-midnight-raised border-2 border-border-ichor rounded-none shadow-[6px_6px_0_var(--ichor-border)] overflow-hidden flex flex-col mb-10 hover:-translate-y-1 hover:shadow-[8px_8px_0_var(--ichor-border)] transition-all">
+    <motion.article 
+      initial={{ opacity: 0, y: 30 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-50px" }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+      className="bg-midnight-raised border-2 border-border-ichor rounded-none shadow-[6px_6px_0_var(--ichor-border)] overflow-hidden flex flex-col mb-10 transition-shadow hover:shadow-[10px_10px_0_var(--ichor-border)]"
+    >
       <style jsx>{`
         @keyframes zebra-scroll {
           0% { background-position: 0 0; }
@@ -139,7 +148,11 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
             initialRespect={{ count: post.respectCount, given: post.respectGiven }}
             initialChallenge={{ count: post.challengeCount, given: post.challengeGiven }}
           />
-          <div className="w-full">
+          <motion.div 
+            className="w-full"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.9 }}
+          >
             {post.linkToDetail !== false ? (
               <Link
                 href={`/post/${post.id}`}
@@ -152,10 +165,10 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
                 <MessageSquare className="w-4 h-4" /> {post.commentCount}
               </span>
             )}
-          </div>
+          </motion.div>
         </div>
       </div>
-    </article>
+    </motion.article>
   );
 }
 
