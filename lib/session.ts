@@ -5,7 +5,7 @@ export const SESSION_COOKIE_NAME = "ichor_session";
 const SESSION_DURATION_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
 function getSecretKey() {
-  const secret = process.env.SESSION_SECRET;
+  const secret = process.env.SESSION_SECRET || process.env.ADMIN_SECRET;
   if (!secret) throw new Error("SESSION_SECRET is not set");
   return new TextEncoder().encode(secret);
 }
