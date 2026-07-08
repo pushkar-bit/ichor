@@ -8,7 +8,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user.weightKg || !user.heightCm || !user.username) redirect("/onboarding");
 
   return (
-    <NavShell user={{ name: user.name, avatarUrl: user.avatarUrl }}>
+    <NavShell isAdmin user={{ name: user.name, avatarUrl: user.avatarUrl }}>
       {children}
     </NavShell>
   );

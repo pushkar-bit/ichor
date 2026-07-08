@@ -1,11 +1,10 @@
-"use client";
-
 import Image from "next/image";
 import Link from "next/link";
 import { Footprints, Bike, Timer, Flame as FlameIcon, MapPin, MessageSquare, BadgeCheck, Camera } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
-import { RunVisualizer } from "./RunVisualizer";
-import { ReactionBar } from "./ReactionBar";
+import { StatChip } from "@/components/ui/StatChip";
+import { FlamePicker } from "./FlamePicker";
+import { KudosButton } from "./KudosButton";
 import { timeAgo, formatPace, formatDuration } from "@/lib/utils";
 
 export type ActivityCardData = {
@@ -24,12 +23,10 @@ export type ActivityCardData = {
   photoUrls: string[];
   caption?: string;
   dietCard?: { classification: "CLEAN" | "CHEAT" | "NEUTRAL"; estimatedCalories: number | null } | null;
-  hypeCount: number;
-  hypeGiven: boolean;
-  respectCount: number;
-  respectGiven: boolean;
-  challengeCount: number;
-  challengeGiven: boolean;
+  avgFlameRating: number;
+  flameCount: number;
+  kudosCount: number;
+  kudosGiven: boolean;
   commentCount: number;
   zoneName?: string | null;
   linkToDetail?: boolean;
@@ -37,38 +34,13 @@ export type ActivityCardData = {
 
 const ACTIVITY_ICON = { RUN: Footprints, WALK: Footprints, CYCLE: Bike };
 
-export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; maxDistance?: number }) {
+export function ActivityCard({ post }: { post: ActivityCardData }) {
   const ActivityIcon = ACTIVITY_ICON[post.workout.activityType];
   const isVerified = post.workout.sourceType === "HEALTH_SYNC";
   const isOcr = post.workout.sourceType === "OCR_SCREENSHOT";
 
-  // Calculate width based on distance (cap at 100%)
-  const fallbackMax = post.workout.activityType === "CYCLE" ? 40 : 15;
-  const maxExpectedDistance = maxDistance || fallbackMax;
-  const widthPercent = Math.min(100, Math.max(10, (post.workout.distanceKm / maxExpectedDistance) * 100));
-
-  // Hue goes from 120 (Green) to 0 (Red) based on widthPercent
-  const hue = Math.max(0, 120 - (widthPercent * 1.2));
-
   return (
-    <article className="bg-midnight-raised border border-border-ichor rounded-2xl overflow-hidden flex flex-col">
-      <style jsx>{`
-        @keyframes zebra-scroll {
-          0% { background-position: 0 0; }
-          100% { background-position: 28px 0; }
-        }
-        .zebra-bar {
-          background-image: repeating-linear-gradient(
-            -45deg,
-            rgba(255, 255, 255, 0.15),
-            rgba(255, 255, 255, 0.15) 14px,
-            transparent 14px,
-            transparent 28px
-          );
-          background-size: 28px 28px;
-          animation: zebra-scroll 1.5s linear infinite;
-        }
-      `}</style>
+    <article className="bg-midnight-raised border border-border-ichor rounded-2xl overflow-hidden">
       <div className="flex items-center gap-3 p-4">
         <Avatar src={post.author.avatarUrl} name={post.author.name} size={36} />
         <div className="flex-1 min-w-0">
@@ -96,25 +68,12 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
         </div>
       )}
 
-      {/* Full-width visual bar (straight edges) */}
-      <div className="relative h-1 w-full bg-black/40 shadow-inner">
-        <div 
-          className="absolute top-0 left-0 h-full transition-all duration-1000 ease-out zebra-bar"
-          style={{ 
-            width: `${widthPercent}%`,
-            backgroundColor: `hsl(${hue}, 85%, 50%)`,
-            boxShadow: `0 0 10px hsl(${hue}, 85%, 50%, 0.5)`
-          }}
-        />
+      <div className="flex items-center px-4 py-3 border-b border-border-ichor">
+        <StatChip label="Distance" value={`${post.workout.distanceKm}km`} />
+        <StatChip label="Pace" value={formatPace(post.workout.avgPaceMinPerKm)} icon={<Timer className="w-3.5 h-3.5" />} />
+        <StatChip label="Duration" value={formatDuration(post.workout.durationSeconds)} />
+        <StatChip label="Calories" value={post.workout.caloriesBurned} icon={<FlameIcon className="w-3.5 h-3.5 text-ignite" />} />
       </div>
-
-      <RunVisualizer 
-        activityType={post.workout.activityType}
-        distanceKm={post.workout.distanceKm}
-        durationSeconds={post.workout.durationSeconds}
-        avgPaceMinPerKm={post.workout.avgPaceMinPerKm}
-        caloriesBurned={post.workout.caloriesBurned}
-      />
 
       {post.dietCard && (
         <div className="px-4 pt-3">
@@ -125,12 +84,7 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
       {post.caption && <p className="px-4 pt-3 text-sm text-white/80 leading-relaxed">{post.caption}</p>}
 
       <div className="flex items-center justify-between px-4 py-3 mt-1">
-        <ReactionBar 
-          postId={post.id}
-          initialHype={{ count: post.hypeCount, given: post.hypeGiven }}
-          initialRespect={{ count: post.respectCount, given: post.respectGiven }}
-          initialChallenge={{ count: post.challengeCount, given: post.challengeGiven }}
-        />
+        <FlamePicker postId={post.id} initialAvg={post.avgFlameRating} initialCount={post.flameCount} />
         <div className="flex items-center gap-2">
           {post.linkToDetail !== false ? (
             <Link
@@ -144,6 +98,7 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
               <MessageSquare className="w-3.5 h-3.5" /> {post.commentCount}
             </span>
           )}
+          <KudosButton postId={post.id} initialCount={post.kudosCount} initialGiven={post.kudosGiven} />
         </div>
       </div>
     </article>

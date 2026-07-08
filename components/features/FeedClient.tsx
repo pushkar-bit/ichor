@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Flame, PlusCircle } from "lucide-react";
 import { ActivityCard, type ActivityCardData } from "./ActivityCard";
-import { LeaderboardWidget } from "./LeaderboardWidget";
 import { EmptyState, SkeletonCard } from "@/components/ui/StatChip";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +17,6 @@ const TABS = [
 export function FeedClient() {
   const [tab, setTab] = useState("all");
   const [posts, setPosts] = useState<ActivityCardData[]>([]);
-  const [globalMaxDistances, setGlobalMaxDistances] = useState<Record<string, number>>({});
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -32,9 +30,6 @@ export function FeedClient() {
     if (!res.ok) return;
     const data = await res.json();
     setPosts((prev) => (replace ? data.posts : [...prev, ...data.posts]));
-    if (data.globalMaxDistances) {
-      setGlobalMaxDistances(data.globalMaxDistances);
-    }
     setCursor(data.nextCursor);
     setHasMore(Boolean(data.nextCursor));
   }, []);
@@ -61,65 +56,57 @@ export function FeedClient() {
   }, [tab, cursor, hasMore, loadingMore, loading, load]);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 lg:pl-24 py-6 lg:flex lg:items-start lg:justify-center lg:gap-20">
-      <div className="max-w-xl w-full mx-auto lg:mx-0 lg:flex-1">
-        <div className="flex items-center justify-between mb-5">
-          <h1 className="font-display italic font-bold text-3xl">Feed</h1>
-          <Link
-            href="/post/create"
-            className="inline-flex items-center gap-1.5 bg-momentum text-midnight text-sm font-semibold px-3.5 py-2 rounded-full"
-          >
-            <PlusCircle className="w-4 h-4" /> Post
-          </Link>
-        </div>
-
-        <div className="flex items-center gap-1.5 mb-6 overflow-x-auto no-scrollbar">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={cn(
-                "shrink-0 text-sm font-medium px-3.5 py-1.5 rounded-full transition-colors",
-                tab === t.key ? "bg-momentum text-midnight" : "bg-midnight-raised text-white/50 hover:text-white",
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {loading ? (
-          <div className="space-y-4">
-            <SkeletonCard />
-            <SkeletonCard />
-          </div>
-        ) : posts.length === 0 ? (
-          <EmptyState
-            icon={<Flame className="w-6 h-6" />}
-            title="No posts yet"
-            description="Be the first to import a workout and post it to the club."
-            action={
-              <Link href="/post/create" className="bg-momentum text-midnight text-sm font-semibold px-4 py-2 rounded-full">
-                Create a post
-              </Link>
-            }
-          />
-        ) : (
-          <div className="space-y-4">
-            {posts.map((post) => (
-              <ActivityCard key={post.id} post={post} maxDistance={globalMaxDistances[post.workout.activityType]} />
-            ))}
-            <div ref={sentinelRef} className="h-4" />
-            {loadingMore && <SkeletonCard />}
-          </div>
-        )}
+    <div className="max-w-xl mx-auto px-4 py-6">
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="font-display italic font-bold text-3xl">Feed</h1>
+        <Link
+          href="/post/create"
+          className="inline-flex items-center gap-1.5 bg-momentum text-midnight text-sm font-semibold px-3.5 py-2 rounded-full"
+        >
+          <PlusCircle className="w-4 h-4" /> Post
+        </Link>
       </div>
 
-      {/* Leaderboard rail — right-hand sticky rail on wide screens, stacked below the feed
-          on narrow ones. Always rendered (never `hidden`) so it can't just fail to appear. */}
-      <aside className="max-w-xl w-full mx-auto mt-8 lg:mt-32 lg:w-80 lg:max-w-none lg:shrink-0 lg:sticky lg:top-8">
-        <LeaderboardWidget />
-      </aside>
+      <div className="flex items-center gap-1.5 mb-6 overflow-x-auto no-scrollbar">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={cn(
+              "shrink-0 text-sm font-medium px-3.5 py-1.5 rounded-full transition-colors",
+              tab === t.key ? "bg-momentum text-midnight" : "bg-midnight-raised text-white/50 hover:text-white",
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="space-y-4">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      ) : posts.length === 0 ? (
+        <EmptyState
+          icon={<Flame className="w-6 h-6" />}
+          title="No posts yet"
+          description="Be the first to import a workout and post it to the club."
+          action={
+            <Link href="/post/create" className="bg-momentum text-midnight text-sm font-semibold px-4 py-2 rounded-full">
+              Create a post
+            </Link>
+          }
+        />
+      ) : (
+        <div className="space-y-4">
+          {posts.map((post) => (
+            <ActivityCard key={post.id} post={post} />
+          ))}
+          <div ref={sentinelRef} className="h-4" />
+          {loadingMore && <SkeletonCard />}
+        </div>
+      )}
     </div>
   );
 }
