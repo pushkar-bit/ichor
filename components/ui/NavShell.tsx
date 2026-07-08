@@ -33,7 +33,7 @@ export function NavShell({
   usePushNotifications();
 
   return (
-    <div className="min-h-screen bg-midnight flex">
+    <div className="min-h-screen bg-midnight-raised md:bg-midnight flex">
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:flex-col w-60 shrink-0 border-r border-border-ichor px-4 py-6 sticky top-0 h-screen">
         <div className="px-2 mb-8">
@@ -90,7 +90,7 @@ export function NavShell({
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Mobile Top Header (only visible on mobile, hidden on md) */}
         <div className="md:hidden">
-          <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border-ichor sticky top-0 bg-midnight/95 backdrop-blur z-20">
+          <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border-ichor sticky top-0 bg-black z-20">
             <IchorLogo textClassName="text-xl" />
             {user.avatarUrl && (
               <Link href="/profile">
@@ -105,8 +105,8 @@ export function NavShell({
           </div>
 
           {/* Mobile Bottom Navigation */}
-          <nav className="md:hidden fixed bottom-0 inset-x-0 bg-midnight-raised border-t border-border-ichor flex items-center justify-around py-2 z-20">
-            {NAV_ITEMS.map((item) => {
+          <nav className="md:hidden fixed bottom-0 inset-x-0 bg-black border-t border-border-ichor flex items-center justify-around py-2 z-20">
+            {NAV_ITEMS.filter(i => ["/feed", "/leaderboard", "/post/create", "/profile", "/search"].includes(i.href)).map((item) => {
               const active = pathname === item.href || (item.href !== "/feed" && pathname?.startsWith(item.href));
               const Icon = item.icon;
               return (
