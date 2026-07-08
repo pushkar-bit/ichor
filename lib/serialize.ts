@@ -14,10 +14,12 @@ type RawJoinedPost = {
   photoUrls?: string[];
   caption?: string;
   dietCard?: { classification: "CLEAN" | "CHEAT" | "NEUTRAL"; estimatedCalories: number | null } | null;
-  avgFlameRating?: number;
-  flameCount?: number;
-  kudosCount?: number;
-  kudosUserIds?: unknown[];
+  hypeCount?: number;
+  hypeUserIds?: unknown[];
+  respectCount?: number;
+  respectUserIds?: unknown[];
+  challengeCount?: number;
+  challengeUserIds?: unknown[];
   commentCount?: number;
   zoneName?: string | null;
 };
@@ -47,12 +49,12 @@ export function serializePost(post: RawJoinedPost, currentUserId?: string) {
     dietCard: post.dietCard
       ? { classification: post.dietCard.classification, estimatedCalories: post.dietCard.estimatedCalories }
       : null,
-    avgFlameRating: post.avgFlameRating ?? 0,
-    flameCount: post.flameCount ?? 0,
-    kudosCount: post.kudosCount ?? 0,
-    kudosGiven: currentUserId
-      ? (post.kudosUserIds ?? []).some((id) => String(id) === String(currentUserId))
-      : false,
+    hypeCount: post.hypeCount ?? 0,
+    hypeGiven: currentUserId ? (post.hypeUserIds ?? []).some((id) => String(id) === String(currentUserId)) : false,
+    respectCount: post.respectCount ?? 0,
+    respectGiven: currentUserId ? (post.respectUserIds ?? []).some((id) => String(id) === String(currentUserId)) : false,
+    challengeCount: post.challengeCount ?? 0,
+    challengeGiven: currentUserId ? (post.challengeUserIds ?? []).some((id) => String(id) === String(currentUserId)) : false,
     commentCount: post.commentCount ?? 0,
     zoneName: post.zoneName ?? null,
   };

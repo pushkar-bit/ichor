@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseScreenshot } from "@/lib/ai";
+import { parseScreenshot, AIServiceError } from "@/lib/ai";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { connectDB } from "@/lib/mongodb";
 
@@ -20,7 +20,11 @@ export async function POST(req: NextRequest) {
   const base64 = Buffer.from(arrayBuffer).toString("base64");
   const screenshotUrl = `data:${file.type};base64,${base64}`;
 
-  const extracted = await parseScreenshot(file.name, { base64Data: base64, mimeType: file.type }, me?.weightKg);
-
-  return NextResponse.json({ extracted, screenshotUrl });
+  try {
+    const extracted = await parseScreenshot(file.name, { base64Data: base64, mimeType: file.type }, me?.weightKg);
+    return NextResponse.json({ extracted, screenshotUrl });
+  } catch (err) {
+    const status = err instanceof AIServiceError ? err.status : 500;
+    return NextResponse.json({ error: (err as Error).message }, { status });
+  }
 }

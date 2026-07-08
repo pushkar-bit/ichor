@@ -7,12 +7,18 @@ import { SkeletonCard } from "@/components/ui/StatChip";
 import { cn } from "@/lib/utils";
 
 const CATEGORIES = [
-  { key: "calories", label: "Calorie King", scope: "week" as const },
-  { key: "streak", label: "Grind Streak", scope: "all-time" as const },
-  { key: "pace", label: "Pace God", scope: "all-time" as const },
-  { key: "distance", label: "Distance Destroyer", scope: "week" as const },
-  { key: "integrity", label: "Integrity Champion", scope: "all-time" as const },
-  { key: "clans", label: "Clan Wars", scope: "week" as const },
+  { key: "calories", label: "Calorie King" },
+  { key: "streak", label: "Grind Streak" },
+  { key: "pace", label: "Pace God" },
+  { key: "distance", label: "Distance Destroyer" },
+  { key: "integrity", label: "Integrity Champion" },
+  { key: "clans", label: "Clan Wars" },
+];
+
+const RANGES = [
+  { key: "week", label: "This week" },
+  { key: "month", label: "This month" },
+  { key: "all", label: "All time" },
 ];
 
 const RANK_COLORS = ["#D4AF37", "#C0C0C0", "#CD7F32"];
@@ -33,23 +39,23 @@ type Row = {
 
 export function LeaderboardClient() {
   const [category, setCategory] = useState("calories");
+  const [range, setRange] = useState("week");
   const [rows, setRows] = useState<Row[]>([]);
   const [meId, setMeId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/leaderboards/${category}`)
+    fetch(`/api/leaderboards/${category}?range=${range}`)
       .then((r) => r.json())
       .then((data) => {
         setRows(data.rows ?? []);
         setMeId(data.me ?? null);
       })
       .finally(() => setLoading(false));
-  }, [category]);
+  }, [category, range]);
 
   const isClan = category === "clans";
-  const activeCategory = CATEGORIES.find((c) => c.key === category)!;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
@@ -67,17 +73,14 @@ export function LeaderboardClient() {
                 category === c.key ? "bg-momentum text-midnight" : "text-white/60 hover:text-white hover:bg-midnight-raised",
               )}
             >
-              <div>{c.label}</div>
-              <div className={cn("text-[10px] uppercase tracking-wide", category === c.key ? "text-midnight/60" : "text-white/30")}>
-                {c.scope === "week" ? "This week" : "All-time"}
-              </div>
+              {c.label}
             </button>
           ))}
         </aside>
 
         <div className="flex-1 min-w-0">
           {/* Mobile pill-bar fallback */}
-          <div className="flex items-center gap-1.5 mb-6 overflow-x-auto no-scrollbar md:hidden">
+          <div className="flex items-center gap-1.5 mb-4 overflow-x-auto no-scrollbar md:hidden">
             {CATEGORIES.map((c) => (
               <button
                 key={c.key}
@@ -88,6 +91,22 @@ export function LeaderboardClient() {
                 )}
               >
                 {c.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Range switcher — applies to whichever category is active */}
+          <div className="flex items-center gap-1.5 mb-6">
+            {RANGES.map((r) => (
+              <button
+                key={r.key}
+                onClick={() => setRange(r.key)}
+                className={cn(
+                  "text-xs font-semibold px-3 py-1.5 rounded-full transition-colors",
+                  range === r.key ? "bg-white/15 text-white" : "text-white/40 hover:text-white/70",
+                )}
+              >
+                {r.label}
               </button>
             ))}
           </div>
@@ -154,7 +173,7 @@ export function LeaderboardClient() {
               })}
               {rows.length === 0 && (
                 <p className="text-center text-white/30 text-sm py-10">
-                  {activeCategory.scope === "week" ? "No data yet this week." : "No rankings yet."}
+                  {range === "all" ? "No rankings yet." : `No data yet ${range === "week" ? "this week" : "this month"}.`}
                 </p>
               )}
             </div>

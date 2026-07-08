@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IchorLogo } from "./IchorMark";
-import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, ShieldAlert, Search, LogOut } from "lucide-react";
+import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, Search, LogOut } from "lucide-react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { Avatar } from "./Avatar";
+import { CoachWidget } from "@/components/features/CoachWidget";
 
 const NAV_ITEMS = [
   { href: "/feed", label: "Feed", icon: Flame },
@@ -22,16 +23,13 @@ type NavUser = { name: string; avatarUrl: string };
 
 export function NavShell({
   children,
-  isAdmin,
   user,
 }: {
   children: React.ReactNode;
-  isAdmin?: boolean;
   user: NavUser;
 }) {
   const pathname = usePathname();
   usePushNotifications();
-  const items = isAdmin ? [...NAV_ITEMS, { href: "/admin", label: "Admin", icon: ShieldAlert }] : NAV_ITEMS;
 
   return (
     <div className="min-h-screen bg-midnight flex">
@@ -41,7 +39,7 @@ export function NavShell({
           <IchorLogo textClassName="text-xl" />
         </div>
         <nav className="flex-1 space-y-1">
-          {items.map((item) => {
+          {NAV_ITEMS.map((item) => {
             const active = pathname === item.href || (item.href !== "/feed" && pathname?.startsWith(item.href));
             const Icon = item.icon;
             return (
@@ -95,9 +93,12 @@ export function NavShell({
 
         <main className="flex-1 min-w-0 pb-20 md:pb-0">{children}</main>
 
+        {/* Floating AI Coach widget — appears on all app pages */}
+        <CoachWidget />
+
         {/* Mobile bottom nav */}
         <nav className="md:hidden fixed bottom-0 inset-x-0 bg-midnight-raised border-t border-border-ichor flex items-center justify-around py-2 z-20">
-          {items.slice(0, 5).map((item) => {
+          {NAV_ITEMS.slice(0, 5).map((item) => {
             const active = pathname === item.href || (item.href !== "/feed" && pathname?.startsWith(item.href));
             const Icon = item.icon;
             return (

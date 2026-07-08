@@ -5,8 +5,8 @@ import { Post } from "@/models/Post";
 import { Comment } from "@/models/Comment";
 import { CampusZone } from "@/models/CampusZone";
 import { DietCard } from "@/models/DietCard";
-import "@/models/User";
-import "@/models/Workout";
+import { User } from "@/models/User";
+import { Workout } from "@/models/Workout";
 import { serializePost } from "@/lib/serialize";
 
 const PAGE_SIZE = 20;
@@ -28,8 +28,8 @@ export async function GET(req: NextRequest) {
     const memberDocs = await ClanMember.find({ clanId: me.clanId }).lean();
     query.userId = { $in: memberDocs.map((m: any) => m.userId) };
   } else if (filter === "following") {
-    const kudosedPosts = await Post.find({ kudosUserIds: me._id }).select("userId").lean();
-    const authorIds = [...new Set(kudosedPosts.map((p: any) => String(p.userId)))];
+    const hypedPosts = await Post.find({ hypeUserIds: me._id }).select("userId").lean();
+    const authorIds = [...new Set(hypedPosts.map((p: any) => String(p.userId)))];
     query.userId = { $in: authorIds.length ? authorIds : [me._id] };
   } else if (filter === "top") {
     const start = new Date();
@@ -37,24 +37,27 @@ export async function GET(req: NextRequest) {
     query.createdAt = { ...(query.createdAt ?? {}), $gte: start };
   }
 
-  let cursorQuery = Post.find(query)
-    .sort(filter === "top" ? { avgFlameRating: -1, kudosCount: -1 } : { createdAt: -1 })
-    .limit(PAGE_SIZE)
-    .populate("userId")
-    .populate("workoutId");
+  const cursorQuery = Post.find(query)
+    .sort(filter === "top" ? { hypeCount: -1, respectCount: -1 } : { createdAt: -1 })
+    .limit(filter === "top" ? 50 : PAGE_SIZE)
+    .populate({ path: "userId", select: "name username avatarUrl" })
+    .populate({ path: "workoutId", select: "activityType distanceKm durationSeconds avgPaceMinPerKm caloriesBurned heartRateAvg workoutDate sourceType verificationStatus" });
 
   const posts = await cursorQuery.lean();
 
   const postIds = posts.map((p: any) => p._id);
-  const [dietCards, commentCounts, zones] = await Promise.all([
-    DietCard.find({ postId: { $in: postIds } }).lean(),
+  const [dietCards, commentCounts, zones, maxAgg] = await Promise.all([
+    DietCard.find({ postId: { $in: postIds } }).select("postId classification estimatedCalories").lean(),
     Comment.aggregate([{ $match: { postId: { $in: postIds } } }, { $group: { _id: "$postId", count: { $sum: 1 } } }]),
-    CampusZone.find({ _id: { $in: posts.map((p: any) => p.locationZoneId).filter(Boolean) } }).lean(),
+    CampusZone.find({ _id: { $in: posts.map((p: any) => p.locationZoneId).filter(Boolean) } }).select("name").lean(),
+    Workout.aggregate([{ $group: { _id: "$activityType", maxDist: { $max: "$distanceKm" } } }]),
   ]);
 
   const dietByPost = new Map(dietCards.map((d: any) => [String(d.postId), d]));
   const commentCountByPost = new Map(commentCounts.map((c: any) => [String(c._id), c.count]));
   const zoneById = new Map(zones.map((z: any) => [String(z._id), z.name]));
+  const globalMaxDistances: Record<string, number> = {};
+  for (const agg of maxAgg) globalMaxDistances[agg._id] = agg.maxDist;
 
   const serialized = posts.map((p: any) =>
     serializePost(
@@ -68,7 +71,7 @@ export async function GET(req: NextRequest) {
     ),
   );
 
-  const nextCursor = posts.length === PAGE_SIZE ? posts[posts.length - 1].createdAt : null;
+  const nextCursor = filter !== "top" && posts.length === PAGE_SIZE ? posts[posts.length - 1].createdAt : null;
 
-  return NextResponse.json({ posts: serialized, nextCursor });
+  return NextResponse.json({ posts: serialized, nextCursor, globalMaxDistances });
 }

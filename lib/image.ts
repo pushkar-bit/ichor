@@ -6,5 +6,5 @@ export async function resizeToDataUrl(file: File, maxWidth = 900): Promise<strin
   canvas.height = bitmap.height * scale;
   const ctx = canvas.getContext("2d");
   ctx?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.75);
+  return canvas.toDataURL("image/jpeg", 0.95);
 }

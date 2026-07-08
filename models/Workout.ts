@@ -26,4 +26,7 @@ const WorkoutSchema = new Schema(
   { timestamps: true },
 );
 
+WorkoutSchema.index({ userId: 1, workoutDate: -1 }); // user history queries
+WorkoutSchema.index({ activityType: 1 }); // activity-type aggregation
+
 export const Workout = models.Workout || model("Workout", WorkoutSchema);

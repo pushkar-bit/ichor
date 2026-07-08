@@ -13,12 +13,12 @@ import "@/models/Workout";
 import { serializePost } from "@/lib/serialize";
 import { Avatar } from "@/components/ui/Avatar";
 import { StatChip } from "@/components/ui/StatChip";
-import { FlamePicker } from "@/components/features/FlamePicker";
-import { KudosButton } from "@/components/features/KudosButton";
+import { ReactionBar } from "@/components/features/ReactionBar";
 import { CommentSection } from "@/components/features/CommentSection";
 import { FlagButton } from "@/components/features/FlagButton";
 import { DietPill } from "@/components/features/ActivityCard";
 import { EditCaption } from "@/components/features/EditCaption";
+import { DeletePostButton } from "@/components/features/DeletePostButton";
 import { timeAgo, formatPace, formatDuration } from "@/lib/utils";
 
 export default async function PostDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -94,6 +94,12 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
           )}
           <EditCaption postId={post.id} initialCaption={post.caption} isOwner={me ? String(me._id) === post.author.id : false} />
 
+          {me && String(me._id) === post.author.id && (
+            <div className="pt-1">
+              <DeletePostButton postId={post.id} />
+            </div>
+          )}
+
           {post.workout.screenshotUrl && (
             <div className="border border-border-ichor rounded-xl p-3 flex items-center gap-2 text-xs text-white/50">
               <Camera className="w-4 h-4" /> Verified screenshot attached
@@ -101,11 +107,13 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
           )}
 
           <div className="flex items-center justify-between pt-2">
-            <FlamePicker postId={post.id} initialAvg={post.avgFlameRating} initialCount={post.flameCount} />
-            <div className="flex items-center gap-3">
-              <KudosButton postId={post.id} initialCount={post.kudosCount} initialGiven={post.kudosGiven} />
-              <FlagButton postId={post.id} />
-            </div>
+            <ReactionBar
+              postId={post.id}
+              initialHype={{ count: post.hypeCount, given: post.hypeGiven }}
+              initialRespect={{ count: post.respectCount, given: post.respectGiven }}
+              initialChallenge={{ count: post.challengeCount, given: post.challengeGiven }}
+            />
+            <FlagButton postId={post.id} />
           </div>
         </div>
       </article>

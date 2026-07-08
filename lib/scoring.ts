@@ -29,20 +29,11 @@ export type ScoreBreakdown = {
   runCount: number;
 };
 
-/** Only posted (non-hidden) workouts count toward any leaderboard. */
-export async function computeUserWeeklyScore(
-  userId: string,
-  at: Date = new Date(),
-): Promise<ScoreBreakdown> {
-  await connectDB();
-  const start = startOfWeek(at);
-  const end = endOfWeek(at);
+/** A null range means all-time (no date filter). Omitted start/end on a range are open-ended. */
+export type DateRange = { start?: Date; end?: Date } | null;
 
-  const posts = await Post.find({ userId, isHidden: false, createdAt: { $gte: start, $lt: end } })
-    .populate("workoutId")
-    .lean();
-
-  const validPosts = (posts as unknown as PopulatedPost[]).filter((p) => p.workoutId);
+function computeScoreFromPosts(userId: string, posts: PopulatedPost[], dietCards: any[]): ScoreBreakdown {
+  const validPosts = posts.filter((p) => p.workoutId);
   const baseCalories = validPosts.reduce((sum, p) => sum + (p.workoutId?.caloriesBurned || 0), 0);
   const totalDistanceKm = validPosts.reduce((sum, p) => sum + (p.workoutId?.distanceKm || 0), 0);
 
@@ -56,14 +47,11 @@ export async function computeUserWeeklyScore(
   const activeDays = activeDaySet.size;
   const consistencyMultiplier = Math.min(1.0 + Math.max(activeDays - 1, 0) * 0.1, 2.0);
 
-  const postIds = validPosts.map((p) => p._id);
-  const dietCards = await DietCard.find({ postId: { $in: postIds } }).lean();
   const cleanCount = dietCards.filter((d) => d.classification === "CLEAN").length;
   const cheatCount = dietCards.filter((d) => d.classification === "CHEAT").length;
 
   const integrityBonus = cleanCount * 50;
   const cheatPenalty = cheatCount > 0 ? baseCalories * 0.1 : 0;
-
   const finalScore = baseCalories * consistencyMultiplier + integrityBonus - cheatPenalty;
 
   return {
@@ -80,11 +68,84 @@ export async function computeUserWeeklyScore(
   };
 }
 
-export async function computeAllWeeklyScores(at: Date = new Date()) {
+/** Only posted (non-hidden) workouts count toward any leaderboard. */
+export async function computeUserScore(userId: string, range: DateRange): Promise<ScoreBreakdown> {
   await connectDB();
-  const users = await User.find({}).lean();
-  const scores = await Promise.all(users.map((u) => computeUserWeeklyScore(String(u._id), at)));
-  return scores.map((s, i) => ({ user: users[i], score: s }));
+  const createdAt: Record<string, Date> = {};
+  if (range?.start) createdAt.$gte = range.start;
+  if (range?.end) createdAt.$lt = range.end;
+
+  const posts = await Post.find({ userId, isHidden: false, ...(Object.keys(createdAt).length ? { createdAt } : {}) })
+    .populate({ path: "workoutId", select: "caloriesBurned distanceKm activityType avgPaceMinPerKm workoutDate" })
+    .select("_id workoutId")
+    .lean();
+
+  const postIds = posts.map((p) => p._id);
+  const dietCards = await DietCard.find({ postId: { $in: postIds } }).select("classification").lean();
+
+  return computeScoreFromPosts(userId, posts as unknown as PopulatedPost[], dietCards);
+}
+
+export async function computeUserWeeklyScore(userId: string, at: Date = new Date()): Promise<ScoreBreakdown> {
+  return computeUserScore(userId, { start: startOfWeek(at), end: endOfWeek(at) });
+}
+
+export async function computeAllWeeklyScores(at: Date = new Date()) {
+  return computeAllScoresForRange({ start: startOfWeek(at), end: endOfWeek(at) });
+}
+
+/**
+ * Batch version — fetches ALL posts and ALL diet cards in just 2 queries,
+ * then computes scores for every user purely in memory. Eliminates N+1 query hell.
+ */
+export async function computeAllScoresForRange(range: DateRange) {
+  await connectDB();
+  const users = await User.find({}).select("_id name username avatarUrl").lean();
+  if (users.length === 0) return [];
+
+  const createdAt: Record<string, Date> = {};
+  if (range?.start) createdAt.$gte = range.start;
+  if (range?.end) createdAt.$lt = range.end;
+
+  // Single query for all posts across all users
+  const allPosts = await Post.find({
+    userId: { $in: users.map((u) => u._id) },
+    isHidden: false,
+    ...(Object.keys(createdAt).length ? { createdAt } : {}),
+  })
+    .populate({ path: "workoutId", select: "caloriesBurned distanceKm activityType avgPaceMinPerKm workoutDate" })
+    .select("_id userId workoutId")
+    .lean();
+
+  // Group posts by userId
+  const postsByUser = new Map<string, PopulatedPost[]>();
+  const allPostIds: unknown[] = [];
+  for (const post of allPosts as any[]) {
+    const uid = String(post.userId);
+    if (!postsByUser.has(uid)) postsByUser.set(uid, []);
+    postsByUser.get(uid)!.push(post);
+    allPostIds.push(post._id);
+  }
+
+  // Single query for all diet cards across all posts
+  const allDietCards = await DietCard.find({ postId: { $in: allPostIds } })
+    .select("postId classification")
+    .lean();
+
+  // Group diet cards by postId
+  const dietByPost = new Map<string, any[]>();
+  for (const dc of allDietCards as any[]) {
+    const pid = String(dc.postId);
+    if (!dietByPost.has(pid)) dietByPost.set(pid, []);
+    dietByPost.get(pid)!.push(dc);
+  }
+
+  return users.map((u) => {
+    const userPosts = postsByUser.get(String(u._id)) ?? [];
+    const userDietCards = userPosts.flatMap((p) => dietByPost.get(String(p._id)) ?? []);
+    const score = computeScoreFromPosts(String(u._id), userPosts, userDietCards);
+    return { user: u, score };
+  });
 }
 
 export function integrityTier(points: number): string {

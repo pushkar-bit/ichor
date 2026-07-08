@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     locationZoneId,
     isPublic,
     dietDescription,
+    dietResult,
   } = body;
 
   if (!activityType || !distanceKm || !durationSeconds || !caloriesBurned) {
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
 
   let dietCard = null;
   if (dietDescription && dietDescription.trim().length > 0) {
-    const result = await classifyDiet(dietDescription);
+    const result = dietResult ?? (await classifyDiet(dietDescription));
     dietCard = await DietCard.create({
       postId: post._id,
       description: dietDescription,

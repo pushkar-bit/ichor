@@ -6,6 +6,27 @@
  */
 import { getGeminiModel, extractJson } from "./gemini";
 
+/** A clean, user-facing message paired with the right HTTP status — never the raw SDK error. */
+export class AIServiceError extends Error {
+  status: number;
+  constructor(message: string, status = 500) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/**
+ * Gemini's free tier caps gemini-2.5-flash at a small number of requests PER DAY, for the
+ * whole API key/project — not per user, not per minute. That's a very different failure
+ * mode from a transient rate limit: retrying sooner never helps, only a new day (or
+ * enabling billing on the project) does. Distinguish them so the message given is honest.
+ */
+function classifyGeminiError(message: string): "daily_quota" | "rate_limit" | "other" {
+  if (/perday/i.test(message)) return "daily_quota";
+  if (/429|quota|rate.?limit/i.test(message)) return "rate_limit";
+  return "other";
+}
+
 const CHEAT_WORDS = [
   "pizza", "burger", "fries", "fried", "chips", "soda", "coke", "candy", "chocolate",
   "cake", "donut", "doughnut", "ice cream", "mcdonald", "kfc", "sugar", "junk", "cheat",
@@ -132,8 +153,19 @@ export async function parseScreenshot(
       workoutDate: parsed.workoutDate ?? new Date().toISOString().slice(0, 10),
     };
   } catch (err) {
-    console.error("[gemini] parseScreenshot failed, using fallback:", (err as Error).message);
-    return parseScreenshotFallback(filename, weightKg);
+    const raw = (err as Error).message || "";
+    console.error("[gemini] parseScreenshot failed:", raw);
+    const kind = classifyGeminiError(raw);
+    if (kind === "daily_quota") {
+      throw new AIServiceError(
+        "The AI screenshot reader has used up its free daily request limit for today (shared across everyone, not per-user) — it resets tomorrow. Ask whoever manages GEMINI_API_KEY to enable billing for more headroom sooner.",
+        429,
+      );
+    }
+    if (kind === "rate_limit") {
+      throw new AIServiceError("Our AI screenshot reader is briefly overloaded — wait a moment and try again.", 429);
+    }
+    throw new AIServiceError("Couldn't read that screenshot clearly. Try a clearer photo of your workout summary screen.", 422);
   }
 }
 

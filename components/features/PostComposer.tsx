@@ -15,11 +15,11 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
 
-  // Workout stats are only ever populated by OCR-extracting a screenshot — there's no
-  // manual entry path, so these are display-only once set, never directly editable.
+  // Workout stats are initially populated by OCR-extracting a screenshot,
+  // but they are now editable in case the AI hallucinates or misses a decimal.
   const [activityType, setActivityType] = useState<"RUN" | "WALK" | "CYCLE" | null>(null);
   const [distanceKm, setDistanceKm] = useState("");
-  const [durationMin, setDurationMin] = useState("");
+  const [durationString, setDurationString] = useState("");
   const [avgPace, setAvgPace] = useState("");
   const [caloriesBurned, setCaloriesBurned] = useState("");
   const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
@@ -56,14 +56,35 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
   async function processScreenshot(file: File) {
     setOcrLoading(true);
     try {
+      // Convert everything (HEIF, PNG, JPG) to a standardized JPEG to ensure OCR accuracy and save bandwidth
+      const dataUrl = await resizeToDataUrl(file, 1500); 
+      const blob = await (await fetch(dataUrl)).blob();
+      
       const form = new FormData();
-      form.append("file", file);
+      form.append("file", blob, "screenshot.jpg");
       const res = await fetch("/api/workouts/ocr", { method: "POST", body: form });
+      
+      if (!res.ok) {
+        let msg = "Failed to extract screenshot data.";
+        try {
+          const errData = await res.json();
+          if (errData.error) msg = errData.error;
+        } catch {}
+        setError(msg);
+        return;
+      }
+      
       const data = await res.json();
-      if (res.ok) {
         setActivityType(data.extracted.activityType);
         setDistanceKm(String(data.extracted.distanceKm ?? 0));
-        setDurationMin(String(Math.round((data.extracted.durationSeconds ?? 0) / 60)));
+        if (data.extracted.durationSeconds) {
+          const totalSecs = data.extracted.durationSeconds;
+          const m = Math.floor(totalSecs / 60);
+          const s = totalSecs % 60;
+          setDurationString(s > 0 ? `${m}:${s.toString().padStart(2, '0')}` : String(m));
+        } else {
+          setDurationString("");
+        }
         if (data.extracted.avgPaceMinPerKm) {
           setAvgPace(String(data.extracted.avgPaceMinPerKm));
         } else if (data.extracted.distanceKm > 0 && data.extracted.durationSeconds > 0) {
@@ -75,7 +96,6 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
         }
         setCaloriesBurned(String(data.extracted.caloriesBurned ?? 0));
         setScreenshotUrl(data.screenshotUrl);
-      }
     } finally {
       setOcrLoading(false);
     }
@@ -192,11 +212,25 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
       return;
     }
     const distance = parseFloat(distanceKm);
-    const duration = parseFloat(durationMin) * 60;
+    let duration = 0;
+    if (durationString.includes(":")) {
+      const [m, s] = durationString.split(":");
+      duration = (parseInt(m, 10) || 0) * 60 + (parseInt(s, 10) || 0);
+    } else {
+      duration = parseFloat(durationString) * 60;
+    }
     const calories = parseInt(caloriesBurned, 10);
 
-    if (isNaN(distance) || isNaN(duration) || isNaN(calories)) {
-      setError("Couldn't read valid stats from that screenshot — try another one.");
+    if (isNaN(distance) || distance <= 0) {
+      setError("Please enter a valid distance (km).");
+      return;
+    }
+    if (isNaN(duration) || duration <= 0) {
+      setError("Please enter a valid duration (minutes).");
+      return;
+    }
+    if (isNaN(calories) || calories <= 0) {
+      setError("Please enter valid calories burned.");
       return;
     }
 
@@ -218,15 +252,25 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
           sourceType: "OCR_SCREENSHOT",
           screenshotUrl,
           caption,
-          photoUrls: screenshotUrl ? [screenshotUrl, ...photos] : photos,
+          // If the user added their own photos, they appear first (main feed image).
+          // The screenshot always goes at the end — stored for verification but not the hero.
+          photoUrls: photos.length > 0
+            ? [...photos, ...(screenshotUrl ? [screenshotUrl] : [])]
+            : screenshotUrl ? [screenshotUrl] : [],
           locationZoneId: zoneId || null,
           isPublic,
           dietDescription: finalDietResult ? dietText : undefined,
         }),
       });
       if (!res.ok) {
-        const data = await res.json();
-        setError(data.error ?? "Something went wrong.");
+        let message = "Something went wrong.";
+        try {
+          const data = await res.json();
+          message = data.error ?? message;
+        } catch {
+          message = `Server error (${res.status}). Please try again.`;
+        }
+        setError(message);
         return;
       }
       const data = await res.json();
@@ -279,10 +323,10 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
             <Camera className="w-3.5 h-3.5" /> {activityType} · extracted from screenshot
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <StatDisplay label="Distance (km)" value={distanceKm} />
-            <StatDisplay label="Duration (min)" value={durationMin} />
-            <StatDisplay label="Pace (min/km)" value={avgPace || "-"} />
-            <StatDisplay label="Calories" value={caloriesBurned} />
+            <StatInput label="Distance (km)" value={distanceKm} onChange={setDistanceKm} />
+            <StatInput label="Duration (mm:ss)" value={durationString} onChange={setDurationString} />
+            <StatInput label="Pace (min/km)" value={avgPace} onChange={setAvgPace} />
+            <StatInput label="Calories" value={caloriesBurned} onChange={setCaloriesBurned} />
           </div>
         </div>
       )}
@@ -292,7 +336,11 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
 
       {/* Photos */}
       <div className="mb-4">
-        <label className="text-xs font-medium text-white/50 mb-2 block">Additional photos (optional, max 5)</label>
+        <label className="text-xs font-medium text-white/50 mb-2 block">
+          {photos.length > 0
+            ? `Photos · first photo shown on feed (${photos.length}/5)`
+            : "Add a photo — it will be your main feed image (optional)"}
+        </label>
         <div className="grid grid-cols-3 gap-2">
           {photos.map((p, i) => (
             <div key={i} className="relative aspect-square rounded-xl overflow-hidden bg-midnight-card">
@@ -435,11 +483,17 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
   );
 }
 
-function StatDisplay({ label, value }: { label: string; value: string }) {
+function StatInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
-    <div className="bg-midnight border border-border-ichor rounded-lg px-2.5 py-2 text-center">
-      <div className="text-[10px] uppercase tracking-wide text-white/40 mb-1">{label}</div>
-      <div className="text-sm font-semibold">{value}</div>
+    <div className="bg-midnight border border-border-ichor rounded-lg px-2.5 py-1.5 flex flex-col items-center">
+      <div className="text-[10px] uppercase tracking-wide text-white/40 mb-0.5 text-center">{label}</div>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="-"
+        className="w-full bg-transparent text-sm font-semibold text-center focus:outline-none focus:text-momentum"
+      />
     </div>
   );
 }

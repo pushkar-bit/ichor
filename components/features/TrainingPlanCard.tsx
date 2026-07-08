@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 type Day = { day: string; type: string; distanceKm: number | null; targetCalories: number; notes: string };
@@ -16,11 +16,36 @@ const TYPE_COLOR: Record<string, string> = {
 
 export function TrainingPlanCard() {
   const [plan, setPlan] = useState<Day[] | null>(null);
+  const hasFetchedRef = useRef(false);
 
   useEffect(() => {
+    const CACHE_KEY = "ichor_training_plan_cache";
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        // If cache is less than 24 hours old, use it and skip API
+        if (Date.now() - parsed.timestamp < 86400000) {
+          setPlan(parsed.plan);
+          return;
+        }
+      } catch (e) {}
+    }
+
+    // React Strict Mode (on by default in dev, App Router) intentionally runs this
+    // effect twice on mount. Without this guard, a cold cache means two real Gemini
+    // requests fire for a single page visit, burning through the free-tier quota.
+    if (hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
+
     fetch("/api/coach/training-plan", { method: "POST" })
       .then((r) => r.json())
-      .then((data) => setPlan(data.plan))
+      .then((data) => {
+        if (data.plan) {
+          setPlan(data.plan);
+          localStorage.setItem(CACHE_KEY, JSON.stringify({ plan: data.plan, timestamp: Date.now() }));
+        }
+      })
       .catch(() => {});
   }, []);
 
