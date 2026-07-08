@@ -7,7 +7,11 @@ const UserSchema = new Schema(
     name: { type: String, required: true },
     username: {
       type: String,
-      default: null,
+      // No `default: null` — a sparse unique index still counts an explicit null as
+      // "present", so every new signup would occupy that one null slot and block every
+      // signup after it (this is exactly what happened: first with the old clerkId index,
+      // now with this one). Leaving the field genuinely absent until onboarding sets it is
+      // what sparse actually needs to exclude un-onboarded users from the uniqueness check.
       unique: true,
       sparse: true,
       trim: true,

@@ -5,7 +5,10 @@ export const SESSION_COOKIE_NAME = "ichor_session";
 const SESSION_DURATION_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
 function getSecretKey() {
-  const secret = process.env.SESSION_SECRET || process.env.ADMIN_SECRET;
+  // No fallback to another secret here on purpose — a silent fallback is exactly what let
+  // a missing SESSION_SECRET go unnoticed before (sessions kept "working" off an unrelated
+  // secret). Missing config should fail loudly, not quietly borrow someone else's key.
+  const secret = process.env.SESSION_SECRET;
   if (!secret) throw new Error("SESSION_SECRET is not set");
   return new TextEncoder().encode(secret);
 }
