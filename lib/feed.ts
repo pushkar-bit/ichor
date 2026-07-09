@@ -4,6 +4,7 @@ import { CampusZone } from "@/models/CampusZone";
 import { DietCard } from "@/models/DietCard";
 import { User } from "@/models/User";
 import { Workout } from "@/models/Workout";
+import { Follow } from "@/models/Follow";
 import { serializePost } from "./serialize";
 import { getInterestSets, combineReactorIds, pickFeaturedReactorId } from "./reactionSummary";
 
@@ -21,9 +22,9 @@ export async function getFeedPosts(
     const memberDocs = await ClanMember.find({ clanId: viewer.clanId }).lean();
     query.userId = { $in: memberDocs.map((m: any) => m.userId) };
   } else if (filter === "following") {
-    const hypedPosts = await Post.find({ hypeUserIds: viewer._id }).select("userId").lean();
-    const authorIds = [...new Set(hypedPosts.map((p: any) => String(p.userId)))];
-    query.userId = { $in: authorIds.length ? authorIds : [viewer._id] };
+    const followed = await Follow.find({ followerId: viewer._id }).select("followingId").lean();
+    const authorIds = followed.map((f: any) => String(f.followingId));
+    query.userId = { $in: [...authorIds, String(viewer._id)] };
   } else if (filter === "top") {
     const start = new Date();
     start.setHours(0, 0, 0, 0);

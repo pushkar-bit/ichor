@@ -114,14 +114,14 @@ async function fetchStravaActivityPhotos(accessToken: string, activityId: number
 }
 
 /**
- * Creates a Workout + a private Post for one Strava activity (called only from the webhook —
+ * Creates a Workout + a Post for one Strava activity (called only from the webhook —
  * see app/api/integrations/strava/webhook/route.ts — so this only ever fires for activities
  * created after the user connected Strava, never historical ones) and rolls it into the user's
  * stats. A Post is required alongside the Workout because scoring/badges/leaderboards
- * (lib/scoring.ts, lib/badges.ts) all read from Posts, not raw Workouts — `isPublic: false`
- * keeps it out of the public feed while still counting toward everything else. Returns null
- * for unsupported activity types or activities already synced (caught via the unique
- * userId+externalId index on Workout).
+ * (lib/scoring.ts, lib/badges.ts) all read from Posts, not raw Workouts, and the feed itself
+ * only reads Posts with `isPublic: true` — so synced activities need to be public to show up
+ * in the main feed like manually-created posts do. Returns null for unsupported activity types
+ * or activities already synced (caught via the unique userId+externalId index on Workout).
  *
  * `accessToken` is optional and only used to fetch the runner's own Strava photos. Without it,
  * or when the activity has none, the post still always gets the generated route-map image.
@@ -175,7 +175,7 @@ export async function ingestStravaActivity(user: StravaLinkedUser, activity: Str
     workoutId: workout._id,
     caption: activity.name ?? "",
     photoUrls,
-    isPublic: false,
+    isPublic: true,
   });
 
   const { newBadges } = await recordWorkoutStats(user, { distanceKm, caloriesBurned }, workoutDate);

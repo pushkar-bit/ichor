@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 export function FollowButton({
@@ -16,6 +17,7 @@ export function FollowButton({
 }) {
   const [following, setFollowing] = useState(initialFollowing);
   const [busy, setBusy] = useState(false);
+  const router = useRouter();
 
   async function toggle() {
     if (busy) return;
@@ -31,6 +33,9 @@ export function FollowButton({
       const data = await res.json();
       setFollowing(data.following);
       onChange?.(data.following);
+      // Re-fetch server-derived data (e.g. the head-to-head comparison card) that depends on
+      // follow state and was computed at initial page load, not just this button's local state.
+      router.refresh();
     } catch {
       setFollowing(prev);
     } finally {
