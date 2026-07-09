@@ -109,7 +109,7 @@ export default function SplashPage() {
           <motion.video
             key="splash-video"
             ref={videoRef}
-            src="/anim.mp4"
+            src="/api/public/media/anim"
             muted
             playsInline
             autoPlay
@@ -189,13 +189,11 @@ export default function SplashPage() {
       </AnimatePresence>
 
       {/* ── AUDIO LAYER ─────────────────────────────────────────────────── */}
-      {/* Separate <audio> element — plays logo.mp3 at full volume.          */}
+      {/* Served via /api/public/media/logo which handles Range requests.    */}
       {/* The <video> above is muted (required for autoplay); audio is not.  */}
-      {/* onEnded is NOT wired here — we rely on the VIDEO's ended event     */}
-      {/* because both files should be the same duration.                    */}
       <audio
         ref={audioRef}
-        src="/logo.mp3"
+        src="/api/public/media/logo"
         preload="auto"
         style={{ display: "none" }}
       />
