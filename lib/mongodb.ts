@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { Workout } from "@/models/Workout";
 
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/ichor";
 
@@ -26,5 +27,14 @@ export async function connectDB() {
     });
   }
   cached.conn = await cached.promise;
+
+  // Mongoose builds newly-added schema indexes in the background, unawaited by connect() —
+  // a burst of writes right after a schema change can race past a not-yet-built unique index
+  // and insert real duplicates, which then makes Mongo refuse to ever build it. Workout's
+  // userId+externalId uniqueness (dedup for synced workouts) has to actually be enforced, not
+  // eventually, so wait for it explicitly. Model.init() caches its resolved promise, so this
+  // is a no-op after the first call.
+  await Workout.init();
+
   return cached.conn;
 }

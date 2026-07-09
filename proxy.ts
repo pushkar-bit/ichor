@@ -5,9 +5,10 @@ import { ADMIN_SESSION_COOKIE_NAME, verifyAdminSession } from "@/lib/adminAuth";
 const PROTECTED_PREFIXES = ["/feed", "/post", "/map", "/leaderboard", "/clans", "/coach", "/profile", "/api"];
 
 // Excluded from the protected-route gate above: /api/public/* (unauthenticated read
-// endpoints) and /api/auth/* (the login/logout routes themselves — they can't require
-// a session that doesn't exist yet).
-const PUBLIC_API_PREFIXES = ["/api/public", "/api/auth"];
+// endpoints), /api/auth/* (the login/logout routes themselves — they can't require
+// a session that doesn't exist yet), and the Strava webhook (Strava's servers call this
+// directly with no ichor session cookie — gating it here would silently 401 every event).
+const PUBLIC_API_PREFIXES = ["/api/public", "/api/auth", "/api/integrations/strava/webhook"];
 
 // Admin is a completely separate root, with its own session/cookie/credentials —
 // unrelated to the regular Google-authenticated user session above.

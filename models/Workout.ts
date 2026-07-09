@@ -28,5 +28,14 @@ const WorkoutSchema = new Schema(
 
 WorkoutSchema.index({ userId: 1, workoutDate: -1 }); // user history queries
 WorkoutSchema.index({ activityType: 1 }); // activity-type aggregation
+// `externalId` defaults to null (not absent) for MANUAL/OCR_SCREENSHOT workouts, and a plain
+// `sparse` index still treats an explicit null as "present" — so a `sparse` unique index here
+// would wrongly reject a user's second manually-logged workout. A partial filter that only
+// indexes real string externalIds sidesteps that entirely (see models/User.ts for the same
+// footgun previously hit on `username`).
+WorkoutSchema.index(
+  { userId: 1, externalId: 1 },
+  { unique: true, partialFilterExpression: { externalId: { $type: "string" } } },
+); // dedup synced imports (e.g. Strava)
 
 export const Workout = models.Workout || model("Workout", WorkoutSchema);

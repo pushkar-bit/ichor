@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "tsx --env-file=.env scripts/seed.ts"
+    "seed": "tsx --env-file=.env scripts/seed.ts",
+    "strava:webhook": "tsx --env-file=.env scripts/stravaWebhook.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

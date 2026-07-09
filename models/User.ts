@@ -28,6 +28,9 @@ const UserSchema = new Schema(
     totalCalories: { type: Number, default: 0 },
     streakDays: { type: Number, default: 0 },
     bestStreakDays: { type: Number, default: 0 },
+    // Spent automatically to bridge a single missed day instead of resetting the streak —
+    // see lib/recordWorkout.ts. Starts with one freebie; replenished on weekly milestones.
+    streakFreezesAvailable: { type: Number, default: 1 },
     integrityPoints: { type: Number, default: 0 },
     battlesWon: { type: Number, default: 0 },
     battlesLost: { type: Number, default: 0 },
@@ -37,6 +40,11 @@ const UserSchema = new Schema(
     badges: [{ type: String }],
     lastPostDate: { type: Date, default: null },
     fcmToken: { type: String, default: null },
+    stravaAthleteId: { type: String, default: null, index: true },
+    stravaAccessToken: { type: String, default: null },
+    stravaRefreshToken: { type: String, default: null },
+    stravaTokenExpiresAt: { type: Date, default: null },
+    stravaConnectedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
