@@ -199,8 +199,7 @@ export default function AboutPage() {
             <SectionLabel>The Team</SectionLabel>
             <h2 className="font-display italic font-bold text-5xl mb-4">Built by runners,<br />for runners</h2>
             <p className="text-white/50 max-w-xl mb-16">
-              ICHOR was founded by a small team obsessed with turning campus fitness culture
-              into something legendary. Photos incoming — the founders are still out on a run.
+              ICHOR was founded by developers Pushkar Jain and Om Yadav, supported by a core team obsessed with turning campus fitness culture into something legendary.
             </p>
           </FadeIn>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -312,27 +311,33 @@ function FadeIn({
 function FounderCard({ founder }: { founder: (typeof FOUNDERS)[number] }) {
   return (
     <div className="bg-midnight-raised border border-border-ichor rounded-2xl overflow-hidden hover:border-momentum/40 transition-colors">
-      {/* Photo placeholder */}
+      {/* Photo placeholder / image */}
       <div
         className="h-48 flex items-center justify-center relative overflow-hidden"
         style={{ background: founder.gradient }}
       >
-        <div className="absolute inset-0 opacity-20"
-          style={{
-            backgroundImage: `radial-gradient(circle at 30% 70%, #ae93f4 0%, transparent 60%),
-              radial-gradient(circle at 70% 30%, #fda2de 0%, transparent 60%)`,
-          }}
-        />
-        <div className="relative w-20 h-20 rounded-full bg-white/10 border-2 border-white/20 flex items-center justify-center">
-          <span className="font-display italic font-bold text-2xl text-white">
-            {founder.initials}
-          </span>
-        </div>
-        <div className="absolute bottom-3 right-3">
-          <span className="text-[10px] font-medium text-white/40 bg-black/30 rounded-full px-2 py-0.5 backdrop-blur-sm">
-            Photo coming soon
-          </span>
-        </div>
+        {founder.image ? (
+          <img src={founder.image} alt={founder.name} className="absolute inset-0 w-full h-full object-cover" />
+        ) : (
+          <>
+            <div className="absolute inset-0 opacity-20"
+              style={{
+                backgroundImage: `radial-gradient(circle at 30% 70%, #ae93f4 0%, transparent 60%),
+                  radial-gradient(circle at 70% 30%, #fda2de 0%, transparent 60%)`,
+              }}
+            />
+            <div className="relative w-20 h-20 rounded-full bg-white/10 border-2 border-white/20 flex items-center justify-center">
+              <span className="font-display italic font-bold text-2xl text-white">
+                {founder.initials}
+              </span>
+            </div>
+            <div className="absolute bottom-3 right-3">
+              <span className="text-[10px] font-medium text-white/40 bg-black/30 rounded-full px-2 py-0.5 backdrop-blur-sm">
+                Photo coming soon
+              </span>
+            </div>
+          </>
+        )}
       </div>
       {/* Info */}
       <div className="p-5">
@@ -389,23 +394,26 @@ const FOUNDERS = [
   {
     name: "Pushkar Jain",
     initials: "PJ",
-    role: "Co-Founder & Product Lead",
+    role: "Co-Founder & Developer",
     bio: "Obsessed with building products that make people move. Believes every campus needs a fitness battleground.",
     gradient: "linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)",
+    image: "/founder-1.jpg",
   },
   {
-    name: "Sumedh Wakode",
-    initials: "SW",
-    role: "Co-Founder & Creative Director",
-    bio: "Designed the ICHOR identity from the ground up. Turns brand philosophy into visual language that hits different.",
+    name: "Om Yadav",
+    initials: "OY",
+    role: "Co-Founder & Developer",
+    bio: "Passionate about pushing limits and turning ideas into reality. Drives the technical vision of ICHOR.",
     gradient: "linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)",
+    image: "/founder-2.jpg",
   },
   {
-    name: "The Team",
+    name: "The Core Team",
     initials: "IC",
     role: "Core Contributors",
-    bio: "A squad of builders, runners, and campus culture obsessives making ICHOR real — one commit at a time.",
+    bio: "Abhinav Sukhwal, Rudraksha Baragi, and Samridhi Negi. A squad of builders, runners, and campus culture obsessives making ICHOR real.",
     gradient: "linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)",
+    image: undefined,
   },
 ];
 
