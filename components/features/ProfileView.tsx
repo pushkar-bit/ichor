@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { Trophy, Flame, ShieldCheck, MapPin, Gauge, Ruler } from "lucide-react";
+import { Trophy, Flame, ShieldCheck, MapPin, Gauge, Ruler, Snowflake } from "lucide-react";
 import { integrityTier } from "@/lib/scoring";
 import { BADGE_DEFS } from "@/lib/badges";
 import { Avatar } from "@/components/ui/Avatar";
@@ -9,6 +9,10 @@ import { EditProfileModal } from "@/components/features/EditProfileModal";
 import { TrainingPlanCard } from "@/components/features/TrainingPlanCard";
 import { ActivityHeatmap } from "@/components/features/ActivityHeatmap";
 import { FollowButton } from "@/components/features/FollowButton";
+import { StravaConnectButton } from "@/components/features/StravaConnectButton";
+import { HeadToHeadCard } from "@/components/features/HeadToHeadCard";
+import { WeeklyRecapCard } from "@/components/features/WeeklyRecapCard";
+import type { WeeklyRecap } from "@/lib/weeklyRecap";
 
 type ProfileUser = {
   name: string;
@@ -24,6 +28,7 @@ type ProfileUser = {
   battlesLost: number;
   streakDays: number;
   bestStreakDays: number;
+  streakFreezesAvailable?: number;
   integrityPoints: number;
   badges?: string[];
 };
@@ -37,6 +42,10 @@ export function ProfileView({
   posts,
   heatmapData,
   personalBests,
+  stravaConnected = false,
+  stravaStatus,
+  headToHead = null,
+  weeklyRecap = null,
 }: {
   user: ProfileUser;
   isOwnProfile: boolean;
@@ -46,6 +55,13 @@ export function ProfileView({
   posts: any[];
   heatmapData: Record<string, number>;
   personalBests: { best5kPaceMinPerKm: number | null; highestDistanceKm: number | null };
+  stravaConnected?: boolean;
+  stravaStatus?: "connected" | "error";
+  headToHead?: {
+    me: { name: string; avatarUrl: string; distanceKm: number; calories: number; streakDays: number };
+    them: { name: string; avatarUrl: string; distanceKm: number; calories: number; streakDays: number };
+  } | null;
+  weeklyRecap?: WeeklyRecap | null;
 }) {
   const totalBattles = user.battlesWon + user.battlesLost;
   const winRatio = totalBattles > 0 ? user.battlesWon / totalBattles : 0;
@@ -85,6 +101,18 @@ export function ProfileView({
           <FollowButton userId={(user as any)._id ? String((user as any)._id) : ""} initialFollowing={isFollowing} />
         )}
       </div>
+
+      {isOwnProfile && stravaStatus && (
+        <p className={`text-xs text-center ${stravaStatus === "connected" ? "text-lime" : "text-ignite"}`}>
+          {stravaStatus === "connected" ? "Strava connected — new runs will sync in automatically." : "Couldn't connect Strava. Try again."}
+        </p>
+      )}
+
+      {isOwnProfile && weeklyRecap && <WeeklyRecapCard recap={weeklyRecap} />}
+
+      {isOwnProfile && <StravaConnectButton connected={stravaConnected} />}
+
+      {!isOwnProfile && headToHead && <HeadToHeadCard me={headToHead.me} them={headToHead.them} />}
 
       {/* Personal bests — highlighted headline stats */}
       <div className="grid grid-cols-2 gap-3">
@@ -144,6 +172,12 @@ export function ProfileView({
           <div className="text-[11px] text-white/40 uppercase tracking-wide">Personal Best</div>
         </div>
       </div>
+      {isOwnProfile && (user.streakFreezesAvailable ?? 0) > 0 && (
+        <div className="flex items-center justify-center gap-1.5 text-xs text-blue-300/80 -mt-4">
+          <Snowflake className="w-3.5 h-3.5" />
+          {user.streakFreezesAvailable} streak freeze{user.streakFreezesAvailable === 1 ? "" : "s"} available — covers one missed day automatically.
+        </div>
+      )}
 
       {/* Integrity */}
       <div className="bg-midnight-raised border border-border-ichor rounded-2xl p-4 flex items-center gap-3">
@@ -194,7 +228,7 @@ export function ProfileView({
           <div className="grid grid-cols-3 gap-1.5">
             {posts.map((p: any) => (
               <Link key={String(p._id)} href={`/post/${p._id}`} className="relative aspect-square bg-midnight-card rounded-lg overflow-hidden">
-                {p.photoUrls[0] && <Image src={p.photoUrls[0]} alt="" fill unoptimized className="object-cover" />}
+                {p.photoUrls[0] && <Image src={p.photoUrls[0]} alt="" fill sizes="33vw" className="object-cover" />}
               </Link>
             ))}
           </div>

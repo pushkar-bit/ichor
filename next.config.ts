@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "img.clerk.com" },
       { protocol: "https", hostname: "images.clerk.dev" },
       { protocol: "https", hostname: "res.cloudinary.com" },
+      // Google OAuth profile pictures (lh3/lh4/lh5/lh6.googleusercontent.com) — the only
+      // reason Avatar.tsx had `unoptimized` hardcoded everywhere was to dodge this being missing.
+      { protocol: "https", hostname: "*.googleusercontent.com" },
     ],
   },
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Trophy } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
@@ -24,7 +24,7 @@ const RANGES = [
 
 const RANK_COLORS = ["#D4AF37", "#C0C0C0", "#CD7F32"];
 
-type Row = {
+export type LeaderboardWidgetRow = {
   userId?: string;
   username?: string | null;
   clanId?: string;
@@ -37,16 +37,26 @@ type Row = {
 };
 
 const TOP_N = 8;
+const DEFAULT_CATEGORY = "calories";
+const DEFAULT_RANGE = "week";
+
+type LeaderboardWidgetInitialData = { rows: LeaderboardWidgetRow[]; me: string | null };
 
 /** Condensed leaderboard for the feed's right rail — same data as the full /leaderboard page. */
-export function LeaderboardWidget() {
-  const [category, setCategory] = useState("calories");
-  const [range, setRange] = useState("week");
-  const [rows, setRows] = useState<Row[]>([]);
-  const [meId, setMeId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+export function LeaderboardWidget({ initialData }: { initialData?: LeaderboardWidgetInitialData }) {
+  const [category, setCategory] = useState(DEFAULT_CATEGORY);
+  const [range, setRange] = useState(DEFAULT_RANGE);
+  const [rows, setRows] = useState<LeaderboardWidgetRow[]>(initialData?.rows.slice(0, TOP_N) ?? []);
+  const [meId, setMeId] = useState<string | null>(initialData?.me ?? null);
+  const [loading, setLoading] = useState(!initialData);
+  // The feed page already server-fetched calories/week — skip the redundant client refetch on mount.
+  const skipNextLoad = useRef(Boolean(initialData));
 
   useEffect(() => {
+    if (skipNextLoad.current) {
+      skipNextLoad.current = false;
+      return;
+    }
     setLoading(true);
     fetch(`/api/leaderboards/${category}?range=${range}`)
       .then((r) => r.json())

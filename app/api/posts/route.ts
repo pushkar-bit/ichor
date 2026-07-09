@@ -4,13 +4,10 @@ import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { Workout } from "@/models/Workout";
 import { Post } from "@/models/Post";
 import { DietCard } from "@/models/DietCard";
-import { User } from "@/models/User";
 import { classifyDiet } from "@/lib/ai";
 import { claimZone } from "@/lib/territory";
-import { evaluateBadges } from "@/lib/badges";
-import { dayKey, weekKey } from "@/lib/week";
-import { computeUserWeeklyScore } from "@/lib/scoring";
-import { addScore } from "@/lib/redis";
+import { recordWorkoutStats } from "@/lib/recordWorkout";
+import { getPersonalBests } from "@/lib/personalBests";
 
 export async function POST(req: NextRequest) {
   await connectDB();
@@ -43,6 +40,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "At least one photo is required" }, { status: 400 });
   }
 
+  // Fetched before the new Workout exists, so this is strictly the "prior" record to beat.
+  type PopulatedPost = { workoutId: { activityType: string; distanceKm: number; avgPaceMinPerKm: number | null } | null };
+  const priorPosts = await Post.find({ userId: me._id, isHidden: false })
+    .select({ workoutId: 1 })
+    .populate({ path: "workoutId", select: "activityType distanceKm avgPaceMinPerKm" })
+    .lean();
+  const priorBests = getPersonalBests((priorPosts as unknown as PopulatedPost[]).map((p) => p.workoutId));
+
   const workout = await Workout.create({
     userId: me._id,
     sourceType: sourceType ?? "MANUAL",
@@ -65,19 +70,6 @@ export async function POST(req: NextRequest) {
     locationZoneId: locationZoneId ?? null,
     isPublic: isPublic ?? true,
   });
-
-  const today = dayKey(new Date());
-  const lastPost = me.lastPostDate ? dayKey(new Date(me.lastPostDate)) : null;
-  if (lastPost !== today) {
-    const yesterday = dayKey(new Date(Date.now() - 86400000));
-    const newStreak = lastPost === yesterday ? me.streakDays + 1 : 1;
-    me.streakDays = newStreak;
-    me.bestStreakDays = Math.max(me.bestStreakDays, newStreak);
-    me.lastPostDate = new Date();
-  }
-  me.totalDistanceKm += distanceKm;
-  me.totalWorkouts += 1;
-  me.totalCalories += caloriesBurned;
 
   // Diet classification (a Gemini call — several seconds) and territory claiming touch
   // completely independent data, so run them concurrently instead of back to back.
@@ -104,25 +96,17 @@ export async function POST(req: NextRequest) {
     locationZoneId ? claimZone(String(me._id), locationZoneId, caloriesBurned) : Promise.resolve(null),
   ]);
 
-  // me.save() persists the mutations above; evaluateBadges reads those same in-memory
-  // fields (plus its own DB counts) so it doesn't need to wait on the save to finish;
-  // computeUserWeeklyScore reads the Post/DietCard docs already created above. None of the
-  // three depend on each other's result, so run them together instead of sequentially.
-  const [, newBadges, updatedScore] = await Promise.all([
-    me.save(),
-    evaluateBadges(me),
-    computeUserWeeklyScore(String(me._id)),
-  ]);
+  const { newBadges } = await recordWorkoutStats(me, { distanceKm, caloriesBurned }, new Date());
 
-  if (newBadges.length) {
-    await User.updateOne({ _id: me._id }, { $addToSet: { badges: { $each: newBadges } } });
-  }
-
-  const week = weekKey();
-  await Promise.all([
-    addScore(`lb:calories:${week}`, String(me._id), updatedScore.finalScore),
-    addScore(`lb:distance:${week}`, String(me._id), updatedScore.totalDistanceKm),
-  ]);
+  const newPersonalBests = {
+    distance: distanceKm > (priorBests.highestDistanceKm ?? 0),
+    pace:
+      activityType === "RUN" &&
+      avgPaceMinPerKm != null &&
+      distanceKm >= 4.8 &&
+      distanceKm <= 5.3 &&
+      (priorBests.best5kPaceMinPerKm === null || avgPaceMinPerKm < priorBests.best5kPaceMinPerKm),
+  };
 
   return NextResponse.json({
     postId: String(post._id),
@@ -130,5 +114,6 @@ export async function POST(req: NextRequest) {
     dietCard,
     territoryEvent,
     newBadges,
+    newPersonalBests,
   });
 }

@@ -35,7 +35,7 @@ export function serializePost(post: RawJoinedPost, currentUserId?: string) {
       name: author?.name ?? "Athlete",
       avatarUrl: author?.avatarUrl ?? "",
     },
-    createdAt: post.createdAt,
+    createdAt: post.createdAt instanceof Date ? post.createdAt.toISOString() : post.createdAt,
     workout: {
       activityType: workout?.activityType ?? "RUN",
       distanceKm: workout?.distanceKm ?? 0,

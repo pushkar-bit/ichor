@@ -1,18 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Search, Plus, Users } from "lucide-react";
 import { EmptyState } from "@/components/ui/StatChip";
 
 type ClanRow = { id: string; name: string; tag: string; color: string; memberCount: number; score: number };
 
-export function ClansListClient({ myClanId }: { myClanId: string | null }) {
-  const [clans, setClans] = useState<ClanRow[]>([]);
+export function ClansListClient({ myClanId, initialClans }: { myClanId: string | null; initialClans?: ClanRow[] }) {
+  const [clans, setClans] = useState<ClanRow[]>(initialClans ?? []);
   const [query, setQuery] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialClans);
+  // The page already server-fetched the unfiltered list — skip the redundant client refetch on mount.
+  const skipNextLoad = useRef(Boolean(initialClans));
 
   useEffect(() => {
+    if (skipNextLoad.current) {
+      skipNextLoad.current = false;
+      return;
+    }
     const controller = new AbortController();
     setLoading(true);
     const url = query.trim() ? `/api/clans/search?q=${encodeURIComponent(query)}` : "/api/clans";
@@ -53,7 +59,18 @@ export function ClansListClient({ myClanId }: { myClanId: string | null }) {
       </div>
 
       {loading ? (
-        <p className="text-sm text-white/30 text-center py-10">Loading...</p>
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 bg-midnight-raised border border-border-ichor rounded-xl px-4 py-3">
+              <div className="w-9 h-9 rounded-lg shrink-0 skeleton" />
+              <div className="flex-1 min-w-0 space-y-1.5">
+                <div className="h-3 w-32 rounded skeleton" />
+                <div className="h-2.5 w-20 rounded skeleton" />
+              </div>
+              <div className="h-3 w-10 rounded skeleton" />
+            </div>
+          ))}
+        </div>
       ) : clans.length === 0 ? (
         <EmptyState icon={<Users className="w-6 h-6" />} title="No clans found" description="Start your own and recruit your crew." />
       ) : (

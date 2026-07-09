@@ -2,35 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { Clan, ClanMember } from "@/models/Clan";
-import { computeAllWeeklyScores } from "@/lib/scoring";
-import { Territory } from "@/models/Territory";
+import { getClanList } from "@/lib/clans";
 
 export async function GET() {
   await connectDB();
-  const clans = await Clan.find({}).lean();
-  const allScores = await computeAllWeeklyScores();
-
-  const rows = await Promise.all(
-    clans.map(async (clan: any) => {
-      const members = await ClanMember.find({ clanId: clan._id }).lean();
-      const memberIds = members.map((m: any) => String(m.userId));
-      const combined = allScores
-        .filter((r) => memberIds.includes(String(r.user._id)))
-        .reduce((s, r) => s + r.score.finalScore, 0);
-      const zonesHeld = await Territory.countDocuments({ clanId: clan._id });
-      return {
-        id: String(clan._id),
-        name: clan.name,
-        tag: clan.tag,
-        color: clan.color,
-        memberCount: members.length,
-        score: combined + zonesHeld * 200,
-        zonesHeld,
-      };
-    }),
-  );
-
-  return NextResponse.json({ clans: rows.sort((a, b) => b.score - a.score).slice(0, 20) });
+  const clans = await getClanList();
+  return NextResponse.json({ clans });
 }
 
 export async function POST(req: NextRequest) {

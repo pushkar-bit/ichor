@@ -1,20 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { UserPlus } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { FollowButton } from "./FollowButton";
+import type { FollowSuggestion } from "@/lib/followSuggestions";
 
-type Suggestion = {
-  id: string;
-  name: string;
-  username: string | null;
-  avatarUrl: string;
-  reason: "clanmate" | "reacted_to_you" | "you_reacted" | "popular";
-};
-
-const REASON_LABEL: Record<Suggestion["reason"], string> = {
+const REASON_LABEL: Record<FollowSuggestion["reason"], string> = {
   clanmate: "In your clan",
   reacted_to_you: "Reacted to your posts",
   you_reacted: "You've reacted to them",
@@ -22,11 +15,17 @@ const REASON_LABEL: Record<Suggestion["reason"], string> = {
 };
 
 /** Suggested-follows widget for the feed's right rail, below the leaderboard. */
-export function FollowWidget() {
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [loading, setLoading] = useState(true);
+export function FollowWidget({ initialSuggestions }: { initialSuggestions?: FollowSuggestion[] }) {
+  const [suggestions, setSuggestions] = useState<FollowSuggestion[]>(initialSuggestions ?? []);
+  const [loading, setLoading] = useState(!initialSuggestions);
+  // The feed page already server-fetched suggestions — skip the redundant client refetch on mount.
+  const skipNextLoad = useRef(Boolean(initialSuggestions));
 
   useEffect(() => {
+    if (skipNextLoad.current) {
+      skipNextLoad.current = false;
+      return;
+    }
     fetch("/api/users/suggestions")
       .then((r) => r.json())
       .then((data) => setSuggestions(data.suggestions ?? []))

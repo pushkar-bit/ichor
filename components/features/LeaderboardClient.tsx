@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Avatar } from "@/components/ui/Avatar";
 import { SkeletonCard } from "@/components/ui/StatChip";
@@ -37,14 +37,22 @@ type Row = {
   zonesHeld?: number;
 };
 
-export function LeaderboardClient() {
+type LeaderboardInitialData = { rows: Row[]; me: string | null };
+
+export function LeaderboardClient({ initialData }: { initialData?: LeaderboardInitialData }) {
   const [category, setCategory] = useState("calories");
   const [range, setRange] = useState("week");
-  const [rows, setRows] = useState<Row[]>([]);
-  const [meId, setMeId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<Row[]>(initialData?.rows ?? []);
+  const [meId, setMeId] = useState<string | null>(initialData?.me ?? null);
+  const [loading, setLoading] = useState(!initialData);
+  // The page already server-fetched calories/week — skip the redundant client refetch on mount.
+  const skipNextLoad = useRef(Boolean(initialData));
 
   useEffect(() => {
+    if (skipNextLoad.current) {
+      skipNextLoad.current = false;
+      return;
+    }
     setLoading(true);
     fetch(`/api/leaderboards/${category}?range=${range}`)
       .then((r) => r.json())

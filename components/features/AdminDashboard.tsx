@@ -72,7 +72,7 @@ export function AdminDashboard() {
               <div key={p.id} className="flex items-center gap-3 bg-midnight-raised border border-border-ichor rounded-xl p-3">
                 {p.photoUrl && (
                   <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0">
-                    <Image src={p.photoUrl} alt="" fill unoptimized className="object-cover" />
+                    <Image src={p.photoUrl} alt="" fill sizes="56px" className="object-cover" />
                   </div>
                 )}
                 <div className="flex-1 min-w-0">

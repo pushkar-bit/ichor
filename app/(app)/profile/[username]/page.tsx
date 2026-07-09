@@ -9,6 +9,7 @@ import { Follow } from "@/models/Follow";
 import "@/models/Workout";
 import { dayKey } from "@/lib/week";
 import { getPersonalBests } from "@/lib/personalBests";
+import { computeUserWeeklyScore } from "@/lib/scoring";
 import { ProfileView } from "@/components/features/ProfileView";
 
 export default async function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {
@@ -21,7 +22,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   const user = await User.findOne({ username }).lean();
   if (!user) notFound();
 
-  const [zonesHeld, clan, posts, isFollowing] = await Promise.all([
+  const [zonesHeld, clan, posts, isFollowing, myWeeklyScore, theirWeeklyScore] = await Promise.all([
     Territory.countDocuments({ ownerId: (user as any)._id }),
     (user as any).clanId ? Clan.findById((user as any).clanId).lean() : null,
     // photoUrls sliced to just the first photo (the grid never shows more) and workoutId
@@ -34,6 +35,8 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       .populate({ path: "workoutId", select: "activityType distanceKm avgPaceMinPerKm caloriesBurned workoutDate" })
       .lean(),
     me ? Follow.exists({ followerId: me._id, followingId: (user as any)._id }) : null,
+    me ? computeUserWeeklyScore(String(me._id)) : null,
+    computeUserWeeklyScore(String((user as any)._id)),
   ]);
 
   const heatmapData: Record<string, number> = {};
@@ -46,6 +49,26 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   // Post.find({userId}).populate("workoutId") query a second time just for these two numbers.
   const personalBests = getPersonalBests((posts as any[]).map((p) => p.workoutId));
 
+  const headToHead =
+    me && isFollowing
+      ? {
+          me: {
+            name: me.name,
+            avatarUrl: me.avatarUrl,
+            distanceKm: myWeeklyScore!.totalDistanceKm,
+            calories: myWeeklyScore!.baseCalories,
+            streakDays: me.streakDays,
+          },
+          them: {
+            name: (user as any).name,
+            avatarUrl: (user as any).avatarUrl,
+            distanceKm: theirWeeklyScore.totalDistanceKm,
+            calories: theirWeeklyScore.baseCalories,
+            streakDays: (user as any).streakDays,
+          },
+        }
+      : null;
+
   return (
     <ProfileView
       user={user as any}
@@ -56,6 +79,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       posts={posts}
       heatmapData={heatmapData}
       personalBests={personalBests}
+      headToHead={headToHead}
     />
   );
 }

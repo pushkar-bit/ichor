@@ -15,7 +15,6 @@ export function Avatar({ src, name, size = 36 }: { src?: string | null; name: st
         alt={name}
         width={size}
         height={size}
-        unoptimized
         className="rounded-full object-cover shrink-0 bg-midnight-card"
         style={{ width: size, height: size }}
       />

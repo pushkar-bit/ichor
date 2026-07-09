@@ -4,7 +4,8 @@ import { useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Camera, Upload, X, ChevronDown, Loader2, MapPin } from "lucide-react";
+import confetti from "canvas-confetti";
+import { Camera, Upload, X, ChevronDown, Loader2, MapPin, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resizeToDataUrl } from "@/lib/image";
 import { uploadToCloudinary } from "@/lib/cloudinaryClient";
@@ -46,6 +47,7 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pbMessage, setPbMessage] = useState<string | null>(null);
 
   async function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []).slice(0, 5 - photos.length);
@@ -301,6 +303,23 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
         return;
       }
       const data = await res.json();
+
+      const pb = data.newPersonalBests;
+      const message = pb?.distance && pb?.pace
+        ? "New personal best — longest distance and fastest 5K pace yet!"
+        : pb?.distance
+        ? "New personal best — longest distance yet!"
+        : pb?.pace
+        ? "New personal best — fastest 5K pace yet!"
+        : null;
+
+      if (message) {
+        confetti({ particleCount: 120, spread: 90, origin: { y: 0.6 }, colors: ["#D4AF37", "#AE93F4", "#ffffff"], disableForReducedMotion: true, zIndex: 9999 });
+        setPbMessage(message);
+        // Let the celebration actually be seen before navigating away from this screen.
+        await new Promise((resolve) => setTimeout(resolve, 1700));
+      }
+
       router.push(`/post/${data.postId}`);
       router.refresh();
     } finally {
@@ -310,6 +329,16 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6 pb-24 relative">
+      {pbMessage && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-x-4 top-6 z-[9999] flex justify-center pointer-events-none">
+          <div className="flex items-center gap-2.5 bg-midnight-raised border border-[#D4AF37]/50 rounded-2xl px-4 py-3 shadow-2xl max-w-sm">
+            <Trophy className="w-5 h-5 text-[#D4AF37] shrink-0" />
+            <span className="text-sm font-semibold text-white">{pbMessage}</span>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {isDragging && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-black/90 backdrop-blur-md pointer-events-none p-4">
           <div className="text-center p-6 sm:p-10 border-2 border-dashed border-momentum rounded-3xl bg-momentum/10 max-w-lg w-full shadow-2xl my-auto">
@@ -371,7 +400,7 @@ export function PostComposer({ zones }: { zones: Zone[] }) {
         <div className="grid grid-cols-3 gap-2">
           {photos.map((p, i) => (
             <div key={i} className="relative aspect-square rounded-xl overflow-hidden bg-midnight-card">
-              <Image src={p} alt="" fill unoptimized className="object-cover" />
+              <Image src={p} alt="" fill sizes="33vw" className="object-cover" />
               <button
                 onClick={() => setPhotos((prev) => prev.filter((_, idx) => idx !== i))}
                 className="absolute top-1 right-1 bg-black/60 rounded-full p-1"

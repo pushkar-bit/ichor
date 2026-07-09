@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Flame, PlusCircle } from "lucide-react";
 import { ActivityCard, type ActivityCardData } from "./ActivityCard";
-import { LeaderboardWidget } from "./LeaderboardWidget";
+import { LeaderboardWidget, type LeaderboardWidgetRow } from "./LeaderboardWidget";
 import { FollowWidget } from "./FollowWidget";
+import type { FollowSuggestion } from "@/lib/followSuggestions";
 import { EmptyState, SkeletonCard } from "@/components/ui/StatChip";
 import { cn } from "@/lib/utils";
 
@@ -16,15 +17,32 @@ const TABS = [
   { key: "top", label: "Top Today" },
 ];
 
-export function FeedClient() {
+type FeedClientProps = {
+  initialPosts?: ActivityCardData[];
+  initialCursor?: string | null;
+  initialGlobalMaxDistances?: Record<string, number>;
+  initialLeaderboardData?: { rows: LeaderboardWidgetRow[]; me: string | null };
+  initialSuggestions?: FollowSuggestion[];
+};
+
+export function FeedClient({
+  initialPosts,
+  initialCursor = null,
+  initialGlobalMaxDistances = {},
+  initialLeaderboardData,
+  initialSuggestions,
+}: FeedClientProps) {
   const [tab, setTab] = useState("all");
-  const [posts, setPosts] = useState<ActivityCardData[]>([]);
-  const [globalMaxDistances, setGlobalMaxDistances] = useState<Record<string, number>>({});
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [posts, setPosts] = useState<ActivityCardData[]>(initialPosts ?? []);
+  const [globalMaxDistances, setGlobalMaxDistances] = useState<Record<string, number>>(initialGlobalMaxDistances);
+  const [cursor, setCursor] = useState<string | null>(initialCursor);
+  const [loading, setLoading] = useState(!initialPosts);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(initialPosts ? Boolean(initialCursor) : true);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  // The server already fetched the default "all" tab — skip the redundant client refetch that
+  // would otherwise fire on mount and briefly flash a skeleton over content we already have.
+  const skipNextLoad = useRef(Boolean(initialPosts));
 
   const load = useCallback(async (filter: string, cursorParam: string | null, replace: boolean) => {
     const params = new URLSearchParams({ filter });
@@ -41,6 +59,10 @@ export function FeedClient() {
   }, []);
 
   useEffect(() => {
+    if (skipNextLoad.current) {
+      skipNextLoad.current = false;
+      return;
+    }
     setLoading(true);
     load(tab, null, true).finally(() => setLoading(false));
   }, [tab, load]);
@@ -119,8 +141,8 @@ export function FeedClient() {
       {/* Leaderboard rail — right-hand sticky rail on wide screens, stacked below the feed
           on narrow ones. Always rendered (never `hidden`) so it can't just fail to appear. */}
       <aside className="max-w-xl w-full mx-auto mt-8 lg:mt-32 lg:w-80 lg:max-w-none lg:shrink-0 lg:sticky lg:top-8">
-        <LeaderboardWidget />
-        <FollowWidget />
+        <LeaderboardWidget initialData={initialLeaderboardData} />
+        <FollowWidget initialSuggestions={initialSuggestions} />
       </aside>
     </div>
   );
