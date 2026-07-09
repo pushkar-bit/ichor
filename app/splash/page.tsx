@@ -6,53 +6,74 @@ import { motion } from "framer-motion";
 
 /**
  * ICHOR Splash Animation Screen
+ * ──────────────────────────────────────────────────────────────────────────
+ * Route: /splash  (top-level — outside the (app) group, so NavShell is
+ *                  never mounted and the sidebar is never visible)
  *
- * Route: /splash  (top-level, outside the (app) group — NavShell is never mounted)
+ * Trigger A (Post-Login):   GoogleSignInButton → router.push('/splash')
+ * Trigger B (New User):     Onboarding page    → window.location.href = '/splash'
+ * Trigger C (Logo Click):   NavShell button    → router.push('/splash')
  *
- * Plays public/anim.mp4 (muted <video> for cross-browser autoplay policy compat)
- * simultaneously with public/logo.mp3 (unmuted <audio>) via Promise.all on mount.
+ * Media:
+ *   <video src="/anim.mp4" muted>   – muted is REQUIRED for cross-browser
+ *                                      autoplay policy compliance
+ *   <audio src="/logo.mp3">          – full-volume audio, separate element
+ *   Both started simultaneously via Promise.all on mount.
  *
- * On video "ended":
- *   1. Pause & reset audio  → prevents memory leaks
- *   2. router.replace("/feed")  → no splash entry left in history stack
+ * Lifecycle:
+ *   video "ended"  →  pause audio  →  router.replace("/feed")
+ *   video "error"  →  router.replace("/feed")   (graceful fallback)
+ *   Safety timeout →  router.replace("/feed")   (in case ended never fires)
  *
- * Back-gesture guard: we push a duplicate history entry so the popstate
- * event is intercepted and cancelled — the user cannot navigate away mid-play.
+ * Back-gesture guard:
+ *   Pushes a duplicate history entry so popstate is swallowed — the user
+ *   cannot navigate away mid-animation.
  */
+
+const SAFETY_TIMEOUT_MS = 15_000; // max wait before force-redirect to /feed
+
 export default function SplashPage() {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const hasNavigatedRef = useRef(false);
+  const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /** Clean up audio without throwing if already stopped */
-  const cleanupAudio = useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
+  // ── Navigate to feed exactly once ───────────────────────────────────────
+  const goToFeed = useCallback(() => {
+    if (hasNavigatedRef.current) return;
+    hasNavigatedRef.current = true;
+
+    // Clear safety timer
+    if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+
+    // Stop & reset audio to free resources
     try {
-      audio.pause();
-      audio.currentTime = 0;
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.currentTime = 0;
+      }
     } catch {
       // ignore
     }
-  }, []);
 
-  /** Called the instant the video finishes playing */
-  const handleVideoEnded = useCallback(() => {
-    if (hasNavigatedRef.current) return;
-    hasNavigatedRef.current = true;
-    cleanupAudio();
-    // Replace so pressing back skips /splash entirely
+    // Replace so /splash is not in the history stack
     router.replace("/feed");
-  }, [cleanupAudio, router]);
+  }, [router]);
 
+  // ── Mount effect ─────────────────────────────────────────────────────────
   useEffect(() => {
     const video = videoRef.current;
     const audio = audioRef.current;
-    if (!video || !audio) return;
 
-    // ── Back-gesture block ───────────────────────────────────────────────
-    // Push a duplicate entry so the first back press just pops back here.
+    // Safety: if refs aren't ready, go straight to feed
+    if (!video || !audio) {
+      goToFeed();
+      return;
+    }
+
+    // ── Back-gesture block ─────────────────────────────────────────────────
     history.pushState(null, "", "/splash");
     const blockBack = () => {
       if (!hasNavigatedRef.current) {
@@ -61,71 +82,75 @@ export default function SplashPage() {
     };
     window.addEventListener("popstate", blockBack);
 
-    // ── Simultaneous playback ────────────────────────────────────────────
-    Promise.all([video.play(), audio.play()]).catch(() => {
-      // If audio autoplay is blocked (browser policy), still play the video.
-      // Audio is best-effort; video is the primary UX signal.
-      video.play().catch(() => {
-        // If even video fails, skip straight to feed.
-        handleVideoEnded();
-      });
-    });
+    // ── Safety timeout: redirect even if video never fires "ended" ─────────
+    safetyTimerRef.current = setTimeout(goToFeed, SAFETY_TIMEOUT_MS);
+
+    // ── Simultaneous video + audio playback ───────────────────────────────
+    Promise.all([
+      video.play().catch(() => null),   // muted video — rarely blocked
+      audio.play().catch(() => null),   // audio — may be blocked by browser policy, soft-fail
+    ]).catch(() => null);
+    // Note: goToFeed is wired to video's onEnded / onError handlers in JSX,
+    // so we don't need to handle the Promise result here.
 
     return () => {
       window.removeEventListener("popstate", blockBack);
-      cleanupAudio();
+      if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+      // Cleanup audio on unmount
+      try {
+        const audio = audioRef.current;
+        if (audio) { audio.pause(); audio.currentTime = 0; }
+      } catch { /* ignore */ }
     };
-  }, [cleanupAudio, handleVideoEnded]);
+  }, [goToFeed]);
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.25, ease: "easeIn" }}
+      transition={{ duration: 0.2, ease: "easeIn" }}
       style={{
         position: "fixed",
         inset: 0,
         backgroundColor: "#000000",
         zIndex: 9999,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
         overflow: "hidden",
       }}
     >
-      {/* ── VIDEO LAYER ─────────────────────────────────────────────────── */}
-      {/* muted is required for autoplay in all major browsers.              */}
-      {/* The audio track is handled separately below at full volume.        */}
+      {/* ── VIDEO LAYER ──────────────────────────────────────────────────── */}
+      {/*  • muted      – required for autoplay in every browser             */}
+      {/*  • playsInline – prevents full-screen hijack on iOS Safari         */}
+      {/*  • controls=false + disablePictureInPicture – no native UI chrome  */}
+      {/*  • onEnded → goToFeed  (primary completion signal)                 */}
+      {/*  • onError → goToFeed  (fallback if file is missing / corrupt)     */}
       <video
         ref={videoRef}
         src="/anim.mp4"
         muted
         playsInline
         preload="auto"
-        onEnded={handleVideoEnded}
+        controls={false}
+        disablePictureInPicture
+        disableRemotePlayback
+        onEnded={goToFeed}
+        onError={goToFeed}
         style={{
           position: "absolute",
           inset: 0,
           width: "100%",
           height: "100%",
           objectFit: "cover",
-          // Hide every native browser media control
-          pointerEvents: "none",
+          pointerEvents: "none",     // prevents any accidental touch/click on the video
         }}
-        // Completely suppress the native controls UI
-        controls={false}
-        disablePictureInPicture
-        disableRemotePlayback
       />
 
-      {/* ── AUDIO LAYER ─────────────────────────────────────────────────── */}
-      {/* Separate <audio> element — plays logo.mp3 at full volume while     */}
-      {/* the video plays its visual track (video itself is muted above).    */}
+      {/* ── AUDIO LAYER ──────────────────────────────────────────────────── */}
+      {/*  Separate <audio> element plays logo.mp3 at full volume while the  */}
+      {/*  <video> above handles only the visual track (video is muted).     */}
       <audio
         ref={audioRef}
         src="/logo.mp3"
         preload="auto"
-        // Hidden; no UI needed
         style={{ display: "none" }}
       />
     </motion.div>
