@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { IchorLogo } from "./IchorMark";
 import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, Search, LogOut } from "lucide-react";
@@ -30,6 +30,7 @@ export function NavShell({
   user: NavUser;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   usePushNotifications();
 
   return (
@@ -37,7 +38,14 @@ export function NavShell({
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:flex-col w-60 shrink-0 border-r border-border-ichor px-4 py-6 sticky top-0 h-screen">
         <div className="px-2 mb-8">
-          <IchorLogo textClassName="text-xl" />
+          {/* Logo click → splash animation sequence */}
+          <button
+            onClick={() => router.push("/splash")}
+            className="cursor-pointer bg-transparent border-0 p-0 m-0 block"
+            aria-label="Go to ICHOR home"
+          >
+            <IchorLogo textClassName="text-xl" />
+          </button>
         </div>
         <nav className="flex-1 space-y-3">
           {NAV_ITEMS.map((item) => {
@@ -91,7 +99,14 @@ export function NavShell({
         {/* Mobile Top Header (only visible on mobile, hidden on md) */}
         <div className="md:hidden">
           <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border-ichor sticky top-0 bg-black z-20">
-            <IchorLogo textClassName="text-xl" />
+            {/* Logo click → splash animation sequence */}
+            <button
+              onClick={() => router.push("/splash")}
+              className="cursor-pointer bg-transparent border-0 p-0 m-0"
+              aria-label="Go to ICHOR home"
+            >
+              <IchorLogo textClassName="text-xl" />
+            </button>
             {user.avatarUrl && (
               <Link href="/profile">
                 <Avatar src={user.avatarUrl} name={user.name} size={28} />

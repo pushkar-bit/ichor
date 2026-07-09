@@ -43,7 +43,8 @@ export function GoogleSignInButton({ label = "Continue with Google" }: { label?:
           body: JSON.stringify({ access_token: tokenResponse.access_token }),
         });
         if (res.ok) {
-          router.push("/feed");
+          // Trigger the ICHOR logo animation before landing on the feed
+          router.push("/splash");
           router.refresh();
         } else {
           const data = await res.json().catch(() => null);
