@@ -43,10 +43,8 @@ export function GoogleSignInButton({ label = "Continue with Google" }: { label?:
           body: JSON.stringify({ access_token: tokenResponse.access_token }),
         });
         if (res.ok) {
-          // Route through the ICHOR logo splash before landing on feed.
-          // Do NOT call router.refresh() here — it races against the push
-          // and can interrupt the navigation before /splash mounts.
-          router.push("/splash");
+          router.push("/feed");
+          router.refresh();
         } else {
           const data = await res.json().catch(() => null);
           setError(data?.error ?? "Couldn't continue with Google. Please try again.");

@@ -46,10 +46,8 @@ export default function OnboardingPage() {
         body: JSON.stringify({ weightKg, heightCm: finalHeightCm, username: username.trim().toLowerCase() }),
       });
       if (res.ok) {
-        // New user profile saved — play the ICHOR splash animation
-        // before landing on the home feed. Hard-navigate so the
-        // (app) layout re-reads the fresh session cookie on arrival.
-        window.location.href = "/splash";
+        // Force hard refresh to update server-side layout redirect checks
+        window.location.href = "/feed";
       } else {
         const data = await res.json().catch(() => null);
         setError(data?.error ?? "Failed to save. Please try again.");

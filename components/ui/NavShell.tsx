@@ -4,12 +4,24 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { IchorLogo } from "./IchorMark";
-import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, Search, LogOut } from "lucide-react";
+import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, Search, LogOut, Info } from "lucide-react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { Avatar } from "./Avatar";
 import { CoachWidget } from "@/components/features/CoachWidget";
 
-const NAV_ITEMS = [
+/**
+ * Nav items.
+ * splashTo: when set, clicking this item plays the splash animation first,
+ * then redirects to `splashTo` destination instead of navigating directly.
+ */
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  splashTo?: string;
+};
+
+const NAV_ITEMS: NavItem[] = [
   { href: "/feed", label: "Feed", icon: Flame },
   { href: "/map", label: "Territory", icon: Map },
   { href: "/post/create", label: "Post", icon: PlusCircle },
@@ -18,6 +30,7 @@ const NAV_ITEMS = [
   { href: "/coach", label: "Coach", icon: MessageCircle },
   { href: "/profile", label: "Profile", icon: User },
   { href: "/search", label: "Search", icon: Search },
+  { href: "/about", label: "About", icon: Info, splashTo: "about" },
 ];
 
 type NavUser = { name: string; avatarUrl: string };
@@ -33,48 +46,74 @@ export function NavShell({
   const router = useRouter();
   usePushNotifications();
 
+  /** Handle nav item click — splash-intercepted items go through /splash?to=<dest> first */
+  function handleNavClick(item: NavItem, e: React.MouseEvent) {
+    if (item.splashTo) {
+      e.preventDefault();
+      router.push(`/splash?to=${item.splashTo}`);
+    }
+    // otherwise, the <Link> handles it normally
+  }
+
+  function renderNavItem(item: NavItem, compact = false) {
+    const active = pathname === item.href || (item.href !== "/feed" && pathname?.startsWith(item.href));
+    const Icon = item.icon;
+
+    if (compact) {
+      // Mobile bottom nav (icon + label, no motion wrapper)
+      return (
+        <Link
+          key={item.href}
+          href={item.splashTo ? "#" : item.href}
+          onClick={(e) => handleNavClick(item, e)}
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-none text-[10px] font-medium ${
+            active ? "text-momentum" : "text-white/60"
+          }`}
+        >
+          <Icon className="w-5 h-5" />
+          {item.label}
+        </Link>
+      );
+    }
+
+    return (
+      <motion.div key={item.href} whileHover={{ x: 4 }} whileTap={{ scale: 0.96 }}>
+        <Link
+          href={item.splashTo ? "#" : item.href}
+          onClick={(e) => handleNavClick(item, e)}
+          className={`flex items-center gap-3 px-3 py-2.5 outline-none transition-all ${
+            active
+              ? "rounded-none border-2 border-border-ichor shadow-[4px_4px_0_var(--ichor-border)] bg-momentum text-midnight -translate-y-0.5"
+              : "rounded-none text-white/60 hover:text-white hover:bg-midnight-raised"
+          }`}
+        >
+          {item.label === "Profile" && user.avatarUrl ? (
+            <Avatar src={user.avatarUrl} name={user.name} size={18} />
+          ) : (
+            <Icon className="w-[18px] h-[18px]" />
+          )}
+          {item.label}
+        </Link>
+      </motion.div>
+    );
+  }
+
+  const mobileNavItems = NAV_ITEMS.filter((i) =>
+    ["/feed", "/leaderboard", "/post/create", "/profile", "/search", "/about"].includes(i.href)
+  );
+
   return (
     <div className="min-h-screen bg-midnight-raised md:bg-midnight flex">
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:flex-col w-60 shrink-0 border-r border-border-ichor px-4 py-6 sticky top-0 h-screen">
         <div className="px-2 mb-8">
-          {/* Logo click → splash animation sequence */}
-          <button
-            onClick={() => router.push("/splash")}
-            className="cursor-pointer bg-transparent border-0 p-0 m-0 block"
-            aria-label="Go to ICHOR home"
-          >
+          {/* Logo — plain link back to feed (no splash trigger) */}
+          <Link href="/feed" aria-label="Go to feed">
             <IchorLogo textClassName="text-xl" />
-          </button>
+          </Link>
         </div>
         <nav className="flex-1 space-y-3">
-          {NAV_ITEMS.map((item) => {
-            const active = pathname === item.href || (item.href !== "/feed" && pathname?.startsWith(item.href));
-            const Icon = item.icon;
-            return (
-              <motion.div 
-                key={item.href}
-                whileHover={{ x: 4 }} 
-                whileTap={{ scale: 0.96 }}
-              >
-                <Link
-                  href={item.href}
-                  className={`flex items-center gap-3 px-3 py-2.5 outline-none transition-all ${
-                    active 
-                      ? "rounded-none border-2 border-border-ichor shadow-[4px_4px_0_var(--ichor-border)] bg-momentum text-midnight -translate-y-0.5" 
-                      : "rounded-none text-white/60 hover:text-white hover:bg-midnight-raised"
-                  }`}
-                >
-                  {item.label === "Profile" && user.avatarUrl ? (
-                    <Avatar src={user.avatarUrl} name={user.name} size={18} />
-                  ) : (
-                    <Icon className="w-[18px] h-[18px]" />
-                  )}
-                  {item.label}
-                </Link>
-              </motion.div>
-            );
-          })}
+          {NAV_ITEMS.map((item) => renderNavItem(item))}
         </nav>
         <div className="mt-auto px-2 space-y-2 mb-4">
           <Link href="/profile" className="flex items-center gap-2 rounded-none px-1 py-1 hover:bg-midnight-raised transition-colors">
@@ -96,17 +135,13 @@ export function NavShell({
       </aside>
 
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Mobile Top Header (only visible on mobile, hidden on md) */}
+        {/* Mobile Top Header */}
         <div className="md:hidden">
           <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border-ichor sticky top-0 bg-black z-20">
-            {/* Logo click → splash animation sequence */}
-            <button
-              onClick={() => router.push("/splash")}
-              className="cursor-pointer bg-transparent border-0 p-0 m-0"
-              aria-label="Go to ICHOR home"
-            >
+            {/* Logo — plain link (no splash trigger) */}
+            <Link href="/feed" aria-label="Go to feed">
               <IchorLogo textClassName="text-xl" />
-            </button>
+            </Link>
             {user.avatarUrl && (
               <Link href="/profile">
                 <Avatar src={user.avatarUrl} name={user.name} size={28} />
@@ -121,27 +156,11 @@ export function NavShell({
 
           {/* Mobile Bottom Navigation */}
           <nav className="md:hidden fixed bottom-0 inset-x-0 bg-black border-t border-border-ichor flex items-center justify-around py-2 z-20">
-            {NAV_ITEMS.filter(i => ["/feed", "/leaderboard", "/post/create", "/profile", "/search"].includes(i.href)).map((item) => {
-              const active = pathname === item.href || (item.href !== "/feed" && pathname?.startsWith(item.href));
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-none text-[10px] font-medium ${
-                    active ? "text-momentum" : "text-white/60"
-                  }`}
-                >
-                  <Icon className="w-5 h-5" />
-                  {item.label}
-                </Link>
-              );
-            })}
+            {mobileNavItems.map((item) => renderNavItem(item, true))}
           </nav>
         </div>
 
         <main className="flex-1 min-w-0 pb-20 md:pb-0">{children}</main>
-
       </div>
     </div>
   );

@@ -1,62 +1,66 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Volume2, VolumeX } from "lucide-react";
 
 /**
  * ICHOR Splash Animation Screen
  * ──────────────────────────────────────────────────────────────────────────
- * Route: /splash  — Outside the (app) group, NavShell is NEVER mounted.
+ * Route: /splash?to=<destination>
  *
- * Triggers:
- *   A — GoogleSignInButton  → router.push('/splash')   (returning user)
- *   B — Onboarding submit   → window.location.href='/splash' (new user)
- *   C — NavShell logo click → router.push('/splash')
+ * Currently triggered ONLY from the "About" nav item in NavShell:
+ *   NavShell About click → router.push('/splash?to=about') → animation plays
+ *   → window.location.replace('/about')
  *
- * Media: served via /api/public/media/[file] which handles HTTP Range
- *   requests (Turbopack's public/ serving does not support Range headers).
- *   /api/public/media/anim  →  public/anim.mp4   (video/mp4,  ~10s)
- *   /api/public/media/logo  →  public/logo.mp3   (audio/mpeg, ~10s)
+ * The `?to=` query param controls where the user lands after the animation.
+ * Defaults to '/feed' if no param is present.
  *
- * Redirect: window.location.replace('/feed') — hard navigation, instant,
- *   no React router queue delay, /splash removed from history stack.
+ * Media (served via /api/public/media/[file] — handles HTTP Range requests):
+ *   /api/public/media/anim  →  public/anim.mp4   (10 seconds)
+ *   /api/public/media/logo  →  public/logo.mp3   (10 seconds)
+ *   Both play simultaneously via .play() on mount.
  *
- * Safety timeout: 15s (well past the 10s animation).
- * Mute toggle: controls <audio> muted property, default = unmuted (plays).
- * Mobile layout: 16:9 aspect ratio box centred on black.
- * Desktop layout: fullscreen cover.
+ * Redirect: window.location.replace(destination) on video 'ended'.
+ *   Hard navigation = instant, no React router queue delay.
+ *
+ * Mobile: 16:9 aspect ratio box centred on black.
+ * Desktop: fullscreen cover.
+ * Mute button: glassmorphism, bottom-right, default = audio ON.
  */
 
-const SAFETY_TIMEOUT_MS = 15_000; // 10s animation + 5s buffer
+const SAFETY_TIMEOUT_MS = 15_000;
 
-export default function SplashPage() {
+const ALLOWED_DESTINATIONS: Record<string, string> = {
+  about: "/about",
+  feed: "/feed",
+};
+
+// ── Inner component (needs useSearchParams, must be inside Suspense) ────────
+function SplashContent() {
+  const searchParams = useSearchParams();
+  const toParam = searchParams.get("to") ?? "feed";
+  const destination = ALLOWED_DESTINATIONS[toParam] ?? "/feed";
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const hasNavigatedRef = useRef(false);
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [videoFailed, setVideoFailed] = useState(false);
-  const [isMuted, setIsMuted] = useState(false); // default: audio ON
+  const [isMuted, setIsMuted] = useState(false);
 
-  // ── Immediate redirect to /feed ──────────────────────────────────────────
-  // Use window.location.replace (hard nav) — router.replace goes through
-  // React's navigation queue and introduces a visible delay. Hard nav is
-  // instant and removes /splash from the browser history stack.
-  const goToFeed = useCallback(() => {
+  const goToDestination = useCallback(() => {
     if (hasNavigatedRef.current) return;
     hasNavigatedRef.current = true;
-
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
-
     try {
       const audio = audioRef.current;
       if (audio) { audio.pause(); audio.currentTime = 0; }
     } catch { /* ignore */ }
+    window.location.replace(destination);
+  }, [destination]);
 
-    window.location.replace("/feed");
-  }, []);
-
-  // ── Toggle mute on the audio element ────────────────────────────────────
   const toggleMute = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -64,22 +68,21 @@ export default function SplashPage() {
     setIsMuted(audio.muted);
   }, []);
 
-  // ── Mount effect ─────────────────────────────────────────────────────────
   useEffect(() => {
     const video = videoRef.current;
     const audio = audioRef.current;
 
-    // ── Back-gesture block ─────────────────────────────────────────────────
-    history.pushState(null, "", "/splash");
+    // Back-gesture block
+    history.pushState(null, "", window.location.href);
     const blockBack = () => {
-      if (!hasNavigatedRef.current) history.pushState(null, "", "/splash");
+      if (!hasNavigatedRef.current) history.pushState(null, "", window.location.href);
     };
     window.addEventListener("popstate", blockBack);
 
-    // ── Safety timeout ─────────────────────────────────────────────────────
-    safetyTimerRef.current = setTimeout(goToFeed, SAFETY_TIMEOUT_MS);
+    // Safety timeout (15s — 5s past the 10s animation)
+    safetyTimerRef.current = setTimeout(goToDestination, SAFETY_TIMEOUT_MS);
 
-    // ── Start playback ─────────────────────────────────────────────────────
+    // Start video + audio simultaneously
     if (video) video.play().catch(() => null);
     if (audio) audio.play().catch(() => null);
 
@@ -87,13 +90,10 @@ export default function SplashPage() {
       window.removeEventListener("popstate", blockBack);
       if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
       try {
-        if (audioRef.current) {
-          audioRef.current.pause();
-          audioRef.current.currentTime = 0;
-        }
+        if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
       } catch { /* ignore */ }
     };
-  }, [goToFeed]);
+  }, [goToDestination]);
 
   return (
     <div
@@ -108,15 +108,15 @@ export default function SplashPage() {
         justifyContent: "center",
       }}
     >
-      {/* ── VIDEO: desktop = fullscreen cover, mobile = 16:9 centred box ── */}
+      {/* VIDEO */}
       <AnimatePresence>
         {!videoFailed && (
           <motion.video
             key="splash-video"
             ref={videoRef}
             src="/api/public/media/anim"
-            muted        /* Required for cross-browser autoplay policy */
-            playsInline  /* Prevents full-screen hijack on iOS Safari */
+            muted
+            playsInline
             autoPlay
             preload="auto"
             controls={false}
@@ -125,10 +125,9 @@ export default function SplashPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
-            onEnded={goToFeed}
+            onEnded={goToDestination}
             onError={() => setVideoFailed(true)}
             style={{
-              // Desktop: fullscreen cover
               position: "absolute",
               inset: 0,
               width: "100%",
@@ -136,13 +135,12 @@ export default function SplashPage() {
               objectFit: "cover",
               pointerEvents: "none",
             }}
-            // On mobile (≤768px) override via className below
             className="splash-video"
           />
         )}
       </AnimatePresence>
 
-      {/* ── CSS FALLBACK (video failed to load) ─────────────────────────── */}
+      {/* CSS FALLBACK (video failed) */}
       <AnimatePresence>
         {videoFailed && (
           <motion.div
@@ -150,12 +148,7 @@ export default function SplashPage() {
             initial={{ opacity: 0, scale: 0.85 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 16,
-            }}
+            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}
           >
             <motion.svg
               viewBox="0 0 100 120"
@@ -172,7 +165,6 @@ export default function SplashPage() {
                 fontStyle: "italic",
                 fontWeight: 800,
                 fontSize: "2.5rem",
-                letterSpacing: "-0.01em",
                 color: "#f5f3f6",
               }}
               animate={{ opacity: [0.5, 1, 0.5] }}
@@ -184,17 +176,10 @@ export default function SplashPage() {
         )}
       </AnimatePresence>
 
-      {/* ── AUDIO (hidden, full volume, default unmuted) ─────────────────── */}
-      <audio
-        ref={audioRef}
-        src="/api/public/media/logo"
-        preload="auto"
-        style={{ display: "none" }}
-      />
+      {/* AUDIO */}
+      <audio ref={audioRef} src="/api/public/media/logo" preload="auto" style={{ display: "none" }} />
 
-      {/* ── MUTE / UNMUTE BUTTON ─────────────────────────────────────────── */}
-      {/* Bottom-right corner. Visible throughout playback.                  */}
-      {/* Default: audio plays. Click to mute. Click again to unmute.        */}
+      {/* MUTE / UNMUTE BUTTON */}
       <motion.button
         onClick={toggleMute}
         initial={{ opacity: 0 }}
@@ -203,7 +188,6 @@ export default function SplashPage() {
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
         aria-label={isMuted ? "Unmute audio" : "Mute audio"}
-        title={isMuted ? "Unmute" : "Mute"}
         style={{
           position: "absolute",
           bottom: 24,
@@ -223,15 +207,11 @@ export default function SplashPage() {
           color: "#ffffff",
         }}
       >
-        {isMuted
-          ? <VolumeX size={20} />
-          : <Volume2 size={20} />
-        }
+        {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
       </motion.button>
 
-      {/* ── INLINE STYLES for responsive video layout ───────────────────── */}
+      {/* Responsive video styles */}
       <style>{`
-        /* Mobile: 16:9 aspect ratio box, centred on pure black background   */
         @media (max-width: 767px) {
           .splash-video {
             position: relative !important;
@@ -244,5 +224,18 @@ export default function SplashPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+// ── Page export — wraps SplashContent in Suspense (required for useSearchParams) ──
+export default function SplashPage() {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ position: "fixed", inset: 0, background: "#000" }} />
+      }
+    >
+      <SplashContent />
+    </Suspense>
   );
 }
