@@ -1,36 +1,31 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 /**
  * ICHOR Splash Animation Screen
  * ──────────────────────────────────────────────────────────────────────────
- * Route: /splash  (top-level — outside the (app) group, so NavShell is
- *                  never mounted and the sidebar is never visible)
+ * Route: /splash  —  Outside the (app) group, so NavShell is NEVER mounted.
  *
- * Trigger A (Post-Login):   GoogleSignInButton → router.push('/splash')
- * Trigger B (New User):     Onboarding page    → window.location.href = '/splash'
- * Trigger C (Logo Click):   NavShell button    → router.push('/splash')
+ * Trigger A: GoogleSignInButton  → router.push('/splash')   (returning user)
+ * Trigger B: Onboarding submit   → window.location.href='/splash' (new user)
+ * Trigger C: NavShell logo click → router.push('/splash')
  *
- * Media:
- *   <video src="/anim.mp4" muted>   – muted is REQUIRED for cross-browser
- *                                      autoplay policy compliance
- *   <audio src="/logo.mp3">          – full-volume audio, separate element
- *   Both started simultaneously via Promise.all on mount.
+ * Media playback:
+ *   <video src="/anim.mp4" muted>   muted required for cross-browser autoplay
+ *   <audio src="/logo.mp3">         full-volume audio via separate element
+ *   Both launched simultaneously via Promise.all
  *
- * Lifecycle:
- *   video "ended"  →  pause audio  →  router.replace("/feed")
- *   video "error"  →  router.replace("/feed")   (graceful fallback)
- *   Safety timeout →  router.replace("/feed")   (in case ended never fires)
- *
- * Back-gesture guard:
- *   Pushes a duplicate history entry so popstate is swallowed — the user
- *   cannot navigate away mid-animation.
+ * Fallback chain (each layer activates only if the previous fails):
+ *   1. Full video + audio playback   (when real media files exist)
+ *   2. Audio only (video error)      (if video file missing/corrupt)
+ *   3. CSS logo pulse animation      (if both media fail)
+ *   4. 6-second safety timeout       (absolute last resort → /feed)
  */
 
-const SAFETY_TIMEOUT_MS = 15_000; // max wait before force-redirect to /feed
+const SAFETY_TIMEOUT_MS = 6_000;
 
 export default function SplashPage() {
   const router = useRouter();
@@ -38,65 +33,51 @@ export default function SplashPage() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const hasNavigatedRef = useRef(false);
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [videoFailed, setVideoFailed] = useState(false);
 
-  // ── Navigate to feed exactly once ───────────────────────────────────────
+  // ── Navigate to /feed exactly once ──────────────────────────────────────
   const goToFeed = useCallback(() => {
     if (hasNavigatedRef.current) return;
     hasNavigatedRef.current = true;
 
-    // Clear safety timer
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
 
-    // Stop & reset audio to free resources
-    try {
-      const audio = audioRef.current;
-      if (audio) {
-        audio.pause();
-        audio.currentTime = 0;
-      }
-    } catch {
-      // ignore
+    const audio = audioRef.current;
+    if (audio) {
+      try { audio.pause(); audio.currentTime = 0; } catch { /* ignore */ }
     }
 
-    // Replace so /splash is not in the history stack
+    // replace() so /splash never appears in the browser back stack
     router.replace("/feed");
   }, [router]);
 
-  // ── Mount effect ─────────────────────────────────────────────────────────
+  // ── Main mount effect ─────────────────────────────────────────────────
   useEffect(() => {
     const video = videoRef.current;
     const audio = audioRef.current;
 
-    // Safety: if refs aren't ready, go straight to feed
-    if (!video || !audio) {
-      goToFeed();
-      return;
-    }
-
-    // ── Back-gesture block ─────────────────────────────────────────────────
+    // ── Back-gesture block ───────────────────────────────────────────────
     history.pushState(null, "", "/splash");
     const blockBack = () => {
-      if (!hasNavigatedRef.current) {
-        history.pushState(null, "", "/splash");
-      }
+      if (!hasNavigatedRef.current) history.pushState(null, "", "/splash");
     };
     window.addEventListener("popstate", blockBack);
 
-    // ── Safety timeout: redirect even if video never fires "ended" ─────────
+    // ── Safety timeout ───────────────────────────────────────────────────
     safetyTimerRef.current = setTimeout(goToFeed, SAFETY_TIMEOUT_MS);
 
-    // ── Simultaneous video + audio playback ───────────────────────────────
-    Promise.all([
-      video.play().catch(() => null),   // muted video — rarely blocked
-      audio.play().catch(() => null),   // audio — may be blocked by browser policy, soft-fail
-    ]).catch(() => null);
-    // Note: goToFeed is wired to video's onEnded / onError handlers in JSX,
-    // so we don't need to handle the Promise result here.
+    // ── Start playback ───────────────────────────────────────────────────
+    if (video && audio) {
+      // Kick both simultaneously; soft-fail each independently
+      video.play().catch(() => null);
+      audio.play().catch(() => null);
+    } else {
+      // No refs ready — fall back to safety timer only
+    }
 
     return () => {
       window.removeEventListener("popstate", blockBack);
       if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
-      // Cleanup audio on unmount
       try {
         const audio = audioRef.current;
         if (audio) { audio.pause(); audio.currentTime = 0; }
@@ -105,54 +86,114 @@ export default function SplashPage() {
   }, [goToFeed]);
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.2, ease: "easeIn" }}
+    <div
       style={{
         position: "fixed",
         inset: 0,
         backgroundColor: "#000000",
         zIndex: 9999,
         overflow: "hidden",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
       }}
     >
-      {/* ── VIDEO LAYER ──────────────────────────────────────────────────── */}
-      {/*  • muted      – required for autoplay in every browser             */}
-      {/*  • playsInline – prevents full-screen hijack on iOS Safari         */}
-      {/*  • controls=false + disablePictureInPicture – no native UI chrome  */}
-      {/*  • onEnded → goToFeed  (primary completion signal)                 */}
-      {/*  • onError → goToFeed  (fallback if file is missing / corrupt)     */}
-      <video
-        ref={videoRef}
-        src="/anim.mp4"
-        muted
-        playsInline
-        preload="auto"
-        controls={false}
-        disablePictureInPicture
-        disableRemotePlayback
-        onEnded={goToFeed}
-        onError={goToFeed}
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          pointerEvents: "none",     // prevents any accidental touch/click on the video
-        }}
-      />
+      {/* ── VIDEO LAYER ─────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {!videoFailed && (
+          <motion.video
+            key="splash-video"
+            ref={videoRef}
+            src="/anim.mp4"
+            muted
+            playsInline
+            autoPlay
+            preload="auto"
+            controls={false}
+            disablePictureInPicture
+            disableRemotePlayback
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+            onEnded={goToFeed}
+            onError={() => {
+              // Video unavailable — reveal fallback logo, audio still plays
+              setVideoFailed(true);
+            }}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              pointerEvents: "none",
+            }}
+          />
+        )}
+      </AnimatePresence>
 
-      {/* ── AUDIO LAYER ──────────────────────────────────────────────────── */}
-      {/*  Separate <audio> element plays logo.mp3 at full volume while the  */}
-      {/*  <video> above handles only the visual track (video is muted).     */}
+      {/* ── FALLBACK CSS LOGO ANIMATION ──────────────────────────────────── */}
+      {/* Shown only when the video file fails to load (e.g. not yet uploaded) */}
+      <AnimatePresence>
+        {videoFailed && (
+          <motion.div
+            key="splash-fallback"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "16px",
+            }}
+          >
+            {/* Pulsing ICHOR mark */}
+            <motion.svg
+              viewBox="0 0 100 120"
+              fill="#ae93f4"
+              style={{ width: 80, height: 96 }}
+              animate={{
+                scale: [1, 1.08, 1],
+                opacity: [0.7, 1, 0.7],
+              }}
+              transition={{
+                duration: 1.6,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}
+            >
+              <path d="M75 8C55 8 35 25 35 52c0 22 15 38 30 44-18-2-45-16-45-48C20 20 42 0 68 0c4 0 8 3 7 8z" />
+            </motion.svg>
+            <motion.span
+              style={{
+                fontFamily: "var(--font-barlow), sans-serif",
+                fontStyle: "italic",
+                fontWeight: 800,
+                fontSize: "2.5rem",
+                letterSpacing: "-0.01em",
+                color: "#f5f3f6",
+              }}
+              animate={{ opacity: [0.5, 1, 0.5] }}
+              transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+            >
+              ICHOR
+            </motion.span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── AUDIO LAYER ─────────────────────────────────────────────────── */}
+      {/* Separate <audio> element — plays logo.mp3 at full volume.          */}
+      {/* The <video> above is muted (required for autoplay); audio is not.  */}
+      {/* onEnded is NOT wired here — we rely on the VIDEO's ended event     */}
+      {/* because both files should be the same duration.                    */}
       <audio
         ref={audioRef}
         src="/logo.mp3"
         preload="auto"
         style={{ display: "none" }}
       />
-    </motion.div>
+    </div>
   );
 }
