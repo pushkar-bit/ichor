@@ -109,10 +109,11 @@ export default function AboutPage() {
               <div className="relative flex items-center justify-center h-72 bg-midnight rounded-3xl border border-border-ichor overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-br from-momentum/10 via-transparent to-afterrun/10" />
                 <motion.div
-                  animate={{ scale: [1, 1.04, 1], rotate: [0, 1, 0] }}
+                  animate={{ scale: [1, 1.04, 1] }}
                   transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+                  className="w-full h-full p-8 flex items-center justify-center relative z-10"
                 >
-                  <IchorMark className="w-40 h-48 text-momentum" />
+                  <img src="/about-logo.png" alt="ICHOR Logo Concept" className="w-full h-full object-contain drop-shadow-2xl" />
                 </motion.div>
               </div>
             </FadeIn>
