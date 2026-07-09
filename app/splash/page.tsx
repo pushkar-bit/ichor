@@ -22,10 +22,15 @@ import { motion, AnimatePresence } from "framer-motion";
  *   1. Full video + audio playback   (when real media files exist)
  *   2. Audio only (video error)      (if video file missing/corrupt)
  *   3. CSS logo pulse animation      (if both media fail)
- *   4. 6-second safety timeout       (absolute last resort → /feed)
+ *   4. 13-second safety timeout      (3s buffer past the 10s animation)
+ *
+ * Both anim.mp4 and logo.mp3 are exactly 10 seconds.
+ * Navigation fires on video 'ended' — never before the full 10s play.
  */
 
-const SAFETY_TIMEOUT_MS = 6_000;
+// 10-second animation + 3-second buffer. The video's onEnded is the
+// primary trigger; this only fires if ended never comes (network stall etc.)
+const SAFETY_TIMEOUT_MS = 13_000;
 
 export default function SplashPage() {
   const router = useRouter();
