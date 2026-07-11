@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Volume2, VolumeX } from "lucide-react";
+import { Volume2, VolumeX, SkipForward } from "lucide-react";
 
 /**
  * ICHOR Splash Animation Screen
@@ -209,6 +209,49 @@ function SplashContent() {
       >
         {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
       </motion.button>
+
+      {/* SKIP BUTTON */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 24,
+          left: 0,
+          right: 0,
+          display: "flex",
+          justifyContent: "center",
+          zIndex: 10000,
+          pointerEvents: "none",
+        }}
+      >
+        <motion.button
+          onClick={goToDestination}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.8, duration: 0.4 }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          style={{
+            pointerEvents: "auto",
+            padding: "8px 20px",
+            borderRadius: 24,
+            background: "rgba(255,255,255,0.12)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            border: "1px solid rgba(255,255,255,0.18)",
+            color: "#ffffff",
+            fontFamily: "var(--font-barlow), sans-serif",
+            fontSize: "0.875rem",
+            fontWeight: 500,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <span>Skip</span>
+          <SkipForward size={16} />
+        </motion.button>
+      </div>
 
       {/* Responsive video styles */}
       <style>{`
