@@ -63,6 +63,11 @@ export function CoachChat() {
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-3 pb-4">
+        {!loaded && (
+          <div className="flex justify-center py-10">
+            <Loader2 className="w-6 h-6 text-white/30 animate-spin" />
+          </div>
+        )}
         {loaded && messages.length === 0 && (
           <div className="flex flex-wrap gap-2 mt-4">
             {STARTERS.map((s) => (

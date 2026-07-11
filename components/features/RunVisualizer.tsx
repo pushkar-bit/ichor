@@ -56,7 +56,6 @@ export function RunVisualizer({ activityType, distanceKm, durationSeconds, avgPa
             <span className="font-display font-bold text-4xl md:text-5xl text-white tracking-tighter shadow-black/50 drop-shadow-lg">
               {formatPace(avgPaceMinPerKm)}
             </span>
-            <span className="text-sm font-medium text-white/50 mb-1">/km</span>
           </div>
         </div>
 

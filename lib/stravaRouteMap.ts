@@ -44,5 +44,9 @@ export function buildStravaRouteMapUrl(encodedPolyline: string | null | undefine
   const params = new URLSearchParams({ key: apiKey, size: `${width}x${height}`, format: "png" });
   // path's `|`/`:` separators are LocationIQ's expected literal syntax (Google Static Maps
   // compatible) — appended raw rather than through URLSearchParams so they aren't percent-encoded.
-  return `https://maps.locationiq.com/v3/staticmap?${params.toString()}&path=weight:4|color:0xFC4C02|${path}`;
+  // Color must be a CSS-style `#RRGGBB` hex (percent-encoded, since `#` would otherwise start a
+  // URL fragment) — LocationIQ silently falls back to black on Google's `0xRRGGBB` format, despite
+  // the endpoint otherwise being Google Static Maps compatible.
+  // %23AE93F4 = ICHOR's signature "momentum" purple (--ichor-momentum in globals.css).
+  return `https://maps.locationiq.com/v3/staticmap?${params.toString()}&path=weight:4|color:%23AE93F4|${path}`;
 }

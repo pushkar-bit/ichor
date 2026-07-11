@@ -1,6 +1,6 @@
 type RawJoinedPost = {
   _id: unknown;
-  userId: { _id?: unknown; name?: string; avatarUrl?: string } | unknown;
+  userId: { _id?: unknown; name?: string; username?: string | null; avatarUrl?: string } | unknown;
   workoutId: {
     activityType?: string;
     distanceKm?: number;
@@ -27,12 +27,13 @@ type RawJoinedPost = {
 
 export function serializePost(post: RawJoinedPost, currentUserId?: string) {
   const workout = post.workoutId;
-  const author = post.userId as { _id?: unknown; name?: string; avatarUrl?: string };
+  const author = post.userId as { _id?: unknown; name?: string; username?: string | null; avatarUrl?: string };
   return {
     id: String(post._id),
     author: {
       id: String(author?._id ?? author),
       name: author?.name ?? "Athlete",
+      username: author?.username ?? null,
       avatarUrl: author?.avatarUrl ?? "",
     },
     createdAt: post.createdAt instanceof Date ? post.createdAt.toISOString() : post.createdAt,

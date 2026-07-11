@@ -13,7 +13,7 @@ import { motion } from "framer-motion";
 
 export type ActivityCardData = {
   id: string;
-  author: { name: string; avatarUrl?: string };
+  author: { name: string; username?: string | null; avatarUrl?: string };
   createdAt: string;
   workout: {
     activityType: "RUN" | "WALK" | "CYCLE";
@@ -85,15 +85,31 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
         }
       `}</style>
       <div className="flex items-center gap-3 p-4">
-        <Avatar src={post.author.avatarUrl} name={post.author.name} size={36} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-bold text-[17px] tracking-tight truncate">{post.author.name}</span>
-            {isVerified && <BadgeCheck className="w-4 h-4 text-lime shrink-0" />}
-            {isOcr && <Camera className="w-4 h-4 text-white/40 shrink-0" />}
-            <span className="font-semibold text-[15px] text-white/50">· {timeAgo(post.createdAt)}</span>
-          </div>
-        </div>
+        {post.author.username ? (
+          <Link href={`/profile/${post.author.username}`} className="flex items-center gap-3 flex-1 min-w-0">
+            <Avatar src={post.author.avatarUrl} name={post.author.name} size={36} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-[17px] tracking-tight truncate hover:underline">{post.author.name}</span>
+                {isVerified && <BadgeCheck className="w-4 h-4 text-lime shrink-0" />}
+                {isOcr && <Camera className="w-4 h-4 text-white/40 shrink-0" />}
+                <span className="font-semibold text-[15px] text-white/50">· {timeAgo(post.createdAt)}</span>
+              </div>
+            </div>
+          </Link>
+        ) : (
+          <>
+            <Avatar src={post.author.avatarUrl} name={post.author.name} size={36} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-[17px] tracking-tight truncate">{post.author.name}</span>
+                {isVerified && <BadgeCheck className="w-4 h-4 text-lime shrink-0" />}
+                {isOcr && <Camera className="w-4 h-4 text-white/40 shrink-0" />}
+                <span className="font-semibold text-[15px] text-white/50">· {timeAgo(post.createdAt)}</span>
+              </div>
+            </div>
+          </>
+        )}
         <span className="inline-flex items-center gap-1 text-[11px] font-medium text-momentum bg-momentum/10 px-2 py-1 rounded-full">
           <ActivityIcon className="w-3 h-3" />
           {post.workout.activityType}
@@ -102,12 +118,24 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
 
       {post.photoUrls.length > 0 && (
         <div className={`relative w-full bg-black ${post.linkToDetail !== false ? "cursor-pointer" : ""}`}>
-          <div onClick={openDetail} className="flex gap-0.5 overflow-x-auto no-scrollbar">
-            {post.photoUrls.map((url, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={i} src={url} alt="" className="h-72 sm:h-80 w-auto shrink-0 bg-midnight-card" />
-            ))}
-          </div>
+          {post.photoUrls.length <= 2 ? (
+            <div
+              onClick={openDetail}
+              className={`grid h-72 sm:h-80 overflow-hidden ${post.photoUrls.length === 2 ? "grid-cols-2 gap-0.5" : "grid-cols-1"}`}
+            >
+              {post.photoUrls.map((url, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={i} src={url} alt="" className="w-full h-full object-cover bg-midnight-card" />
+              ))}
+            </div>
+          ) : (
+            <div onClick={openDetail} className="flex gap-0.5 overflow-x-auto no-scrollbar">
+              {post.photoUrls.map((url, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={i} src={url} alt="" className="h-72 sm:h-80 w-auto shrink-0 bg-midnight-card" />
+              ))}
+            </div>
+          )}
           {post.zoneName && (
             <span className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 text-xs font-medium bg-black/60 backdrop-blur px-3 py-1.5 rounded-none border border-white/20">
               <MapPin className="w-3.5 h-3.5" /> {post.zoneName}

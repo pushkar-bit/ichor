@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { Trophy, Flame, ShieldCheck, MapPin, Gauge, Ruler, Snowflake } from "lucide-react";
+import { Trophy, Flame, ShieldCheck, MapPin, Gauge, Ruler, Snowflake, LogOut } from "lucide-react";
 import { integrityTier } from "@/lib/scoring";
 import { BADGE_DEFS } from "@/lib/badges";
 import { Avatar } from "@/components/ui/Avatar";
@@ -101,6 +101,18 @@ export function ProfileView({
           <FollowButton userId={(user as any)._id ? String((user as any)._id) : ""} initialFollowing={isFollowing} />
         )}
       </div>
+
+      {isOwnProfile && (
+        <form action="/api/auth/logout" method="POST">
+          <button
+            type="submit"
+            className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-white/60 hover:text-white border border-border-ichor rounded-full py-2.5 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            Log out
+          </button>
+        </form>
+      )}
 
       {isOwnProfile && stravaStatus && (
         <p className={`text-xs text-center ${stravaStatus === "connected" ? "text-lime" : "text-ignite"}`}>

@@ -31,6 +31,7 @@ export function EditProfileModal({
   const [bio, setBio] = useState(initialBio);
   const [username, setUsername] = useState(initialUsername ?? "");
   const [newAvatarUrl, setNewAvatarUrl] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [weightKg, setWeightKg] = useState(initialWeight ? String(initialWeight) : "");
   const [heightUnit, setHeightUnit] = useState<"cm" | "ft">("cm");
   const [heightCm, setHeightCm] = useState(initialHeight ? String(initialHeight) : "");
@@ -43,11 +44,14 @@ export function EditProfileModal({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    setAvatarUploading(true);
     try {
       const dataUrl = await resizeToDataUrl(file, 400);
       setNewAvatarUrl(await uploadToCloudinary(dataUrl));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to process that photo.");
+    } finally {
+      setAvatarUploading(false);
     }
   }
 
@@ -108,10 +112,16 @@ export function EditProfileModal({
                 <button
                   type="button"
                   onClick={() => avatarInputRef.current?.click()}
+                  disabled={avatarUploading}
                   className="relative"
                   aria-label="Change profile picture"
                 >
                   <Avatar src={newAvatarUrl ?? initialAvatarUrl} name={name} size={72} />
+                  {avatarUploading && (
+                    <span className="absolute inset-0 rounded-full bg-black/60 flex items-center justify-center">
+                      <Loader2 className="w-6 h-6 text-white animate-spin" />
+                    </span>
+                  )}
                   <span className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-momentum text-midnight flex items-center justify-center border-2 border-midnight-raised">
                     <Camera className="w-3 h-3" />
                   </span>

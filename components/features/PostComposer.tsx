@@ -29,6 +29,7 @@ export function PostComposer({ zones, currentUserId }: { zones: Zone[]; currentU
   const [ocrLoading, setOcrLoading] = useState(false);
 
   const [photos, setPhotos] = useState<string[]>([]);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [caption, setCaption] = useState("");
   const [zoneId, setZoneId] = useState("");
   const [isPublic, setIsPublic] = useState(true);
@@ -66,26 +67,31 @@ export function PostComposer({ zones, currentUserId }: { zones: Zone[]; currentU
     e.target.value = "";
     if (files.length === 0) return;
 
-    // Process each file independently — Promise.all would let one bad file (e.g. a HEIC
-    // photo createImageBitmap can't decode in some browsers) silently drop the whole batch
-    // with zero feedback, which is exactly what "photo picked but never appears" looks like.
-    const results = await Promise.allSettled(
-      files.map(async (f) => {
-        const dataUrl = await resizeToDataUrl(f);
-        return await uploadToCloudinary(dataUrl);
-      })
-    );
-    const urls = results.filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled").map((r) => r.value);
-    const failures = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    setUploadingPhotos(true);
+    try {
+      // Process each file independently — Promise.all would let one bad file (e.g. a HEIC
+      // photo createImageBitmap can't decode in some browsers) silently drop the whole batch
+      // with zero feedback, which is exactly what "photo picked but never appears" looks like.
+      const results = await Promise.allSettled(
+        files.map(async (f) => {
+          const dataUrl = await resizeToDataUrl(f);
+          return await uploadToCloudinary(dataUrl);
+        })
+      );
+      const urls = results.filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled").map((r) => r.value);
+      const failures = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
 
-    if (urls.length > 0) {
-      setPhotos((prev) => [...prev, ...urls].slice(0, 5));
-    }
-    if (failures.length > 0) {
-      // Surface the real reason (e.g. "couldn't convert from HEIC") instead of a generic
-      // message — this is the only feedback we get since the picker itself gives nothing.
-      const reasons = [...new Set(failures.map((f) => (f.reason instanceof Error ? f.reason.message : String(f.reason))))];
-      setError(reasons.join(" "));
+      if (urls.length > 0) {
+        setPhotos((prev) => [...prev, ...urls].slice(0, 5));
+      }
+      if (failures.length > 0) {
+        // Surface the real reason (e.g. "couldn't convert from HEIC") instead of a generic
+        // message — this is the only feedback we get since the picker itself gives nothing.
+        const reasons = [...new Set(failures.map((f) => (f.reason instanceof Error ? f.reason.message : String(f.reason))))];
+        setError(reasons.join(" "));
+      }
+    } finally {
+      setUploadingPhotos(false);
     }
   }
 
@@ -471,10 +477,17 @@ export function PostComposer({ zones, currentUserId }: { zones: Zone[]; currentU
           {photos.length < 5 && (
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="aspect-square rounded-xl border border-dashed border-border-ichor flex flex-col items-center justify-center gap-1 text-white/30 hover:text-white/60"
+              disabled={uploadingPhotos}
+              className="aspect-square rounded-xl border border-dashed border-border-ichor flex flex-col items-center justify-center gap-1 text-white/30 hover:text-white/60 disabled:opacity-50"
             >
-              <Upload className="w-5 h-5" />
-              <span className="text-[10px]">Add</span>
+              {uploadingPhotos ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <>
+                  <Upload className="w-5 h-5" />
+                  <span className="text-[10px]">Add</span>
+                </>
+              )}
             </button>
           )}
         </div>

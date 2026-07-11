@@ -96,6 +96,11 @@ export function CoachWidget() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+            {!loaded && (
+              <div className="flex justify-center py-6">
+                <Loader2 className="w-5 h-5 text-white/30 animate-spin" />
+              </div>
+            )}
             {loaded && messages.length === 0 && (
               <div className="space-y-2">
                 <p className="text-xs text-white/40 text-center">Ask me anything about your training!</p>

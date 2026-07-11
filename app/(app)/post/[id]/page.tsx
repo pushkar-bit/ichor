@@ -70,22 +70,47 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
 
       <article className="bg-midnight-raised border border-border-ichor rounded-2xl overflow-hidden">
         <div className="flex items-center gap-3 p-4">
-          <Avatar src={post.author.avatarUrl} name={post.author.name} size={40} />
-          <div className="flex-1 min-w-0">
-            <span className="font-semibold text-sm">{post.author.name}</span>
-            <div className="text-xs text-white/40">{timeAgo(post.createdAt)}</div>
-          </div>
+          {post.author.username ? (
+            <Link href={`/profile/${post.author.username}`} className="flex items-center gap-3 flex-1 min-w-0">
+              <Avatar src={post.author.avatarUrl} name={post.author.name} size={40} />
+              <div className="flex-1 min-w-0">
+                <span className="font-semibold text-sm hover:underline">{post.author.name}</span>
+                <div className="text-xs text-white/40">{timeAgo(post.createdAt)}</div>
+              </div>
+            </Link>
+          ) : (
+            <>
+              <Avatar src={post.author.avatarUrl} name={post.author.name} size={40} />
+              <div className="flex-1 min-w-0">
+                <span className="font-semibold text-sm">{post.author.name}</span>
+                <div className="text-xs text-white/40">{timeAgo(post.createdAt)}</div>
+              </div>
+            </>
+          )}
           <span className="text-[11px] font-medium text-momentum bg-momentum/10 px-2 py-1 rounded-full">
             {post.workout.activityType}
           </span>
         </div>
 
         {post.photoUrls.length > 0 && (
-          <div className="flex gap-0.5 overflow-x-auto no-scrollbar bg-black">
-            {post.photoUrls.map((url: string, i: number) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={i} src={url} alt="" className="h-80 sm:h-96 w-auto shrink-0 bg-midnight-card" />
-            ))}
+          <div className="bg-black">
+            {post.photoUrls.length <= 2 ? (
+              <div
+                className={`grid h-80 sm:h-96 overflow-hidden ${post.photoUrls.length === 2 ? "grid-cols-2 gap-0.5" : "grid-cols-1"}`}
+              >
+                {post.photoUrls.map((url: string, i: number) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img key={i} src={url} alt="" className="w-full h-full object-cover bg-midnight-card" />
+                ))}
+              </div>
+            ) : (
+              <div className="flex gap-0.5 overflow-x-auto no-scrollbar">
+                {post.photoUrls.map((url: string, i: number) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img key={i} src={url} alt="" className="h-80 sm:h-96 w-auto shrink-0 bg-midnight-card" />
+                ))}
+              </div>
+            )}
           </div>
         )}
 

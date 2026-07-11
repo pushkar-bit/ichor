@@ -99,7 +99,7 @@ export function NavShell({
   }
 
   const mobileNavItems = NAV_ITEMS.filter((i) =>
-    ["/feed", "/leaderboard", "/post/create", "/profile", "/search", "/about"].includes(i.href)
+    ["/feed", "/leaderboard", "/post/create", "/search", "/about"].includes(i.href)
   );
 
   return (
@@ -142,11 +142,9 @@ export function NavShell({
             <Link href="/feed" aria-label="Go to feed">
               <IchorLogo textClassName="text-xl" />
             </Link>
-            {user.avatarUrl && (
-              <Link href="/profile">
-                <Avatar src={user.avatarUrl} name={user.name} size={28} />
-              </Link>
-            )}
+            <Link href="/profile" aria-label="Go to profile">
+              <Avatar src={user.avatarUrl} name={user.name} size={28} />
+            </Link>
           </header>
 
           {/* Floating Coach Widget for Mobile */}

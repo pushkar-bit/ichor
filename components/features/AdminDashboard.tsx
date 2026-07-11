@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { ShieldAlert, Flag, Check, Trash2, MapPin } from "lucide-react";
+import { ShieldAlert, Flag, Check, Trash2, MapPin, Loader2 } from "lucide-react";
 
 type Stats = { totalUsers: number; postsToday: number; workoutsThisWeek: number; activeClanCount: number };
 type FlaggedPost = {
@@ -19,6 +19,8 @@ export function AdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [flagged, setFlagged] = useState<FlaggedPost[]>([]);
   const [zones, setZones] = useState<ZoneRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   async function refresh() {
     const [statsRes, flaggedRes, zonesRes] = await Promise.all([
@@ -32,16 +34,28 @@ export function AdminDashboard() {
   }
 
   useEffect(() => {
-    refresh();
+    refresh().finally(() => setLoading(false));
   }, []);
 
   async function restore(id: string) {
-    await fetch(`/api/admin/posts/${id}/restore`, { method: "POST" });
-    refresh();
+    if (busyId) return;
+    setBusyId(id);
+    try {
+      await fetch(`/api/admin/posts/${id}/restore`, { method: "POST" });
+      await refresh();
+    } finally {
+      setBusyId(null);
+    }
   }
   async function remove(id: string) {
-    await fetch(`/api/admin/posts/${id}/remove`, { method: "POST" });
-    refresh();
+    if (busyId) return;
+    setBusyId(id);
+    try {
+      await fetch(`/api/admin/posts/${id}/remove`, { method: "POST" });
+      await refresh();
+    } finally {
+      setBusyId(null);
+    }
   }
 
   return (
@@ -58,6 +72,14 @@ export function AdminDashboard() {
         <StatBox label="Active Clans" value={stats?.activeClanCount} />
       </div>
 
+      {loading && (
+        <div className="flex justify-center py-10">
+          <Loader2 className="w-6 h-6 text-white/40 animate-spin" />
+        </div>
+      )}
+
+      {!loading && (
+      <>
       <div>
         <h2 className="font-semibold text-sm text-white/60 mb-3 flex items-center gap-1.5">
           <Flag className="w-4 h-4" /> Flagged Posts ({flagged.length})
@@ -80,11 +102,19 @@ export function AdminDashboard() {
                   <div className="text-xs text-white/40 truncate">{p.caption}</div>
                   <div className="text-xs text-ignite">{p.flagCount} flags</div>
                 </div>
-                <button onClick={() => restore(p.id)} className="p-2 rounded-full bg-lime/15 text-lime">
-                  <Check className="w-4 h-4" />
+                <button
+                  onClick={() => restore(p.id)}
+                  disabled={busyId === p.id}
+                  className="p-2 rounded-full bg-lime/15 text-lime disabled:opacity-50"
+                >
+                  {busyId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 </button>
-                <button onClick={() => remove(p.id)} className="p-2 rounded-full bg-ignite/15 text-ignite">
-                  <Trash2 className="w-4 h-4" />
+                <button
+                  onClick={() => remove(p.id)}
+                  disabled={busyId === p.id}
+                  className="p-2 rounded-full bg-ignite/15 text-ignite disabled:opacity-50"
+                >
+                  {busyId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 </button>
               </div>
             ))}
@@ -107,6 +137,8 @@ export function AdminDashboard() {
           ))}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }
