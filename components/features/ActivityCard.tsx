@@ -121,11 +121,11 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
           {post.photoUrls.length <= 2 ? (
             <div
               onClick={openDetail}
-              className={`grid h-72 sm:h-80 overflow-hidden ${post.photoUrls.length === 2 ? "grid-cols-2 gap-0.5" : "grid-cols-1"}`}
+              className={`grid h-72 sm:h-80 overflow-hidden ${post.photoUrls.length === 2 ? "grid-cols-2 gap-1.5" : "grid-cols-1"}`}
             >
               {post.photoUrls.map((url, i) => (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img key={i} src={url} alt="" className="w-full h-full object-cover bg-midnight-card" />
+                <img key={i} src={url} alt="" className="w-full h-full object-contain bg-midnight-card" />
               ))}
             </div>
           ) : (

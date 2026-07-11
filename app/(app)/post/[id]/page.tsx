@@ -96,11 +96,11 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
           <div className="bg-black">
             {post.photoUrls.length <= 2 ? (
               <div
-                className={`grid h-80 sm:h-96 overflow-hidden ${post.photoUrls.length === 2 ? "grid-cols-2 gap-0.5" : "grid-cols-1"}`}
+                className={`grid h-80 sm:h-96 overflow-hidden ${post.photoUrls.length === 2 ? "grid-cols-2 gap-1.5" : "grid-cols-1"}`}
               >
                 {post.photoUrls.map((url: string, i: number) => (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img key={i} src={url} alt="" className="w-full h-full object-cover bg-midnight-card" />
+                  <img key={i} src={url} alt="" className="w-full h-full object-contain bg-midnight-card" />
                 ))}
               </div>
             ) : (
