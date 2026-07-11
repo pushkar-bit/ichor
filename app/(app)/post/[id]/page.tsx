@@ -18,6 +18,7 @@ import { ReactionSummary } from "@/components/features/ReactionSummary";
 import { CommentSection } from "@/components/features/CommentSection";
 import { FlagButton } from "@/components/features/FlagButton";
 import { DietPill } from "@/components/features/ActivityCard";
+import { PostImageCarousel } from "@/components/features/PostImageCarousel";
 import { EditCaption } from "@/components/features/EditCaption";
 import { DeletePostButton } from "@/components/features/DeletePostButton";
 import { timeAgo, formatPace, formatDuration } from "@/lib/utils";
@@ -93,25 +94,11 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
         </div>
 
         {post.photoUrls.length > 0 && (
-          <div className="bg-black">
-            {post.photoUrls.length <= 2 ? (
-              <div
-                className={`grid h-80 sm:h-96 overflow-hidden ${post.photoUrls.length === 2 ? "grid-cols-2 gap-1.5" : "grid-cols-1"}`}
-              >
-                {post.photoUrls.map((url: string, i: number) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img key={i} src={url} alt="" className="w-full h-full object-contain bg-midnight-card" />
-                ))}
-              </div>
-            ) : (
-              <div className="flex gap-0.5 overflow-x-auto no-scrollbar">
-                {post.photoUrls.map((url: string, i: number) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img key={i} src={url} alt="" className="h-80 sm:h-96 w-auto shrink-0 bg-midnight-card" />
-                ))}
-              </div>
-            )}
-          </div>
+          <PostImageCarousel
+            photoUrls={post.photoUrls}
+            zoneName={post.zoneName}
+            heightClass="max-h-[520px] sm:max-h-[70vh]"
+          />
         )}
 
         <div className="flex items-center px-4 py-4 border-b border-border-ichor">

@@ -11,13 +11,15 @@ type ReactionBarProps = {
   initialHype: { count: number; given: boolean };
   initialRespect: { count: number; given: boolean };
   initialChallenge: { count: number; given: boolean };
-  // "vertical" (default) is the feed card's narrow sidebar stack; "horizontal" is a compact
-  // inline row, used where the bar sits next to another control (e.g. Report on post detail).
-  layout?: "vertical" | "horizontal";
+  // "vertical" (default) is the feed card's narrow desktop sidebar stack; "horizontal" is a
+  // compact inline row next to another control (e.g. Report on post detail); "fill" is an
+  // equal-width row spanning its container (the feed card's mobile action bar).
+  layout?: "vertical" | "horizontal" | "fill";
 };
 
 export function ReactionBar({ postId, initialHype, initialRespect, initialChallenge, layout = "vertical" }: ReactionBarProps) {
   const isHorizontal = layout === "horizontal";
+  const isFill = layout === "fill";
   const router = useRouter();
   const [hype, setHype] = useState(initialHype);
   const [respect, setRespect] = useState(initialRespect);
@@ -73,10 +75,16 @@ export function ReactionBar({ postId, initialHype, initialRespect, initialChalle
     }
   };
 
-  const buttonSize = isHorizontal ? "px-3 py-1.5" : "w-full px-4 py-2";
+  const buttonSize = isHorizontal ? "px-3 py-1.5" : isFill ? "flex-1 px-3 py-2" : "w-full px-4 py-2";
+
+  const containerClass = isHorizontal
+    ? "flex items-center gap-2"
+    : isFill
+      ? "flex items-center gap-2 w-full"
+      : "flex flex-col items-center gap-3 w-full";
 
   return (
-    <div className={isHorizontal ? "flex items-center gap-2" : "flex flex-col items-center gap-3 w-full"}>
+    <div className={containerClass}>
       <motion.button
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.9 }}

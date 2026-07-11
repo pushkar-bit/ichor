@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Footprints, Bike, Timer, Flame as FlameIcon, MapPin, MessageSquare, BadgeCheck, Camera } from "lucide-react";
+import { Footprints, Bike, Timer, Flame as FlameIcon, MessageSquare, BadgeCheck, Camera } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { RunVisualizer } from "./RunVisualizer";
+import { PostImageCarousel } from "./PostImageCarousel";
 import { ReactionBar } from "./ReactionBar";
 import { ReactionSummary } from "./ReactionSummary";
 import { timeAgo, formatPace, formatDuration } from "@/lib/utils";
@@ -117,31 +118,12 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
       </div>
 
       {post.photoUrls.length > 0 && (
-        <div className={`relative w-full bg-black ${post.linkToDetail !== false ? "cursor-pointer" : ""}`}>
-          {post.photoUrls.length <= 2 ? (
-            <div
-              onClick={openDetail}
-              className={`grid h-72 sm:h-80 overflow-hidden ${post.photoUrls.length === 2 ? "grid-cols-2 gap-1.5" : "grid-cols-1"}`}
-            >
-              {post.photoUrls.map((url, i) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={i} src={url} alt="" className="w-full h-full object-contain bg-midnight-card" />
-              ))}
-            </div>
-          ) : (
-            <div onClick={openDetail} className="flex gap-0.5 overflow-x-auto no-scrollbar">
-              {post.photoUrls.map((url, i) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={i} src={url} alt="" className="h-72 sm:h-80 w-auto shrink-0 bg-midnight-card" />
-              ))}
-            </div>
-          )}
-          {post.zoneName && (
-            <span className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 text-xs font-medium bg-black/60 backdrop-blur px-3 py-1.5 rounded-none border border-white/20">
-              <MapPin className="w-3.5 h-3.5" /> {post.zoneName}
-            </span>
-          )}
-        </div>
+        <PostImageCarousel
+          photoUrls={post.photoUrls}
+          zoneName={post.zoneName}
+          onOpen={post.linkToDetail !== false ? openDetail : undefined}
+          heightClass="max-h-[420px] sm:max-h-[480px]"
+        />
       )}
 
       {/* Full-width visual bar (straight edges) */}
@@ -156,13 +138,13 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
         />
       </div>
 
-      <div className="relative overflow-hidden flex px-4 pt-2 pb-6 gap-4">
+      <div className="relative overflow-hidden flex px-3 sm:px-4 pt-2 pb-4 sm:pb-6 gap-3 sm:gap-4">
         {/* Absolute faint background glow for entire lower card */}
-        <div 
+        <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] blur-3xl opacity-[0.06] rounded-full mix-blend-screen pointer-events-none transition-colors duration-1000"
           style={{ backgroundColor: `hsl(${hue}, 100%, 60%)` }}
         />
-        
+
         <div
           className={`flex-1 min-w-0 relative z-10 ${post.linkToDetail !== false ? "cursor-pointer" : ""}`}
           onClick={openDetail}
@@ -187,16 +169,41 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
               <ReactionSummary postId={post.id} summary={post.reactionSummary} />
             </div>
           )}
+
+          {/* Mobile action row: horizontal, full width, below the content. Swaps for the
+              desktop sidebar below at sm+ via display toggling (not a flex-direction
+              breakpoint swap, which some browsers failed to apply reliably here). */}
+          <div className="flex sm:hidden items-stretch gap-2 pt-3" onClick={(e) => e.stopPropagation()}>
+            <ReactionBar
+              layout="fill"
+              postId={post.id}
+              initialHype={{ count: post.hypeCount, given: post.hypeGiven }}
+              initialRespect={{ count: post.respectCount, given: post.respectGiven }}
+              initialChallenge={{ count: post.challengeCount, given: post.challengeGiven }}
+            />
+            {post.linkToDetail !== false ? (
+              <Link
+                href={`/post/${post.id}`}
+                className="inline-flex items-center justify-center gap-2 text-sm font-bold px-4 py-2 rounded-none border-2 border-border-ichor text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+              >
+                <MessageSquare className="w-4 h-4" /> {post.commentCount}
+              </Link>
+            ) : (
+              <span className="inline-flex items-center justify-center gap-2 text-sm font-bold px-4 py-2 text-white/50 border-2 border-transparent">
+                <MessageSquare className="w-4 h-4" /> {post.commentCount}
+              </span>
+            )}
+          </div>
         </div>
 
-        <div className="flex flex-col items-center gap-3 shrink-0 pt-6 w-20 md:w-24 relative z-10">
-          <ReactionBar 
+        <div className="hidden sm:flex sm:flex-col items-center gap-3 shrink-0 pt-6 w-20 md:w-24 relative z-10">
+          <ReactionBar
             postId={post.id}
             initialHype={{ count: post.hypeCount, given: post.hypeGiven }}
             initialRespect={{ count: post.respectCount, given: post.respectGiven }}
             initialChallenge={{ count: post.challengeCount, given: post.challengeGiven }}
           />
-          <motion.div 
+          <motion.div
             className="w-full"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.9 }}

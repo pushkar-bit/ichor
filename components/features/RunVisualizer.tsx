@@ -30,42 +30,42 @@ export function RunVisualizer({ activityType, distanceKm, durationSeconds, avgPa
     <div className="flex flex-col relative w-full pt-6 pb-2 overflow-hidden">
       
       {/* Hero Metrics: Distance, Pace & Time */}
-      <div className="relative flex items-center justify-between gap-4 mb-4 px-1">
-        
+      <div className="relative flex items-center justify-center gap-8 sm:gap-12 mb-4 px-1">
+
         {/* Distance */}
-        <div className="flex flex-col">
+        <div className="flex flex-col min-w-0">
           <div className="flex items-center gap-1.5 mb-1 text-momentum/80 font-medium text-xs tracking-widest uppercase">
-            <Icon className="w-4 h-4" />
+            <Icon className="w-4 h-4 shrink-0" />
             Dist
           </div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="font-display font-bold text-4xl md:text-5xl text-white tracking-tighter shadow-black/50 drop-shadow-lg">
+          <div className="flex items-baseline gap-0.5 min-w-0">
+            <span className="font-display font-bold text-4xl md:text-5xl text-white tracking-tighter shadow-black/50 drop-shadow-lg truncate">
               <CountUp end={distanceKm} decimals={2} duration={2.5} />
             </span>
-            <span className="text-sm font-medium text-white/50 mb-1">km</span>
+            <span className="text-sm font-medium text-white/50 mb-1 shrink-0">km</span>
           </div>
         </div>
 
         {/* Pace */}
-        <div className="flex flex-col">
+        <div className="flex flex-col min-w-0">
           <div className="flex items-center gap-1.5 mb-1 text-ignite/80 font-medium text-xs tracking-widest uppercase">
-            <Activity className="w-4 h-4" />
+            <Activity className="w-4 h-4 shrink-0" />
             Pace
           </div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="font-display font-bold text-4xl md:text-5xl text-white tracking-tighter shadow-black/50 drop-shadow-lg">
+          <div className="flex items-baseline gap-0.5 min-w-0">
+            <span className="font-display font-bold text-4xl md:text-5xl text-white tracking-tighter shadow-black/50 drop-shadow-lg truncate">
               {formatPace(avgPaceMinPerKm)}
             </span>
           </div>
         </div>
 
         {/* Time */}
-        <div className="flex flex-col">
+        <div className="flex flex-col min-w-0">
           <div className="flex items-center gap-1.5 mb-1 text-blue-400/90 font-medium text-xs tracking-widest uppercase">
-            <Timer className="w-4 h-4" />
+            <Timer className="w-4 h-4 shrink-0" />
             Time
           </div>
-          <span className="font-display font-bold text-4xl md:text-5xl text-white tracking-tighter shadow-black/50 drop-shadow-lg">
+          <span className="block font-display font-bold text-4xl md:text-5xl text-white tracking-tighter shadow-black/50 drop-shadow-lg truncate">
             {formatDuration(durationSeconds)}
           </span>
         </div>
