@@ -8,6 +8,12 @@ const TerritorySchema = new Schema(
     weeklyCalorieScore: { type: Number, default: 0 },
     acquiredAt: { type: Date, default: null },
     lastDefended: { type: Date, default: null },
+    // Fame: how "on the map" this zone is, independent of who currently owns it.
+    // fameScore = distinctRunnerIds.length * 10 + totalVisits — runners matter more than
+    // repeat visits from the same person (that's what makes a zone feel genuinely popular).
+    fameScore: { type: Number, default: 0 },
+    distinctRunnerIds: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    totalVisits: { type: Number, default: 0 },
   },
   { timestamps: true },
 );

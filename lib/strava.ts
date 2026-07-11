@@ -2,6 +2,10 @@ import { Workout } from "@/models/Workout";
 import { Post } from "@/models/Post";
 import { recordWorkoutStats } from "./recordWorkout";
 import { buildStravaRouteMapUrl } from "./stravaRouteMap";
+import { decodePolyline } from "./polyline";
+import { detectZoneForRoute } from "./zoneDetection";
+import { claimZone } from "./territory";
+import { findActiveGroupRunForUser, attachRunToGroupRun } from "./groupRun";
 
 const STRAVA_ACTIVITY_TYPE_MAP: Record<string, "RUN" | "WALK" | "CYCLE"> = {
   Run: "RUN",
@@ -141,6 +145,17 @@ export async function ingestStravaActivity(user: StravaLinkedUser, activity: Str
       : Math.round(distanceKm * (user.weightKg || 62) * 1.036);
   const workoutDate = new Date(activity.start_date);
 
+  const encodedPolyline = activity.map?.summary_polyline ?? activity.map?.polyline;
+  // GeoJSON wants [lng, lat]; decodePolyline returns [lat, lng] pairs (Strava's native order).
+  const decoded: [number, number][] | null = encodedPolyline
+    ? decodePolyline(encodedPolyline).map(([lat, lng]) => [lng, lat])
+    : null;
+  // A near-zero-movement activity (GPS glitch, accidental start/stop) decodes to a polyline
+  // where every point is identical — Mongo rejects that as an invalid LineString (needs at
+  // least 2 *distinct* vertices), and it's not a real route to detect a zone from anyway.
+  const hasRealRoute = decoded && new Set(decoded.map(([lng, lat]) => `${lng},${lat}`)).size >= 2;
+  const routeCoordinates = hasRealRoute ? decoded : null;
+
   let workout;
   try {
     workout = await Workout.create({
@@ -155,6 +170,7 @@ export async function ingestStravaActivity(user: StravaLinkedUser, activity: Str
       workoutDate,
       externalId: `strava:${activity.id}`,
       verificationStatus: "VERIFIED",
+      route: routeCoordinates && routeCoordinates.length >= 2 ? { type: "LineString", coordinates: routeCoordinates } : undefined,
     });
   } catch (err) {
     if ((err as { code?: number }).code === 11000) return null; // already synced
@@ -163,12 +179,30 @@ export async function ingestStravaActivity(user: StravaLinkedUser, activity: Str
 
   // Route map always goes first (position 0) so it's the guaranteed cover image — the runner's
   // own Strava photos, if any, follow it rather than replacing it.
-  const routeMapUrl = buildStravaRouteMapUrl(activity.map?.summary_polyline ?? activity.map?.polyline);
+  const routeMapUrl = buildStravaRouteMapUrl(encodedPolyline);
   const ownPhotos =
     accessToken && activity.photos && activity.photos.count > 0
       ? await fetchStravaActivityPhotos(accessToken, activity.id)
       : [];
   const photoUrls = [routeMapUrl, ...ownPhotos].filter((url): url is string => Boolean(url));
+
+  // Territory: does this run's GPS trace pass through a zone? Reuses the same claimZone used
+  // by manual posts — if the zone's already owned by someone else and this run outscores their
+  // stored weekly score, that auto-triggers a PENDING attack the same way it already does for
+  // the map's manual "Challenge" flow. There's no live user here to ask Attack/Exploit/Ignore,
+  // so this deliberately never silently takes an owned zone without a contest.
+  let locationZoneId: string | null = null;
+  if (routeCoordinates && routeCoordinates.length >= 2) {
+    const detected = await detectZoneForRoute(routeCoordinates);
+    if (detected) {
+      locationZoneId = detected.zoneId;
+      await claimZone(String(user._id), detected.zoneId, caloriesBurned);
+    }
+  }
+
+  // If this run lands inside a War group run's capture window and the user is still waiting
+  // on a run for it, this is that run — same auto-link manual posts already get.
+  const activeGroupRun = await findActiveGroupRunForUser(String(user._id), workoutDate);
 
   const post = await Post.create({
     userId: user._id,
@@ -176,7 +210,13 @@ export async function ingestStravaActivity(user: StravaLinkedUser, activity: Str
     caption: activity.name ?? "",
     photoUrls,
     isPublic: true,
+    locationZoneId,
+    groupRunId: activeGroupRun ? activeGroupRun._id : null,
   });
+
+  if (activeGroupRun) {
+    await attachRunToGroupRun(String(activeGroupRun._id), String(user._id), String(workout._id));
+  }
 
   const { newBadges } = await recordWorkoutStats(user, { distanceKm, caloriesBurned }, workoutDate);
 

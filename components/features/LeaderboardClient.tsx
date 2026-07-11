@@ -13,6 +13,7 @@ const CATEGORIES = [
   { key: "distance", label: "Distance Destroyer" },
   { key: "integrity", label: "Integrity Champion" },
   { key: "clans", label: "Clan Wars" },
+  { key: "territory", label: "Territory Fame" },
 ];
 
 const RANGES = [
@@ -27,6 +28,7 @@ type Row = {
   userId?: string;
   username?: string | null;
   clanId?: string;
+  zoneId?: string;
   name: string;
   tag?: string;
   color?: string;
@@ -35,6 +37,7 @@ type Row = {
   unit: string;
   memberCount?: number;
   zonesHeld?: number;
+  ownerName?: string | null;
 };
 
 type LeaderboardInitialData = { rows: Row[]; me: string | null };
@@ -103,7 +106,9 @@ export function LeaderboardClient({ initialData }: { initialData?: LeaderboardIn
             ))}
           </div>
 
-          {/* Range switcher — applies to whichever category is active */}
+          {/* Range switcher — territory fame is a live, cumulative reading with no "this week"
+              split, so the switcher would just be a no-op for it. */}
+          {category !== "territory" && (
           <div className="flex items-center gap-1.5 mb-6">
             {RANGES.map((r) => (
               <button
@@ -118,6 +123,7 @@ export function LeaderboardClient({ initialData }: { initialData?: LeaderboardIn
               </button>
             ))}
           </div>
+          )}
 
           {loading ? (
             <div className="space-y-3">
@@ -158,6 +164,9 @@ export function LeaderboardClient({ initialData }: { initialData?: LeaderboardIn
                           {row.memberCount} members · {row.zonesHeld} zones
                         </span>
                       )}
+                      {category === "territory" && (
+                        <span className="text-[11px] text-white/40">{row.ownerName ? `Held by ${row.ownerName}` : "Unclaimed"}</span>
+                      )}
                     </div>
                     <span className="text-sm font-semibold shrink-0">
                       {typeof row.value === "number" ? (Number.isInteger(row.value) ? row.value : row.value.toFixed(2)) : row.value}{" "}
@@ -174,14 +183,16 @@ export function LeaderboardClient({ initialData }: { initialData?: LeaderboardIn
                     {content}
                   </Link>
                 ) : (
-                  <div key={row.userId ?? row.clanId} className={rowClassName}>
+                  <div key={row.userId ?? row.clanId ?? row.zoneId} className={rowClassName}>
                     {content}
                   </div>
                 );
               })}
               {rows.length === 0 && (
                 <p className="text-center text-white/30 text-sm py-10">
-                  {range === "all" ? "No rankings yet." : `No data yet ${range === "week" ? "this week" : "this month"}.`}
+                  {category === "territory" || range === "all"
+                    ? "No rankings yet."
+                    : `No data yet ${range === "week" ? "this week" : "this month"}.`}
                 </p>
               )}
             </div>

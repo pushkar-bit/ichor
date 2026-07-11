@@ -3,11 +3,12 @@ import { Post } from "@/models/Post";
 import "@/models/Workout";
 import { Clan, ClanMember } from "@/models/Clan";
 import { Territory } from "@/models/Territory";
+import { CampusZone } from "@/models/CampusZone";
 import { computeAllScoresForRange, type DateRange } from "./scoring";
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "./week";
 
 export type RangeKey = "week" | "month" | "all";
-export type LeaderboardCategory = "calories" | "distance" | "pace" | "streak" | "integrity" | "clans";
+export type LeaderboardCategory = "calories" | "distance" | "pace" | "streak" | "integrity" | "clans" | "territory";
 
 export function resolveRange(rangeKey: RangeKey): DateRange {
   const now = new Date();
@@ -154,6 +155,37 @@ async function clanRows(range: DateRange) {
   );
 }
 
+/**
+ * Every CampusZone, ranked by fame (distinct runners + total visits — see lib/territory.ts),
+ * not just the ones with a claimed Territory doc yet. Unlike the other categories this
+ * ignores `range` entirely — fame is a live, cumulative reading, there's no natural
+ * "fame this week" split — so every range shows the same ranking.
+ */
+async function territoryRows() {
+  const zones = await CampusZone.find({}).lean();
+  const territories = await Territory.find({ zoneId: { $in: zones.map((z: any) => z._id) } })
+    .populate("ownerId")
+    .populate("clanId")
+    .lean();
+  const byZone = new Map(territories.map((t: any) => [String(t.zoneId), t]));
+
+  return zones
+    .map((z: any) => {
+      const t = byZone.get(String(z._id));
+      const owner = t?.ownerId as any;
+      const clan = t?.clanId as any;
+      return {
+        zoneId: String(z._id),
+        name: z.name,
+        avatarUrl: owner?.avatarUrl ?? null,
+        ownerName: owner?.name ?? clan?.name ?? null,
+        value: t?.fameScore ?? 0,
+        unit: "fame",
+      };
+    })
+    .sort((a, b) => b.value - a.value);
+}
+
 export async function getLeaderboardRows(category: string, rangeKey: RangeKey, viewer: { _id: unknown; clanId?: unknown } | null) {
   const range = resolveRange(rangeKey);
 
@@ -176,6 +208,10 @@ export async function getLeaderboardRows(category: string, rangeKey: RangeKey, v
   if (category === "clans") {
     const rows = await clanRows(range);
     return { rows: rows.sort((a, b) => b.value - a.value), me: viewer?.clanId ? String(viewer.clanId) : null };
+  }
+  if (category === "territory") {
+    const rows = await territoryRows();
+    return { rows, me: null };
   }
   return null;
 }

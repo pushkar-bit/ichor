@@ -14,6 +14,8 @@ type PopulatedPost = {
     avgPaceMinPerKm: number | null;
     workoutDate: Date;
   } | null;
+  scoreMultiplier?: number;
+  battleBonusPoints?: number;
 };
 
 export type ScoreBreakdown = {
@@ -34,7 +36,13 @@ export type DateRange = { start?: Date; end?: Date } | null;
 
 function computeScoreFromPosts(userId: string, posts: PopulatedPost[], dietCards: any[]): ScoreBreakdown {
   const validPosts = posts.filter((p) => p.workoutId);
-  const baseCalories = validPosts.reduce((sum, p) => sum + (p.workoutId?.caloriesBurned || 0), 0);
+  // A lost attack zeroes out its post's calorie contribution (scoreMultiplier 0); an
+  // exploited zone halves it (0.5). Everything else defaults to the full 1x.
+  const baseCalories = validPosts.reduce(
+    (sum, p) => sum + (p.workoutId?.caloriesBurned || 0) * (p.scoreMultiplier ?? 1),
+    0,
+  );
+  const battleBonusTotal = validPosts.reduce((sum, p) => sum + (p.battleBonusPoints ?? 0), 0);
   const totalDistanceKm = validPosts.reduce((sum, p) => sum + (p.workoutId?.distanceKm || 0), 0);
 
   const runPosts = validPosts.filter((p) => p.workoutId?.activityType === "RUN" && p.workoutId?.avgPaceMinPerKm);
@@ -52,7 +60,9 @@ function computeScoreFromPosts(userId: string, posts: PopulatedPost[], dietCards
 
   const integrityBonus = cleanCount * 50;
   const cheatPenalty = cheatCount > 0 ? baseCalories * 0.1 : 0;
-  const finalScore = baseCalories * consistencyMultiplier + integrityBonus - cheatPenalty;
+  // Battle bonuses (won attacks/wars) are flat point awards, not calorie-based, so they're
+  // added after the consistency multiplier rather than folded into baseCalories.
+  const finalScore = baseCalories * consistencyMultiplier + integrityBonus - cheatPenalty + battleBonusTotal;
 
   return {
     userId,
@@ -77,7 +87,7 @@ export async function computeUserScore(userId: string, range: DateRange): Promis
 
   const posts = await Post.find({ userId, isHidden: false, ...(Object.keys(createdAt).length ? { createdAt } : {}) })
     .populate({ path: "workoutId", select: "caloriesBurned distanceKm activityType avgPaceMinPerKm workoutDate" })
-    .select("_id workoutId")
+    .select("_id workoutId scoreMultiplier battleBonusPoints")
     .lean();
 
   const postIds = posts.map((p) => p._id);
@@ -114,7 +124,7 @@ export async function computeAllScoresForRange(range: DateRange) {
     ...(Object.keys(createdAt).length ? { createdAt } : {}),
   })
     .populate({ path: "workoutId", select: "caloriesBurned distanceKm activityType avgPaceMinPerKm workoutDate" })
-    .select("_id userId workoutId")
+    .select("_id userId workoutId scoreMultiplier battleBonusPoints")
     .lean();
 
   // Group posts by userId
@@ -146,6 +156,15 @@ export async function computeAllScoresForRange(range: DateRange) {
     const score = computeScoreFromPosts(String(u._id), userPosts, userDietCards);
     return { user: u, score };
   });
+}
+
+/** Used only for territory contest scoring (attack/exploit) — the main weeklyScore formula doesn't use this. */
+export function paceBonus(avgPaceMinPerKm: number | null | undefined): number {
+  if (!avgPaceMinPerKm) return 1.0;
+  if (avgPaceMinPerKm < 5) return 1.3;
+  if (avgPaceMinPerKm <= 6) return 1.15;
+  if (avgPaceMinPerKm <= 7) return 1.0;
+  return 0.9;
 }
 
 export function integrityTier(points: number): string {

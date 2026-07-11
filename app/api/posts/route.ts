@@ -5,7 +5,9 @@ import { Workout } from "@/models/Workout";
 import { Post } from "@/models/Post";
 import { DietCard } from "@/models/DietCard";
 import { classifyDiet } from "@/lib/ai";
-import { claimZone } from "@/lib/territory";
+import { claimZone, claimOrContestZone, getZoneContest } from "@/lib/territory";
+import { paceBonus } from "@/lib/scoring";
+import { findActiveGroupRunForUser, attachRunToGroupRun } from "@/lib/groupRun";
 import { recordWorkoutStats } from "@/lib/recordWorkout";
 import { getPersonalBests } from "@/lib/personalBests";
 
@@ -31,6 +33,7 @@ export async function POST(req: NextRequest) {
     isPublic,
     dietDescription,
     dietResult,
+    contestChoice,
   } = body;
 
   if (!activityType || !distanceKm || !durationSeconds || !caloriesBurned) {
@@ -62,14 +65,29 @@ export async function POST(req: NextRequest) {
     verificationStatus: sourceType === "HEALTH_SYNC" ? "VERIFIED" : "PENDING",
   });
 
+  // If the zone belongs to someone else, the client is expected to have already shown the
+  // invasion overlay and sent back the user's choice. Ignore (or no choice at all) means the
+  // post saves normally with no territory link — never fall through to a silent claim.
+  const contest = locationZoneId ? await getZoneContest(locationZoneId, String(me._id)) : null;
+  const ignoringContestedZone = Boolean(contest) && contestChoice !== "ATTACK" && contestChoice !== "EXPLOIT";
+
+  // If this run lands inside a War group run's capture window and the user is a participant
+  // still waiting on a run, this workout is theirs for that war — no separate "start tracking".
+  const activeGroupRun = await findActiveGroupRunForUser(String(me._id), workout.workoutDate);
+
   const post = await Post.create({
     userId: me._id,
     workoutId: workout._id,
     caption: caption ?? "",
     photoUrls,
-    locationZoneId: locationZoneId ?? null,
+    locationZoneId: ignoringContestedZone ? null : (locationZoneId ?? null),
     isPublic: isPublic ?? true,
+    groupRunId: activeGroupRun ? activeGroupRun._id : null,
   });
+
+  if (activeGroupRun) {
+    await attachRunToGroupRun(String(activeGroupRun._id), String(me._id), String(workout._id));
+  }
 
   // Diet classification (a Gemini call — several seconds) and territory claiming touch
   // completely independent data, so run them concurrently instead of back to back.
@@ -93,7 +111,32 @@ export async function POST(req: NextRequest) {
           return card;
         })()
       : Promise.resolve(null),
-    locationZoneId ? claimZone(String(me._id), locationZoneId, caloriesBurned) : Promise.resolve(null),
+    (async () => {
+      if (!locationZoneId || ignoringContestedZone) return null;
+
+      if (contest) {
+        const result = await claimOrContestZone({
+          userId: String(me._id),
+          zoneId: locationZoneId,
+          workoutId: String(workout._id),
+          caloriesBurned,
+          paceBonus: paceBonus(avgPaceMinPerKm),
+          contestChoice: contestChoice as "ATTACK" | "EXPLOIT",
+        });
+        await Post.updateOne(
+          { _id: post._id },
+          {
+            contestStatus: result.contestStatus,
+            scoreMultiplier: result.scoreMultiplier,
+            battleBonusPoints: result.battleBonusPoints,
+            linkedAttackId: result.attackId ?? null,
+          },
+        );
+        return result;
+      }
+
+      return claimZone(String(me._id), locationZoneId, caloriesBurned);
+    })(),
   ]);
 
   const { newBadges } = await recordWorkoutStats(me, { distanceKm, caloriesBurned }, new Date());

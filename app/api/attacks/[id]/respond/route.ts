@@ -3,6 +3,7 @@ import { connectDB } from "@/lib/mongodb";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { Attack } from "@/models/Attack";
 import { resolveAttack } from "@/lib/territory";
+import { createWarGroupRun } from "@/lib/groupRun";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   await connectDB();
@@ -25,12 +26,35 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     attack.resolvedAt = new Date();
     await attack.save();
     await resolveAttack(id, String(attack.attackerId));
-  } else if (action === "ACCEPT") {
-    attack.status = "ACCEPTED";
-    await attack.save();
-  } else {
-    return NextResponse.json({ error: "action must be ACCEPT or FORFEIT" }, { status: 400 });
+    return NextResponse.json({ status: attack.status });
   }
 
-  return NextResponse.json({ status: attack.status });
+  if (action === "DEFEND") {
+    // Immediate stat-battle resolution — the defender's zone score against the attacker's
+    // triggering run (already includes any fresh-run bonus from claimOrContestZone).
+    const winnerId = attack.defenderScore >= attack.attackerScore ? attack.defenderId : attack.attackerId;
+    const resolved = await resolveAttack(id, String(winnerId));
+    return NextResponse.json({ status: resolved?.status, winnerId: resolved?.winnerId });
+  }
+
+  if (action === "WAR") {
+    const groupRun = await createWarGroupRun({
+      attackId: id,
+      hostId: String(attack.defenderId),
+      zoneId: String(attack.zoneId),
+    });
+    attack.status = "WAR";
+    attack.warGroupRunId = groupRun._id;
+    attack.scheduledAt = groupRun.startAt;
+    await attack.save();
+    return NextResponse.json({
+      status: attack.status,
+      groupRunId: String(groupRun._id),
+      sessionCode: groupRun.sessionCode,
+      startAt: groupRun.startAt,
+      windowEnd: groupRun.windowEnd,
+    });
+  }
+
+  return NextResponse.json({ error: "action must be DEFEND, WAR, or FORFEIT" }, { status: 400 });
 }

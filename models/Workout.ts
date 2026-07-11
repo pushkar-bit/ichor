@@ -17,6 +17,13 @@ const WorkoutSchema = new Schema(
     workoutDate: { type: Date, required: true },
     externalId: { type: String, default: null },
     screenshotUrl: { type: String, default: null },
+    // GPS trace, GeoJSON [lng, lat] pairs — only ever set for Strava-sourced runs. Left
+    // entirely unset (not an empty array) for manual/OCR workouts so the sparse geo index
+    // below doesn't choke on it (an empty `coordinates` array is invalid GeoJSON).
+    route: {
+      type: { type: String, enum: ["LineString"], default: undefined },
+      coordinates: { type: [[Number]], default: undefined },
+    },
     verificationStatus: {
       type: String,
       enum: ["PENDING", "VERIFIED", "FLAGGED"],
@@ -28,6 +35,7 @@ const WorkoutSchema = new Schema(
 
 WorkoutSchema.index({ userId: 1, workoutDate: -1 }); // user history queries
 WorkoutSchema.index({ activityType: 1 }); // activity-type aggregation
+WorkoutSchema.index({ route: "2dsphere" }, { sparse: true }); // zone-entry detection for Strava runs
 // `externalId` defaults to null (not absent) for MANUAL/OCR_SCREENSHOT workouts, and a plain
 // `sparse` index still treats an explicit null as "present" — so a `sparse` unique index here
 // would wrongly reject a user's second manually-logged workout. A partial filter that only

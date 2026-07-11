@@ -17,6 +17,21 @@ const PostSchema = new Schema(
     flagCount: { type: Number, default: 0 },
     flaggedByUserIds: [{ type: Schema.Types.ObjectId, ref: "User" }],
     isHidden: { type: Boolean, default: false },
+    /**
+     * Set when this post's location lands in a zone owned by someone else at the moment
+     * of posting. Drives the scoring adjustments below — see lib/scoring.ts.
+     */
+    contestStatus: {
+      type: String,
+      enum: ["NONE", "ATTACKED", "EXPLOITED", "ATTACK_WON", "ATTACK_LOST", "WAR_SCHEDULED", "WAR_WON", "WAR_LOST"],
+      default: "NONE",
+    },
+    /** Applied to this post's calorie contribution in scoring: 0.5 for exploit, 0 for a lost attack. */
+    scoreMultiplier: { type: Number, default: 1 },
+    /** Flat bonus added on top (200 for a won attack, 300 for a won war). */
+    battleBonusPoints: { type: Number, default: 0 },
+    linkedAttackId: { type: Schema.Types.ObjectId, ref: "Attack", default: null },
+    groupRunId: { type: Schema.Types.ObjectId, ref: "GroupRun", default: null },
   },
   { timestamps: true },
 );
