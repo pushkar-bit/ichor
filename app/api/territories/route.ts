@@ -37,6 +37,7 @@ export async function GET() {
       areaSqM: t.areaSqM,
       valuePoints: t.valuePoints,
       fameScore: t.fameScore,
+      totalDistanceKm: t.totalDistanceKm ?? 0,
       shieldUntil: t.shieldUntil,
       createdAt: t.createdAt,
       ownerId,
