@@ -3,8 +3,9 @@ import { Post } from "@/models/Post";
 import { recordWorkoutStats } from "./recordWorkout";
 import { buildStravaRouteMapUrl } from "./stravaRouteMap";
 import { decodePolyline } from "./polyline";
-import { detectZoneForRoute } from "./zoneDetection";
-import { claimZone } from "./territory";
+import { processRunForTerritory } from "./territoryEngine";
+import { attachQualifyingRunsToBattles } from "./battles";
+import { awardPointsForWorkout } from "./points";
 import { findActiveGroupRunForUser, attachRunToGroupRun } from "./groupRun";
 
 const STRAVA_ACTIVITY_TYPE_MAP: Record<string, "RUN" | "WALK" | "CYCLE"> = {
@@ -42,6 +43,7 @@ export type StravaActivity = {
 
 type StravaLinkedUser = {
   _id: unknown;
+  name?: string;
   weightKg?: number | null;
   stravaAthleteId?: string | null;
   stravaAccessToken?: string | null;
@@ -186,19 +188,15 @@ export async function ingestStravaActivity(user: StravaLinkedUser, activity: Str
       : [];
   const photoUrls = [routeMapUrl, ...ownPhotos].filter((url): url is string => Boolean(url));
 
-  // Territory: does this run's GPS trace pass through a zone? Reuses the same claimZone used
-  // by manual posts — if the zone's already owned by someone else and this run outscores their
-  // stored weekly score, that auto-triggers a PENDING attack the same way it already does for
-  // the map's manual "Challenge" flow. There's no live user here to ask Attack/Exploit/Ignore,
-  // so this deliberately never silently takes an owned zone without a contest.
-  let locationZoneId: string | null = null;
-  if (routeCoordinates && routeCoordinates.length >= 2) {
-    const detected = await detectZoneForRoute(routeCoordinates);
-    if (detected) {
-      locationZoneId = detected.zoneId;
-      await claimZone(String(user._id), detected.zoneId, caloriesBurned);
-    }
-  }
+  // Territory + points: the run claims whatever unclaimed ground it covered and earns
+  // profile points (thresholds/PBs/pace). Attacking is always a choice, so opportunities
+  // become inbox notifications here — there's no live user on the webhook path to prompt.
+  const [territoryResult, pointsAwarded] = await Promise.all([
+    processRunForTerritory({ _id: user._id, name: user.name }, workout, { notifyOpportunities: true }),
+    awardPointsForWorkout(user, workout),
+  ]);
+  // If this run lands inside an active battle the user is fighting, it becomes their entry.
+  await attachQualifyingRunsToBattles(user, workout);
 
   // If this run lands inside a War group run's capture window and the user is still waiting
   // on a run for it, this is that run — same auto-link manual posts already get.
@@ -210,7 +208,6 @@ export async function ingestStravaActivity(user: StravaLinkedUser, activity: Str
     caption: activity.name ?? "",
     photoUrls,
     isPublic: true,
-    locationZoneId,
     groupRunId: activeGroupRun ? activeGroupRun._id : null,
   });
 
@@ -220,5 +217,5 @@ export async function ingestStravaActivity(user: StravaLinkedUser, activity: Str
 
   const { newBadges } = await recordWorkoutStats(user, { distanceKm, caloriesBurned }, workoutDate);
 
-  return { workout, post, newBadges };
+  return { workout, post, newBadges, territoryResult, pointsAwarded };
 }

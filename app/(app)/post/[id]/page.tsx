@@ -6,7 +6,6 @@ import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { Post } from "@/models/Post";
 import { DietCard } from "@/models/DietCard";
 import { Comment } from "@/models/Comment";
-import { CampusZone } from "@/models/CampusZone";
 import { User } from "@/models/User";
 import "@/models/Workout";
 import { serializePost } from "@/lib/serialize";
@@ -31,10 +30,9 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
   const postDoc = await Post.findById(id).populate("userId").populate("workoutId").lean();
   if (!postDoc) notFound();
 
-  const [dietCard, comments, zone, interestSets] = await Promise.all([
+  const [dietCard, comments, interestSets] = await Promise.all([
     DietCard.findOne({ postId: id }).lean(),
     Comment.find({ postId: id }).sort({ createdAt: 1 }).populate("authorId").lean(),
-    (postDoc as any).locationZoneId ? CampusZone.findById((postDoc as any).locationZoneId).lean() : null,
     me ? getInterestSets(String(me._id), me.clanId) : null,
   ]);
 
@@ -51,7 +49,7 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
   }
 
   const post = serializePost(
-    { ...postDoc, dietCard, commentCount: comments.length, zoneName: (zone as any)?.name ?? null, reactionSummary },
+    { ...postDoc, dietCard, commentCount: comments.length, zoneName: null, reactionSummary },
     me ? String(me._id) : undefined,
   );
 

@@ -1,40 +1,4 @@
-import crypto from "crypto";
 import { GroupRun } from "@/models/GroupRun";
-import { Attack } from "@/models/Attack";
-import { resolveWar } from "./territory";
-
-const WINDOW_MINUTES = 30;
-/** Gives both sides time to see the notification and join the lobby before the run starts. */
-const LOBBY_LEAD_MINUTES = 10;
-
-function generateSessionCode(): string {
-  return crypto.randomBytes(3).toString("hex").toUpperCase();
-}
-
-/** Defender chose "War" instead of "Defend" — spins up a linked GroupRun both sides run into. */
-export async function createWarGroupRun(params: { attackId: string; hostId: string; zoneId: string }) {
-  const { attackId, hostId, zoneId } = params;
-  const startAt = new Date(Date.now() + LOBBY_LEAD_MINUTES * 60 * 1000);
-  const windowEnd = new Date(startAt.getTime() + WINDOW_MINUTES * 60 * 1000);
-
-  let sessionCode = generateSessionCode();
-  // Collision is extremely unlikely at 16^6 codes, but the unique index would 500 the
-  // request outright rather than retry on its own.
-  while (await GroupRun.exists({ sessionCode })) sessionCode = generateSessionCode();
-
-  return GroupRun.create({
-    title: "Territory War",
-    hostId,
-    sessionCode,
-    type: "WAR",
-    linkedAttackId: attackId,
-    territoryId: zoneId,
-    startAt,
-    windowEnd,
-    status: "LOBBY",
-    participants: [{ userId: hostId, joinedAt: new Date() }],
-  });
-}
 
 export async function joinGroupRun(groupRunId: string, userId: string) {
   const groupRun = await GroupRun.findById(groupRunId);
@@ -65,9 +29,7 @@ export async function attachRunToGroupRun(groupRunId: string, userId: string, wo
   );
 }
 
-/** Closes a window past its end: builds the leaderboard from each participant's linked run
- * and, for WAR runs, resolves the underlying Attack by directly comparing calorie totals —
- * the group run itself is the fair fight, so no fresh-run/pace bonuses apply here. */
+/** Closes a window past its end: builds the leaderboard from each participant's linked run. */
 export async function closeGroupRun(groupRunId: string) {
   const groupRun = await GroupRun.findById(groupRunId).populate("participants.runId");
   if (!groupRun || groupRun.status === "COMPLETED") return groupRun;
@@ -118,19 +80,6 @@ export async function closeGroupRun(groupRunId: string) {
     },
   };
   await groupRun.save();
-
-  if (groupRun.type === "WAR" && groupRun.linkedAttackId) {
-    const attack = await Attack.findById(groupRun.linkedAttackId);
-    if (attack) {
-      const attackerEntry = leaderboard.find((l) => String(l.userId) === String(attack.attackerId));
-      const defenderEntry = leaderboard.find((l) => String(l.userId) === String(attack.defenderId));
-      const attackerTotal = attackerEntry?.runScore ?? 0;
-      const defenderTotal = defenderEntry?.runScore ?? 0;
-      // No-show default: if neither side actually logged a run, the defender keeps the zone.
-      const winnerId = attackerTotal > defenderTotal ? attack.attackerId : attack.defenderId;
-      await resolveWar(String(attack._id), String(winnerId));
-    }
-  }
 
   return groupRun;
 }

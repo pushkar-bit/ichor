@@ -4,7 +4,6 @@ import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { Post } from "@/models/Post";
 import { DietCard } from "@/models/DietCard";
 import { Comment } from "@/models/Comment";
-import { CampusZone } from "@/models/CampusZone";
 import { Workout } from "@/models/Workout";
 import { FlameRating } from "@/models/FlameRating";
 import "@/models/User";
@@ -18,17 +17,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const post = await Post.findById(id).populate("userId").populate("workoutId").lean();
   if (!post) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  const [dietCard, commentCount, zone] = await Promise.all([
+  const [dietCard, commentCount] = await Promise.all([
     DietCard.findOne({ postId: id }).lean(),
     Comment.countDocuments({ postId: id }),
-    (post as any).locationZoneId ? CampusZone.findById((post as any).locationZoneId).lean() : null,
   ]);
 
   return NextResponse.json(
-    serializePost(
-      { ...post, dietCard, commentCount, zoneName: (zone as any)?.name ?? null },
-      me ? String(me._id) : undefined,
-    ),
+    serializePost({ ...post, dietCard, commentCount, zoneName: null }, me ? String(me._id) : undefined),
   );
 }
 

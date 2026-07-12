@@ -5,11 +5,7 @@ const GroupRunSchema = new Schema(
     title: { type: String, required: true },
     hostId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     sessionCode: { type: String, required: true, unique: true },
-    type: { type: String, enum: ["COMPETITIVE", "FRIENDLY", "WAR"], default: "FRIENDLY" },
-    /** WAR only — the Attack that spawned this run. */
-    linkedAttackId: { type: Schema.Types.ObjectId, ref: "Attack", default: null },
-    /** COMPETITIVE/WAR — the zone being contested. */
-    territoryId: { type: Schema.Types.ObjectId, ref: "CampusZone", default: null },
+    type: { type: String, enum: ["COMPETITIVE", "FRIENDLY"], default: "FRIENDLY" },
     location: {
       lat: { type: Number, default: null },
       lng: { type: Number, default: null },
@@ -52,6 +48,5 @@ const GroupRunSchema = new Schema(
 );
 
 GroupRunSchema.index({ status: 1, startAt: 1 });
-GroupRunSchema.index({ linkedAttackId: 1 });
 
 export const GroupRun = models.GroupRun || model("GroupRun", GroupRunSchema);

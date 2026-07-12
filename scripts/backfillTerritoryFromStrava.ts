@@ -1,91 +1,51 @@
 /**
- * One-time backfill: for Strava-sourced Workouts synced before route/zone-detection existed
- * (see lib/strava.ts ingestStravaActivity), re-fetch each activity's polyline from Strava,
- * store the route, detect which CampusZone it passed through, and run it through the same
- * claimZone() territory logic new syncs already get.
- *
- * Only touches Workouts with sourceType HEALTH_SYNC, an externalId (so we know the Strava
- * activity id to re-fetch), and no route yet — safe to re-run, it's a no-op on anything
- * already backfilled.
+ * Replays every route-bearing Strava workout chronologically through the run-shaped
+ * territory engine, so the map starts populated after the old zone system's data was
+ * dropped. Safe to re-run: a run whose ground is already claimed simply claims nothing
+ * new (and fame bumps are the only side effect).
  *
  * Run with: npm run backfill:territory
  */
+import mongoose from "mongoose";
 import { connectDB } from "../lib/mongodb";
 import { User } from "../models/User";
 import { Workout } from "../models/Workout";
-import { Post } from "../models/Post";
-import { ensureFreshStravaToken, fetchStravaActivity } from "../lib/strava";
-import { decodePolyline } from "../lib/polyline";
-import { detectZoneForRoute } from "../lib/zoneDetection";
-import { claimZone } from "../lib/territory";
+import { processRunForTerritory } from "../lib/territoryEngine";
 
 async function main() {
   await connectDB();
 
-  const stravaUsers = await User.find({ stravaAthleteId: { $ne: null } });
-  console.log(`Found ${stravaUsers.length} Strava-linked user(s).`);
+  const workouts = await Workout.find({
+    sourceType: "HEALTH_SYNC",
+    activityType: "RUN",
+    verificationStatus: "VERIFIED",
+    route: { $exists: true },
+  })
+    .sort({ workoutDate: 1 })
+    .lean();
 
-  let scanned = 0;
-  let zonesAssigned = 0;
-  let skippedNoRoute = 0;
+  console.log(`Replaying ${workouts.length} route-bearing runs chronologically...`);
 
-  for (const user of stravaUsers) {
-    const workouts = await Workout.find({
-      userId: user._id,
-      sourceType: "HEALTH_SYNC",
-      externalId: { $regex: /^strava:/ },
-      route: { $exists: false },
-    });
-    if (workouts.length === 0) continue;
+  const userCache = new Map<string, { _id: unknown; name?: string } | null>();
+  let claimed = 0;
 
-    console.log(`\n${user.name ?? user.email} — ${workouts.length} workout(s) to backfill`);
-
-    let accessToken: string;
-    try {
-      accessToken = await ensureFreshStravaToken(user);
-    } catch (err) {
-      console.warn(`  Skipping — couldn't refresh Strava token: ${(err as Error).message}`);
-      continue;
+  for (const workout of workouts as any[]) {
+    const userId = String(workout.userId);
+    if (!userCache.has(userId)) {
+      userCache.set(userId, await User.findById(userId).select("name").lean());
     }
+    const user = userCache.get(userId);
+    if (!user) continue;
 
-    for (const workout of workouts) {
-      scanned++;
-      const activityId = Number(workout.externalId!.replace("strava:", ""));
-      try {
-        const activity = await fetchStravaActivity(accessToken, activityId);
-        const encoded = activity.map?.summary_polyline ?? activity.map?.polyline;
-        if (!encoded) {
-          skippedNoRoute++;
-          continue;
-        }
-
-        const routeCoordinates: [number, number][] = decodePolyline(encoded).map(([lat, lng]) => [lng, lat]);
-        // A near-zero-movement activity decodes to identical points, which Mongo rejects as
-        // an invalid LineString (needs 2+ distinct vertices) — and it's not a real route anyway.
-        const distinctPoints = new Set(routeCoordinates.map(([lng, lat]) => `${lng},${lat}`)).size;
-        if (distinctPoints < 2) {
-          skippedNoRoute++;
-          console.log(`  Workout ${workout._id} — GPS trace is a single point (no real movement), skipping`);
-          continue;
-        }
-        workout.route = { type: "LineString", coordinates: routeCoordinates };
-        await workout.save();
-
-        const detected = await detectZoneForRoute(routeCoordinates);
-        if (!detected) continue;
-
-        await claimZone(String(user._id), detected.zoneId, workout.caloriesBurned);
-        await Post.updateOne({ workoutId: workout._id, locationZoneId: null }, { locationZoneId: detected.zoneId });
-        zonesAssigned++;
-        console.log(`  Workout ${workout._id} → zone ${detected.zoneId} (${Math.round(detected.hitFraction * 100)}% of route)`);
-      } catch (err) {
-        console.warn(`  Failed on workout ${workout._id}: ${(err as Error).message}`);
-      }
+    const result = await processRunForTerritory(user, workout);
+    if (result.claimed) {
+      claimed++;
+      console.log(`  ${user.name ?? userId} claimed "${result.claimed.name}" (${result.claimed.areaSqM} m²)`);
     }
   }
 
-  console.log(`\nDone. Scanned ${scanned} workout(s), assigned a zone to ${zonesAssigned}, ${skippedNoRoute} had no GPS data.`);
-  process.exit(0);
+  console.log(`Done. ${claimed} territories claimed from ${workouts.length} runs.`);
+  await mongoose.disconnect();
 }
 
 main().catch((err) => {

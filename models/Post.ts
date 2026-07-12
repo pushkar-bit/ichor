@@ -6,7 +6,6 @@ const PostSchema = new Schema(
     workoutId: { type: Schema.Types.ObjectId, ref: "Workout", required: true, unique: true },
     caption: { type: String, default: "" },
     photoUrls: [{ type: String }],
-    locationZoneId: { type: Schema.Types.ObjectId, ref: "CampusZone", default: null },
     isPublic: { type: Boolean, default: true },
     hypeCount: { type: Number, default: 0 },
     hypeUserIds: [{ type: Schema.Types.ObjectId, ref: "User" }],
@@ -18,8 +17,9 @@ const PostSchema = new Schema(
     flaggedByUserIds: [{ type: Schema.Types.ObjectId, ref: "User" }],
     isHidden: { type: Boolean, default: false },
     /**
-     * Set when this post's location lands in a zone owned by someone else at the moment
-     * of posting. Drives the scoring adjustments below — see lib/scoring.ts.
+     * Legacy zone-battle fields, kept (with their defaults) so lib/scoring.ts keeps reading
+     * old posts unchanged. Nothing writes them since the run-shaped territory system
+     * replaced zone contests — new posts always carry the defaults.
      */
     contestStatus: {
       type: String,
@@ -30,7 +30,6 @@ const PostSchema = new Schema(
     scoreMultiplier: { type: Number, default: 1 },
     /** Flat bonus added on top (200 for a won attack, 300 for a won war). */
     battleBonusPoints: { type: Number, default: 0 },
-    linkedAttackId: { type: Schema.Types.ObjectId, ref: "Attack", default: null },
     groupRunId: { type: Schema.Types.ObjectId, ref: "GroupRun", default: null },
   },
   { timestamps: true },

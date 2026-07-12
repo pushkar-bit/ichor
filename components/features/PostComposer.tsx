@@ -5,15 +5,13 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import confetti from "canvas-confetti";
-import { Camera, Upload, X, ChevronDown, Loader2, MapPin, Trophy, Swords, Zap, ShieldOff } from "lucide-react";
+import { Camera, Upload, X, ChevronDown, Loader2, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resizeToDataUrl } from "@/lib/image";
 import { uploadToCloudinary } from "@/lib/cloudinaryClient";
+import { AttackPromptSheet } from "./AttackPromptSheet";
 
-type Zone = { id: string; name: string; ownerId: string | null; ownerName: string | null; ownerAvatarUrl: string | null };
-type ContestChoice = "ATTACK" | "EXPLOIT" | "IGNORE";
-
-export function PostComposer({ zones, currentUserId }: { zones: Zone[]; currentUserId: string | null }) {
+export function PostComposer() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
@@ -31,23 +29,8 @@ export function PostComposer({ zones, currentUserId }: { zones: Zone[]; currentU
   const [photos, setPhotos] = useState<string[]>([]);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [caption, setCaption] = useState("");
-  const [zoneId, setZoneId] = useState("");
   const [isPublic, setIsPublic] = useState(true);
-  const [locating, setLocating] = useState(false);
-  const [locationLabel, setLocationLabel] = useState<string | null>(null);
-  const [locationError, setLocationError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-
-  // Set once the user resolves the invasion overlay for the currently selected zone.
-  // Cleared whenever zoneId changes so re-picking the same enemy zone prompts again.
-  const [contestChoice, setContestChoice] = useState<ContestChoice | null>(null);
-  const contestedZone = zones.find((z) => z.id === zoneId && z.ownerId && z.ownerId !== currentUserId) ?? null;
-  const showInvasionOverlay = Boolean(contestedZone) && contestChoice === null;
-
-  function pickZone(id: string) {
-    setZoneId(id);
-    setContestChoice(null);
-  }
 
   const [dietOpen, setDietOpen] = useState(false);
   const [dietText, setDietText] = useState("");
@@ -61,6 +44,9 @@ export function PostComposer({ zones, currentUserId }: { zones: Zone[]; currentU
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pbMessage, setPbMessage] = useState<string | null>(null);
+  // Set when the posted run claimed land or unlocked attacks — shows the territory report
+  // before navigating to the post.
+  const [territoryPrompt, setTerritoryPrompt] = useState<{ workoutId: string; postId: string } | null>(null);
 
   async function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []).slice(0, 5 - photos.length);
@@ -200,38 +186,6 @@ export function PostComposer({ zones, currentUserId }: { zones: Zone[]; currentU
   }, []);
 
 
-  function detectLocation() {
-    if (!("geolocation" in navigator)) {
-      setLocationError("Location unavailable — pick a zone manually below.");
-      return;
-    }
-    setLocating(true);
-    setLocationError(null);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          const { latitude, longitude } = position.coords;
-          const res = await fetch(`/api/location/detect?lat=${latitude}&lng=${longitude}`);
-          const data = await res.json();
-          if (res.ok) {
-            const cityLine = [data.district, data.city].filter(Boolean).join(", ");
-            setLocationLabel(cityLine || "Location detected");
-            if (data.zone) pickZone(data.zone.id);
-          } else {
-            setLocationError("Could not resolve location — pick a zone manually below.");
-          }
-        } finally {
-          setLocating(false);
-        }
-      },
-      () => {
-        setLocating(false);
-        setLocationError("Location unavailable — pick a zone manually below.");
-      },
-      { timeout: 10000, maximumAge: 0 },
-    );
-  }
-
   async function analyzeDiet() {
     if (!dietText.trim()) return dietResult;
     setDietLoading(true);
@@ -256,10 +210,6 @@ export function PostComposer({ zones, currentUserId }: { zones: Zone[]; currentU
     setError(null);
     if (!screenshotUrl || !activityType) {
       setError("Upload a screenshot to extract your workout stats before posting.");
-      return;
-    }
-    if (showInvasionOverlay) {
-      setError("Choose Attack, Exploit, or Ignore for the territory you tagged.");
       return;
     }
     const distance = parseFloat(distanceKm);
@@ -308,8 +258,6 @@ export function PostComposer({ zones, currentUserId }: { zones: Zone[]; currentU
           photoUrls: photos.length > 0
             ? [...photos, ...(screenshotUrl ? [screenshotUrl] : [])]
             : screenshotUrl ? [screenshotUrl] : [],
-          locationZoneId: zoneId || null,
-          contestChoice: contestedZone ? contestChoice : undefined,
           isPublic,
           dietDescription: finalDietResult ? dietText : undefined,
         }),
@@ -343,6 +291,14 @@ export function PostComposer({ zones, currentUserId }: { zones: Zone[]; currentU
         await new Promise((resolve) => setTimeout(resolve, 1700));
       }
 
+      // If the run touched the territory game, show the report (claims + attack options)
+      // before leaving; navigation happens when the sheet closes.
+      const tr = data.territoryResult;
+      if (tr && (tr.claimed || (tr.opportunities?.length ?? 0) > 0)) {
+        setTerritoryPrompt({ workoutId: data.workoutId, postId: data.postId });
+        return;
+      }
+
       router.push(`/post/${data.postId}`);
       router.refresh();
     } finally {
@@ -352,53 +308,21 @@ export function PostComposer({ zones, currentUserId }: { zones: Zone[]; currentU
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6 pb-24 relative">
+      {territoryPrompt && (
+        <AttackPromptSheet
+          workoutId={territoryPrompt.workoutId}
+          onClose={() => {
+            router.push(`/post/${territoryPrompt.postId}`);
+            router.refresh();
+          }}
+        />
+      )}
+
       {pbMessage && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-x-4 top-6 z-[9999] flex justify-center pointer-events-none">
           <div className="flex items-center gap-2.5 bg-midnight-raised border border-[#D4AF37]/50 rounded-2xl px-4 py-3 shadow-2xl max-w-sm">
             <Trophy className="w-5 h-5 text-[#D4AF37] shrink-0" />
             <span className="text-sm font-semibold text-white">{pbMessage}</span>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {showInvasionOverlay && contestedZone && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
-          <div className="text-center p-6 sm:p-8 border border-ignite/40 rounded-3xl bg-midnight-raised max-w-sm w-full shadow-2xl">
-            <div className="w-16 h-16 rounded-full overflow-hidden mx-auto mb-4 border-2 border-ignite/60 bg-midnight-card relative">
-              {contestedZone.ownerAvatarUrl ? (
-                <Image src={contestedZone.ownerAvatarUrl} alt="" fill sizes="64px" className="object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-xl font-bold text-ignite">
-                  {(contestedZone.ownerName ?? "?").charAt(0)}
-                </div>
-              )}
-            </div>
-            <h2 className="font-display italic font-bold text-2xl text-white mb-1">
-              ⚔️ You entered {contestedZone.ownerName ?? "an athlete"}&apos;s territory
-
-            </h2>
-            <p className="text-white/50 text-sm mb-6">{contestedZone.name} is currently held by someone else. What do you want to do?</p>
-            <div className="space-y-2.5">
-              <button
-                onClick={() => setContestChoice("ATTACK")}
-                className="w-full flex items-center justify-center gap-2 bg-ignite text-midnight font-semibold py-3 rounded-full"
-              >
-                <Swords className="w-4 h-4" /> Attack — go for the zone
-              </button>
-              <button
-                onClick={() => setContestChoice("EXPLOIT")}
-                className="w-full flex items-center justify-center gap-2 bg-white/10 text-white font-semibold py-3 rounded-full"
-              >
-                <Zap className="w-4 h-4" /> Exploit — half score, no fight
-              </button>
-              <button
-                onClick={() => setContestChoice("IGNORE")}
-                className="w-full flex items-center justify-center gap-2 text-white/50 font-medium py-2.5 rounded-full"
-              >
-                <ShieldOff className="w-4 h-4" /> Ignore — don&apos;t tag a zone
-              </button>
-            </div>
           </div>
         </div>,
         document.body
@@ -504,44 +428,6 @@ export function PostComposer({ zones, currentUserId }: { zones: Zone[]; currentU
           className="w-full bg-midnight-raised border border-border-ichor rounded-xl px-4 py-3 text-sm placeholder:text-white/30 focus:outline-none focus:border-momentum/50 resize-none"
         />
         <div className="text-right text-[11px] text-white/30">{caption.length}/300</div>
-      </div>
-
-      {/* Zone picker */}
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-2">
-          <label className="text-xs font-medium text-white/50 block">Where did you work out?</label>
-          <button
-            type="button"
-            onClick={detectLocation}
-            disabled={locating}
-            className="inline-flex items-center gap-1 text-xs font-medium text-momentum disabled:opacity-50"
-          >
-            {locating ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
-            Detect my location
-          </button>
-        </div>
-        {locationLabel && <p className="text-xs text-lime mb-2">📍 {locationLabel}</p>}
-        {locationError && <p className="text-xs text-white/40 mb-2">{locationError}</p>}
-        <select
-          value={zoneId}
-          onChange={(e) => pickZone(e.target.value)}
-          className="w-full bg-midnight-raised border border-border-ichor rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-momentum/50"
-        >
-          <option value="">No zone tag</option>
-          {zones.map((z) => (
-            <option key={z.id} value={z.id}>
-              {z.name}
-              {z.ownerId && z.ownerId !== currentUserId ? ` — held by ${z.ownerName ?? "another athlete"}` : ""}
-            </option>
-          ))}
-        </select>
-        {contestedZone && contestChoice && (
-          <p className="text-xs text-ignite mt-2">
-            {contestChoice === "ATTACK" && `⚔️ Attacking ${contestedZone.ownerName ?? "the owner"}'s territory.`}
-            {contestChoice === "EXPLOIT" && "🩸 Exploiting this zone — half score, no ownership change."}
-            {contestChoice === "IGNORE" && "This run won't tag a territory."}
-          </p>
-        )}
       </div>
 
       {/* Diet honesty card */}

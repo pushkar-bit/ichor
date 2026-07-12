@@ -8,6 +8,7 @@ import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, Search, Log
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { Avatar } from "./Avatar";
 import { CoachWidget } from "@/components/features/CoachWidget";
+import { NotificationBell } from "@/components/features/NotificationBell";
 
 /**
  * Nav items.
@@ -99,7 +100,7 @@ export function NavShell({
   }
 
   const mobileNavItems = NAV_ITEMS.filter((i) =>
-    ["/feed", "/leaderboard", "/post/create", "/search", "/about"].includes(i.href)
+    ["/feed", "/map", "/post/create", "/leaderboard", "/search"].includes(i.href)
   );
 
   return (
@@ -116,6 +117,10 @@ export function NavShell({
           {NAV_ITEMS.map((item) => renderNavItem(item))}
         </nav>
         <div className="mt-auto px-2 space-y-2 mb-4">
+          <div className="flex items-center gap-2 px-1">
+            <NotificationBell />
+            <span className="text-xs text-white/40">Notifications</span>
+          </div>
           <Link href="/profile" className="flex items-center gap-2 rounded-none px-1 py-1 hover:bg-midnight-raised transition-colors">
             {user.avatarUrl && <Avatar src={user.avatarUrl} name={user.name} size={32} />}
             <div className="flex-1 min-w-0">
@@ -142,9 +147,12 @@ export function NavShell({
             <Link href="/feed" aria-label="Go to feed">
               <IchorLogo textClassName="text-xl" />
             </Link>
-            <Link href="/profile" aria-label="Go to profile">
-              <Avatar src={user.avatarUrl} name={user.name} size={28} />
-            </Link>
+            <div className="flex items-center gap-3">
+              <NotificationBell />
+              <Link href="/profile" aria-label="Go to profile">
+                <Avatar src={user.avatarUrl} name={user.name} size={28} />
+              </Link>
+            </div>
           </header>
 
           {/* Floating Coach Widget for Mobile */}

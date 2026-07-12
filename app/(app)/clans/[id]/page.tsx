@@ -1,13 +1,11 @@
 import { notFound } from "next/navigation";
-import { Swords, Crown, MapPin } from "lucide-react";
+import { Crown, MapPin } from "lucide-react";
 import { connectDB } from "@/lib/mongodb";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { Clan, ClanMember } from "@/models/Clan";
 import { Territory } from "@/models/Territory";
-import { Attack } from "@/models/Attack";
 import { computeUserWeeklyScore } from "@/lib/scoring";
 import "@/models/User";
-import "@/models/CampusZone";
 import { Avatar } from "@/components/ui/Avatar";
 import { ClanActions, KickButton } from "@/components/features/ClanActions";
 
@@ -33,15 +31,10 @@ export default async function ClanDetailPage({ params }: { params: Promise<{ id:
     }),
   );
 
-  const territories = await Territory.find({ clanId: id }).populate("zoneId").lean();
+  // A clan's land is whatever its members hold individually.
   const memberIds = members.map((m: any) => String(m.userId._id));
-  const attacks = await Attack.find({
-    status: "PENDING",
-    $or: [{ attackerId: { $in: memberIds } }, { defenderId: { $in: memberIds } }],
-  })
-    .populate("zoneId")
-    .populate("attackerId")
-    .populate("defenderId")
+  const territories = await Territory.find({ ownerId: { $in: memberIds } })
+    .select("name valuePoints areaSqM")
     .lean();
 
   const myMembership = me ? members.find((m: any) => String(m.userId._id) === String(me._id)) : null;
@@ -101,33 +94,16 @@ export default async function ClanDetailPage({ params }: { params: Promise<{ id:
 
       <h2 className="font-semibold text-sm text-white/60 mb-3">Territory</h2>
       {territories.length === 0 ? (
-        <p className="text-sm text-white/30 mb-6">No zones held yet.</p>
+        <p className="text-sm text-white/30 mb-6">No land held yet — go run somewhere new.</p>
       ) : (
         <div className="grid grid-cols-2 gap-2 mb-6">
           {territories.map((t: any, i: number) => (
             <div key={i} className="flex items-center gap-2 bg-midnight-raised border border-border-ichor rounded-xl px-3 py-2.5">
               <MapPin className="w-3.5 h-3.5 text-momentum shrink-0" />
               <div className="min-w-0">
-                <div className="text-sm font-medium truncate">{t.zoneId?.name}</div>
-                <div className="text-xs text-white/40">{t.weeklyCalorieScore} score</div>
+                <div className="text-sm font-medium truncate">{t.name}</div>
+                <div className="text-xs text-white/40">{t.valuePoints} pts</div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <h2 className="font-semibold text-sm text-white/60 mb-3">Clan Wars</h2>
-      {attacks.length === 0 ? (
-        <p className="text-sm text-white/30">No active battles.</p>
-      ) : (
-        <div className="space-y-2">
-          {attacks.map((a: any) => (
-            <div key={a._id} className="flex items-center gap-2.5 bg-midnight-raised border border-border-ichor rounded-xl px-4 py-3">
-              <Swords className="w-4 h-4 text-ignite shrink-0" />
-              <span className="text-sm">
-                <span className="font-semibold">{a.attackerId?.name}</span> vs{" "}
-                <span className="font-semibold">{a.defenderId?.name}</span> for {a.zoneId?.name}
-              </span>
             </div>
           ))}
         </div>

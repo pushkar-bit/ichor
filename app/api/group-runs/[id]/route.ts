@@ -3,7 +3,6 @@ import { connectDB } from "@/lib/mongodb";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { GroupRun } from "@/models/GroupRun";
 import "@/models/User";
-import "@/models/CampusZone";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   await connectDB();
@@ -13,7 +12,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const groupRun = await GroupRun.findById(id)
     .populate("hostId")
-    .populate("territoryId")
     .populate("participants.userId")
     .populate("results.leaderboard.userId")
     .lean();
@@ -26,7 +24,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     sessionCode: g.sessionCode,
     type: g.type,
     status: g.status,
-    zoneName: g.territoryId?.name ?? null,
     startAt: g.startAt,
     windowEnd: g.windowEnd,
     endedAt: g.endedAt,

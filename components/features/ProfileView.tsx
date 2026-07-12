@@ -30,6 +30,7 @@ type ProfileUser = {
   bestStreakDays: number;
   streakFreezesAvailable?: number;
   integrityPoints: number;
+  points?: number;
   badges?: string[];
 };
 
@@ -151,10 +152,10 @@ export function ProfileView({
       </div>
 
       <div className="flex bg-midnight-raised border border-border-ichor rounded-2xl py-4">
+        <StatChip label="Points" value={user.points ?? 0} icon={<Trophy className="w-3.5 h-3.5" />} />
         <StatChip label="Total km" value={Math.round(user.totalDistanceKm)} />
         <StatChip label="Workouts" value={user.totalWorkouts} />
-        <StatChip label="Calories" value={user.totalCalories} />
-        <StatChip label="Zones Held" value={zonesHeld} icon={<MapPin className="w-3.5 h-3.5" />} />
+        <StatChip label="Territories" value={zonesHeld} icon={<MapPin className="w-3.5 h-3.5" />} />
       </div>
 
       {/* Battle record */}

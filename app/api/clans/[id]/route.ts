@@ -3,10 +3,8 @@ import { connectDB } from "@/lib/mongodb";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { Clan, ClanMember } from "@/models/Clan";
 import { Territory } from "@/models/Territory";
-import { Attack } from "@/models/Attack";
 import { computeUserWeeklyScore } from "@/lib/scoring";
 import "@/models/User";
-import "@/models/CampusZone";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   await connectDB();
@@ -29,15 +27,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     }),
   );
 
-  const territories = await Territory.find({ clanId: id }).populate("zoneId").lean();
+  // A clan's land is whatever its members hold individually.
   const memberIds = members.map((m: any) => String(m.userId._id));
-  const attacks = await Attack.find({
-    status: "PENDING",
-    $or: [{ attackerId: { $in: memberIds } }, { defenderId: { $in: memberIds } }],
-  })
-    .populate("zoneId")
-    .populate("attackerId")
-    .populate("defenderId")
+  const territories = await Territory.find({ ownerId: { $in: memberIds } })
+    .select("name valuePoints areaSqM")
     .lean();
 
   return NextResponse.json({
@@ -49,13 +42,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     dietPactDescription: (clan as any).dietPactDescription,
     battlesWon: (clan as any).battlesWon,
     members: memberRows,
-    territory: territories.map((t: any) => ({ zoneName: t.zoneId?.name, weeklyCalorieScore: t.weeklyCalorieScore })),
-    activeAttacks: attacks.map((a: any) => ({
-      id: String(a._id),
-      zoneName: a.zoneId?.name,
-      attackerName: a.attackerId?.name,
-      defenderName: a.defenderId?.name,
-    })),
+    territory: territories.map((t: any) => ({ zoneName: t.name, valuePoints: t.valuePoints })),
   });
 }
 

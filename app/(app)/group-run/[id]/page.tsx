@@ -3,9 +3,7 @@ import { Swords, Trophy, Check, Clock } from "lucide-react";
 import { connectDB } from "@/lib/mongodb";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { GroupRun } from "@/models/GroupRun";
-import { Attack } from "@/models/Attack";
 import "@/models/User";
-import "@/models/CampusZone";
 import { Avatar } from "@/components/ui/Avatar";
 import { JoinGroupRunButton } from "@/components/features/GroupRunActions";
 
@@ -16,14 +14,12 @@ export default async function GroupRunPage({ params }: { params: Promise<{ id: s
   if (!me) notFound();
 
   const groupRun = await GroupRun.findById(id)
-    .populate("territoryId")
     .populate("participants.userId")
     .populate("results.leaderboard.userId")
     .lean();
   if (!groupRun) notFound();
 
   const g = groupRun as any;
-  const attack = g.linkedAttackId ? await Attack.findById(g.linkedAttackId).lean() : null;
   const isParticipant = g.participants.some((p: any) => String(p.userId?._id ?? p.userId) === String(me._id));
   const canJoin = !isParticipant && g.status !== "COMPLETED";
 
@@ -34,7 +30,7 @@ export default async function GroupRunPage({ params }: { params: Promise<{ id: s
         <h1 className="font-display italic font-bold text-2xl">{g.title}</h1>
       </div>
       <p className="text-sm text-white/50 mb-5">
-        {g.territoryId?.name ?? "Territory"} · code <span className="font-mono text-white/70">{g.sessionCode}</span>
+        Group run · code <span className="font-mono text-white/70">{g.sessionCode}</span>
       </p>
 
       <div className="flex items-center gap-2 mb-6 text-xs">
@@ -85,7 +81,7 @@ export default async function GroupRunPage({ params }: { params: Promise<{ id: s
             {g.results.leaderboard.map((l: any) => {
               const user = l.userId;
               const userId = String(user?._id ?? user);
-              const isWinner = attack && String((attack as any).winnerId) === userId;
+              const isWinner = l.rank === 1;
               return (
                 <div
                   key={userId}
@@ -106,11 +102,6 @@ export default async function GroupRunPage({ params }: { params: Promise<{ id: s
               );
             })}
           </div>
-          {attack && (
-            <p className="text-sm text-momentum bg-momentum/10 border border-momentum/30 rounded-xl px-4 py-3">
-              {(attack as any).resolution === "ATTACKER_WIN" ? "The zone changed hands." : "The defender held the zone."}
-            </p>
-          )}
         </>
       )}
     </div>

@@ -1,179 +1,176 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Swords, X, ShieldAlert, Loader2, Crown, Shield, Users, Flame } from "lucide-react";
+import { X, Crown, Flame, EyeOff, Footprints, Shield, ShieldAlert, Swords, Timer, Hourglass } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
-import { cn } from "@/lib/utils";
+import { formatPace, formatDuration, timeAgo } from "@/lib/utils";
+import { BattleRespondSheet, BattleRevealCard, type BattleListItem } from "./BattleSheets";
 
-const LeafletZoneMap = dynamic(
-  () => import("./LeafletZoneMap").then((mod) => mod.LeafletZoneMap),
+const LeafletTerritoryMap = dynamic(
+  () => import("./LeafletTerritoryMap").then((mod) => mod.LeafletTerritoryMap),
   { ssr: false, loading: () => <div className="w-full h-full skeleton" /> },
 );
 
-export type Zone = {
+type PolygonGeometry =
+  | { type: "Polygon"; coordinates: [number, number][][] }
+  | { type: "MultiPolygon"; coordinates: [number, number][][][] };
+
+export type MapTerritory = {
   id: string;
   name: string;
-  description: string;
   color: string;
-  lat: number;
-  lng: number;
-  radiusMeters: number;
-  territory: {
-    ownerId: string | null;
-    ownerName: string | null;
-    ownerAvatarUrl: string | null;
-    clanColor: string | null;
-    clanName: string | null;
-    weeklyCalorieScore: number;
-  } | null;
-};
-
-type GroupRunSummary = { id: string; sessionCode: string; startAt: string; windowEnd: string };
-
-type IncomingAttack = {
-  id: string;
-  zoneName: string;
-  attackerName: string;
-  attackerAvatarUrl: string;
-  attackerScore: number;
-  defenderScore: number;
-  status: "PENDING" | "WAR";
-  groupRun: GroupRunSummary | null;
-};
-
-type OutgoingAttack = {
-  id: string;
-  zoneName: string;
-  defenderName: string;
-  defenderAvatarUrl: string;
-  attackerScore: number;
-  defenderScore: number;
-  status: "PENDING" | "WAR";
-  groupRun: GroupRunSummary | null;
-};
-
-type FamousTerritory = {
-  zoneId: string;
-  zoneName: string;
+  geometry: PolygonGeometry;
+  centroid: { lat: number; lng: number };
+  bbox: [number, number, number, number];
+  areaSqM: number;
+  valuePoints: number;
+  fameScore: number;
+  shieldUntil: string | null;
+  createdAt: string;
   ownerId: string | null;
   ownerName: string | null;
   ownerAvatarUrl: string | null;
-  clanName: string | null;
-  clanColor: string | null;
+  isMine: boolean;
+  claimStats?: {
+    distanceKm: number;
+    avgPaceMinPerKm: number | null;
+    durationSeconds: number;
+    workoutDate: string;
+  };
+};
+
+type FamousTerritory = {
+  territoryId: string;
+  territoryName: string;
+  ownerId: string | null;
+  ownerName: string | null;
+  ownerAvatarUrl: string | null;
   fameScore: number;
   distinctRunners: number;
   totalVisits: number;
 };
 
+function formatArea(areaSqM: number): string {
+  if (areaSqM >= 1_000_000) return `${(areaSqM / 1_000_000).toFixed(2)} km²`;
+  return `${Math.round(areaSqM / 1000)}k m²`;
+}
+
 export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
-  const router = useRouter();
-  const [zones, setZones] = useState<Zone[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<Zone | null>(null);
-  const [incoming, setIncoming] = useState<IncomingAttack[]>([]);
-  const [outgoing, setOutgoing] = useState<OutgoingAttack[]>([]);
+  const [territories, setTerritories] = useState<MapTerritory[]>([]);
   const [famous, setFamous] = useState<FamousTerritory[]>([]);
-  const [showIncoming, setShowIncoming] = useState(false);
-  const [challenging, setChallenging] = useState(false);
-  const [responding, setResponding] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [battles, setBattles] = useState<BattleListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<MapTerritory | null>(null);
+  const [showBattles, setShowBattles] = useState(false);
+  const [responding, setResponding] = useState<BattleListItem | null>(null);
+  const [revealing, setRevealing] = useState<BattleListItem | null>(null);
+
+  const myLand = territories.filter((t) => t.isMine);
+  const myLandValue = myLand.reduce((s, t) => s + t.valuePoints, 0);
+  const activeBattles = battles.filter((b) => b.status !== "RESOLVED");
+  const needsMyResponse = activeBattles.filter((b) => b.status === "PENDING_RESPONSE" && b.role === "defender");
 
   async function refresh() {
-    const [zonesRes, incomingRes, outgoingRes, fameRes] = await Promise.all([
-      fetch("/api/zones"),
-      fetch("/api/attacks/incoming"),
-      fetch("/api/attacks/outgoing"),
-      fetch("/api/territory/fame"),
-    ]);
-    if (zonesRes.ok) setZones((await zonesRes.json()).zones);
-    if (incomingRes.ok) setIncoming((await incomingRes.json()).attacks);
-    if (outgoingRes.ok) setOutgoing((await outgoingRes.json()).attacks);
-    if (fameRes.ok) setFamous((await fameRes.json()).territories);
+    const [terrRes, battlesRes] = await Promise.all([fetch("/api/territories"), fetch("/api/battles")]);
+    if (terrRes.ok) {
+      const data = await terrRes.json();
+      setTerritories(data.territories);
+      setFamous(data.fame);
+    }
+    if (battlesRes.ok) {
+      setBattles((await battlesRes.json()).battles);
+    }
   }
 
   useEffect(() => {
     refresh().finally(() => setLoading(false));
   }, []);
 
-  async function challenge(zone: Zone) {
-    setChallenging(true);
-    setMessage(null);
-    try {
-      const res = await fetch("/api/attacks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ zoneId: zone.id, type: "STAT" }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setMessage(data.error);
-        return;
-      }
-      setMessage(
-        data.status === "RESOLVED" ? "Your stats dominate — zone claimed automatically!" : "Challenge sent. Awaiting response.",
-      );
-      await refresh();
-      setSelected(null);
-    } finally {
-      setChallenging(false);
-    }
-  }
-
-  async function respond(attackId: string, action: "DEFEND" | "WAR" | "FORFEIT") {
-    setResponding(attackId);
-    try {
-      const res = await fetch(`/api/attacks/${attackId}/respond`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      const data = await res.json();
-      if (action === "WAR" && res.ok && data.groupRunId) {
-        router.push(`/group-run/${data.groupRunId}`);
-        return;
-      }
-      await refresh();
-    } finally {
-      setResponding(null);
-    }
-  }
-
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-5">
         <h1 className="font-display italic font-bold text-3xl">Territory</h1>
-        {incoming.length + outgoing.length > 0 && (
-          <button
-            onClick={() => setShowIncoming(true)}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold bg-ignite/15 text-ignite border border-ignite/30 px-3 py-1.5 rounded-full animate-pulse"
-          >
-            <ShieldAlert className="w-3.5 h-3.5" /> {incoming.length + outgoing.length} active battle
-            {incoming.length + outgoing.length > 1 ? "s" : ""}
-          </button>
-        )}
-      </div>
-
-      {message && (
-        <div className="mb-4 text-sm bg-momentum/10 border border-momentum/30 text-momentum rounded-xl px-4 py-2.5">
-          {message}
+        <div className="flex items-center gap-2">
+          {activeBattles.length > 0 && (
+            <button
+              onClick={() => setShowBattles(true)}
+              className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border ${
+                needsMyResponse.length > 0
+                  ? "bg-ignite/15 text-ignite border-ignite/30 animate-pulse"
+                  : "bg-white/5 text-white/60 border-white/15"
+              }`}
+            >
+              <ShieldAlert className="w-3.5 h-3.5" /> {activeBattles.length} battle{activeBattles.length > 1 ? "s" : ""}
+            </button>
+          )}
+          {myLand.length > 0 && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-momentum/15 text-momentum border border-momentum/30 px-3 py-1.5 rounded-full">
+              <Crown className="w-3.5 h-3.5" /> {myLand.length} · {myLandValue} pts
+            </span>
+          )}
         </div>
-      )}
+      </div>
 
       {loading ? (
         <div className="aspect-square w-full rounded-2xl skeleton" />
+      ) : territories.length === 0 ? (
+        <div className="aspect-square w-full rounded-2xl border border-border-ichor bg-midnight-raised flex flex-col items-center justify-center gap-3 text-center px-8">
+          <Footprints className="w-8 h-8 text-white/20" />
+          <p className="text-sm text-white/50">
+            No land has been claimed yet. Sync a GPS run — the ground you cover becomes your territory.
+          </p>
+        </div>
       ) : (
         <div className="relative w-full aspect-square rounded-2xl border border-border-ichor bg-midnight-raised overflow-hidden">
-          <LeafletZoneMap zones={zones} currentUserId={currentUserId} onZoneClick={setSelected} />
+          <LeafletTerritoryMap territories={territories} onTerritoryClick={setSelected} />
         </div>
       )}
 
-      <div className="flex items-center gap-4 mt-4 text-xs text-white/40">
-        <LegendDot color="#AE93F4" label="Your zones" />
-        <LegendDot color="#6b6568" label="Claimed" />
-        <LegendDot color="#4a4548" dashed label="Unclaimed" />
-      </div>
+      <p className="mt-3 text-xs text-white/40">
+        Run somewhere nobody owns to claim it. Cover 40%+ of someone else&apos;s territory in a single run to unlock an attack.
+      </p>
+
+      {battles.filter((b) => b.status === "RESOLVED" && b.revealedStats).length > 0 && (
+        <div className="mt-6">
+          <div className="flex items-center gap-1.5 mb-3">
+            <Swords className="w-4 h-4 text-white/40" />
+            <h2 className="font-semibold text-sm text-white/60">Recent battles</h2>
+          </div>
+          <div className="space-y-2">
+            {battles
+              .filter((b) => b.status === "RESOLVED" && b.revealedStats)
+              .slice(0, 5)
+              .map((b) => {
+                const won = b.winnerId === currentUserId;
+                const label =
+                  b.resolution === "SPLIT" ? "Split" : b.resolution === "DOUBLE_FORFEIT" ? "Forfeit" : won ? "Won" : "Lost";
+                return (
+                  <button
+                    key={b.id}
+                    onClick={() => setRevealing(b)}
+                    className="w-full flex items-center gap-3 bg-midnight-raised border border-border-ichor rounded-xl px-4 py-2.5 text-left"
+                  >
+                    <Avatar src={b.opponent?.avatarUrl} name={b.opponent?.name ?? "?"} size={28} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">
+                        {b.territory?.name} · vs {b.opponent?.name}
+                      </div>
+                      <div className="text-xs text-white/40">{timeAgo(b.createdAt)} · tap for the reveal</div>
+                    </div>
+                    <span
+                      className={`text-xs font-bold shrink-0 ${
+                        b.resolution === "SPLIT" ? "text-momentum" : won ? "text-lime" : "text-ignite"
+                      }`}
+                    >
+                      {label}
+                    </span>
+                  </button>
+                );
+              })}
+          </div>
+        </div>
+      )}
 
       {famous.length > 0 && (
         <div className="mt-8">
@@ -183,7 +180,7 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
           </div>
           <div className="space-y-2">
             {famous.slice(0, 8).map((t, i) => (
-              <div key={t.zoneId} className="flex items-center gap-3 bg-midnight-raised border border-border-ichor rounded-xl px-4 py-2.5">
+              <div key={t.territoryId} className="flex items-center gap-3 bg-midnight-raised border border-border-ichor rounded-xl px-4 py-2.5">
                 <span className="text-sm font-bold text-white/40 w-4 shrink-0">{i + 1}</span>
                 {t.ownerAvatarUrl || t.ownerName ? (
                   <Avatar src={t.ownerAvatarUrl} name={t.ownerName ?? "?"} size={32} />
@@ -193,10 +190,10 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{t.zoneName}</div>
+                  <div className="text-sm font-medium truncate">{t.territoryName}</div>
                   <div className="text-xs text-white/40">
-                    {t.ownerName ? `Held by ${t.ownerName}` : "Unclaimed"}
-                    {t.clanName && ` · ${t.clanName}`} · {t.distinctRunners} runner{t.distinctRunners === 1 ? "" : "s"}
+                    {t.ownerName ? `Held by ${t.ownerName}` : "Unclaimed"} · {t.distinctRunners} runner
+                    {t.distinctRunners === 1 ? "" : "s"}
                   </div>
                 </div>
                 <div className="inline-flex items-center gap-1 text-xs font-semibold text-ignite shrink-0">
@@ -208,7 +205,7 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
         </div>
       )}
 
-      {/* Zone detail sheet */}
+      {/* Territory detail sheet */}
       {selected && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60" onClick={() => setSelected(null)}>
           <div
@@ -216,165 +213,144 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold text-lg">{selected.name}</h2>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-sm inline-block shrink-0" style={{ backgroundColor: selected.color }} />
+                <h2 className="font-semibold text-lg">{selected.name}</h2>
+              </div>
               <button onClick={() => setSelected(null)}>
                 <X className="w-5 h-5 text-white/40" />
               </button>
             </div>
-            <p className="text-sm text-white/50 mb-4">{selected.description}</p>
 
-            {!selected.territory ? (
-              <div className="text-sm text-white/60 bg-white/5 rounded-xl p-3">
-                Unclaimed. Post a workout tagged here to claim it.
-              </div>
-            ) : selected.territory.ownerId === currentUserId ? (
-              <div className="flex items-center gap-3 bg-momentum/10 border border-momentum/30 rounded-xl p-3">
-                <Crown className="w-5 h-5 text-momentum" />
-                <div>
-                  <div className="text-sm font-semibold">You hold this zone</div>
-                  <div className="text-xs text-white/50">Weekly score: {selected.territory.weeklyCalorieScore}</div>
+            <div className="flex items-center gap-3 mb-4">
+              <Avatar src={selected.ownerAvatarUrl ?? undefined} name={selected.ownerName ?? "?"} size={36} />
+              <div>
+                <div className="text-sm font-semibold">
+                  {selected.isMine ? "You hold this land" : selected.ownerName ?? "Unknown athlete"}
+                </div>
+                <div className="text-xs text-white/50">
+                  Claimed {timeAgo(selected.createdAt)} · {formatArea(selected.areaSqM)}
                 </div>
               </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <Avatar src={selected.territory.ownerAvatarUrl ?? undefined} name={selected.territory.ownerName ?? "?"} size={36} />
-                  <div>
-                    <div className="text-sm font-semibold">{selected.territory.ownerName}</div>
-                    <div className="text-xs text-white/50">
-                      Weekly score: {selected.territory.weeklyCalorieScore}
-                      {selected.territory.clanName && ` · ${selected.territory.clanName}`}
-                    </div>
-                  </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              <div className="bg-white/5 rounded-xl p-3">
+                <div className="text-[11px] uppercase tracking-wide text-white/40 mb-0.5">Value</div>
+                <div className="text-sm font-bold">{selected.valuePoints} pts</div>
+              </div>
+              <div className="bg-white/5 rounded-xl p-3">
+                <div className="text-[11px] uppercase tracking-wide text-white/40 mb-0.5">Fame</div>
+                <div className="text-sm font-bold inline-flex items-center gap-1">
+                  <Flame className="w-3.5 h-3.5 text-ignite" /> {selected.fameScore}
                 </div>
-                <button
-                  onClick={() => challenge(selected)}
-                  disabled={challenging}
-                  className="w-full inline-flex items-center justify-center gap-2 bg-ignite text-midnight font-semibold py-3 rounded-full disabled:opacity-50"
-                >
-                  {challenging ? <Loader2 className="w-4 h-4 animate-spin" /> : <Swords className="w-4 h-4" />}
-                  Challenge for this zone
-                </button>
+              </div>
+            </div>
+
+            {selected.shieldUntil && new Date(selected.shieldUntil) > new Date() && (
+              <div className="flex items-center gap-2 text-xs text-white/50 bg-white/5 rounded-xl p-3 mb-3">
+                <Shield className="w-4 h-4 text-momentum shrink-0" />
+                Shielded from attacks until {new Date(selected.shieldUntil).toLocaleString()}.
               </div>
             )}
+
+            {selected.isMine && selected.claimStats ? (
+              <div className="bg-momentum/10 border border-momentum/30 rounded-xl p-3">
+                <div className="text-xs font-semibold text-momentum mb-1.5">Your claim run (only you see this)</div>
+                <div className="text-xs text-white/60">
+                  {selected.claimStats.distanceKm.toFixed(2)} km ·{" "}
+                  {formatPace(selected.claimStats.avgPaceMinPerKm)} ·{" "}
+                  {formatDuration(selected.claimStats.durationSeconds)}
+                </div>
+              </div>
+            ) : !selected.isMine ? (
+              <div className="flex items-start gap-2 text-xs text-white/50 bg-white/5 rounded-xl p-3">
+                <EyeOff className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  Run stats hidden — fog of war. Nobody knows what run earned this land. Cover 40%+ of it in a single
+                  run to unlock an attack.
+                </span>
+              </div>
+            ) : null}
           </div>
         </div>
       )}
 
-      {/* Battles sheet — incoming (defender) and outgoing (attacker) challenges */}
-      {showIncoming && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60" onClick={() => setShowIncoming(false)}>
+      {/* Active battles sheet */}
+      {showBattles && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60" onClick={() => setShowBattles(false)}>
           <div
-            className="w-full sm:max-w-sm bg-midnight-raised border border-border-ichor rounded-t-3xl sm:rounded-3xl p-5 max-h-[80vh] overflow-y-auto"
+            className="w-full sm:max-w-sm bg-midnight-raised border-2 border-border-ichor rounded-t-3xl sm:rounded-none sm:shadow-[6px_6px_0_var(--ichor-border)] p-5 max-h-[80vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-lg">Active battles</h2>
-              <button onClick={() => setShowIncoming(false)}>
+              <button onClick={() => setShowBattles(false)}>
                 <X className="w-5 h-5 text-white/40" />
               </button>
             </div>
-
-            {incoming.length > 0 && (
-              <div className="mb-5">
-                <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wide mb-2">Defending</h3>
-                <div className="space-y-3">
-                  {incoming.map((a) => (
-                    <div key={a.id} className="border border-border-ichor rounded-xl p-3.5">
-                      <div className="flex items-center gap-2.5 mb-2">
-                        <Avatar src={a.attackerAvatarUrl} name={a.attackerName} size={28} />
-                        <div className="text-sm">
-                          <span className="font-semibold">{a.attackerName}</span> is challenging{" "}
-                          <span className="font-semibold">{a.zoneName}</span>
+            <div className="space-y-3">
+              {activeBattles.map((b) => {
+                const deadline =
+                  b.status === "PENDING_RESPONSE" ? b.respondBy : b.status === "ASYNC_ACTIVE" ? b.asyncDeadline : b.duelWindowEnd;
+                return (
+                  <div key={b.id} className="border-2 border-border-ichor rounded-none p-3.5">
+                    <div className="flex items-center gap-2.5 mb-2">
+                      <Avatar src={b.opponent?.avatarUrl} name={b.opponent?.name ?? "?"} size={28} />
+                      <div className="text-sm flex-1 min-w-0">
+                        <span className="font-semibold">{b.territory?.name}</span>
+                        <div className="text-xs text-white/50">
+                          {b.role === "attacker" ? "Attacking" : "Defending against"} {b.opponent?.name}
                         </div>
                       </div>
-                      <div className="text-xs text-white/50 mb-3">
-                        Their score {a.attackerScore} vs your {a.defenderScore}
-                      </div>
-                      {a.status === "WAR" && a.groupRun ? (
-                        <button
-                          onClick={() => router.push(`/group-run/${a.groupRun!.id}`)}
-                          className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold bg-white/10 py-2 rounded-full"
-                        >
-                          <Users className="w-3.5 h-3.5" /> View war lobby
-                        </button>
-                      ) : (
-                        <div className="grid grid-cols-3 gap-1.5">
-                          <button
-                            onClick={() => respond(a.id, "DEFEND")}
-                            disabled={responding === a.id}
-                            className="text-xs font-semibold bg-white/10 py-2 rounded-full disabled:opacity-50"
-                          >
-                            Defend
-                          </button>
-                          <button
-                            onClick={() => respond(a.id, "WAR")}
-                            disabled={responding === a.id}
-                            className="inline-flex items-center justify-center gap-1 text-xs font-semibold bg-momentum/20 text-momentum py-2 rounded-full disabled:opacity-50"
-                          >
-                            <Shield className="w-3 h-3" /> War
-                          </button>
-                          <button
-                            onClick={() => respond(a.id, "FORFEIT")}
-                            disabled={responding === a.id}
-                            className="text-xs font-semibold bg-ignite/15 text-ignite py-2 rounded-full disabled:opacity-50"
-                          >
-                            Forfeit
-                          </button>
-                        </div>
-                      )}
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
-            {outgoing.length > 0 && (
-              <div>
-                <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wide mb-2">Attacking</h3>
-                <div className="space-y-3">
-                  {outgoing.map((a) => (
-                    <div key={a.id} className="border border-border-ichor rounded-xl p-3.5">
-                      <div className="flex items-center gap-2.5 mb-2">
-                        <Avatar src={a.defenderAvatarUrl} name={a.defenderName} size={28} />
-                        <div className="text-sm">
-                          Challenging <span className="font-semibold">{a.defenderName}</span> for{" "}
-                          <span className="font-semibold">{a.zoneName}</span>
+                    {b.status === "PENDING_RESPONSE" && b.role === "defender" ? (
+                      <button
+                        onClick={() => {
+                          setShowBattles(false);
+                          setResponding(b);
+                        }}
+                        className="w-full inline-flex items-center justify-center gap-2 bg-ignite text-midnight text-sm font-semibold py-2 rounded-none"
+                      >
+                        <Swords className="w-4 h-4" /> Respond
+                      </button>
+                    ) : b.status === "PENDING_RESPONSE" ? (
+                      <p className="text-xs text-white/40 inline-flex items-center gap-1.5">
+                        <Hourglass className="w-3.5 h-3.5" /> Awaiting their response
+                        {deadline && <> · silence past {new Date(deadline).toLocaleString()} splits the land</>}
+                      </p>
+                    ) : (
+                      <div className="text-xs text-white/50 space-y-1">
+                        <div className="inline-flex items-center gap-1.5">
+                          <Timer className="w-3.5 h-3.5" />
+                          {b.status === "ASYNC_ACTIVE"
+                            ? `Open ${b.asyncMetric?.toLowerCase()} challenge — run in the territory before ${deadline ? new Date(deadline).toLocaleString() : "the deadline"}`
+                            : `Duel (${b.duelMetric?.toLowerCase()}) — window ${b.duelWindowStart ? new Date(b.duelWindowStart).toLocaleString() : ""} to ${b.duelWindowEnd ? new Date(b.duelWindowEnd).toLocaleString() : ""}`}
+                        </div>
+                        <div>
+                          You: {b.iHaveSubmitted ? "✓ ran" : "no run yet"} · Them: {b.opponentHasSubmitted ? "✓ ran (stats hidden)" : "no run yet"}
                         </div>
                       </div>
-                      <div className="text-xs text-white/50 mb-3">
-                        Your score {a.attackerScore} vs their {a.defenderScore}
-                      </div>
-                      {a.status === "WAR" && a.groupRun ? (
-                        <button
-                          onClick={() => router.push(`/group-run/${a.groupRun!.id}`)}
-                          className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold bg-momentum text-midnight py-2 rounded-full"
-                        >
-                          <Swords className="w-3.5 h-3.5" /> Join the war
-                        </button>
-                      ) : (
-                        <p className="text-xs text-white/40">Awaiting their response...</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                    )}
+                  </div>
+                );
+              })}
+              {activeBattles.length === 0 && <p className="text-sm text-white/40">No active battles.</p>}
+            </div>
           </div>
         </div>
       )}
-    </div>
-  );
-}
 
-function LegendDot({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span
-        className={cn("w-2.5 h-2.5 rounded-sm inline-block")}
-        style={{ backgroundColor: color, border: dashed ? "1px dashed #6b6568" : undefined }}
-      />
-      {label}
+      {responding && (
+        <BattleRespondSheet
+          battle={responding}
+          currentUserId={currentUserId}
+          onClose={() => setResponding(null)}
+          onResponded={refresh}
+        />
+      )}
+      {revealing && <BattleRevealCard battle={revealing} currentUserId={currentUserId} onClose={() => setRevealing(null)} />}
     </div>
   );
 }

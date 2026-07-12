@@ -1,12 +1,12 @@
 /**
- * Seeds MongoDB with a full demo dataset: users, campus zones, clans, workouts,
- * posts, diet cards, flame ratings, comments, territory, and leaderboard history.
+ * Seeds MongoDB with a full demo dataset: users, clans, workouts (some with GPS routes
+ * that claim run-shaped territories through the real engine), posts, diet cards, flame
+ * ratings, comments, and leaderboard history.
  * Run with: npm run seed
  */
 import mongoose from "mongoose";
 import { connectDB } from "../lib/mongodb";
 import { User } from "../models/User";
-import { CampusZone } from "../models/CampusZone";
 import { Territory } from "../models/Territory";
 import { Clan, ClanMember } from "../models/Clan";
 import { Workout } from "../models/Workout";
@@ -16,34 +16,74 @@ import { FlameRating } from "../models/FlameRating";
 import { Comment } from "../models/Comment";
 import { LeaderboardHistory } from "../models/LeaderboardHistory";
 import { weekKey } from "../lib/week";
+import { processRunForTerritory } from "../lib/territoryEngine";
 
 const BASE_LAT = 28.6139;
 const BASE_LNG = 77.209;
-const DEG_PER_150M = 0.00135;
 
-function squarePolygon(cx: number, cy: number, sizeDeg: number) {
-  const h = sizeDeg / 2;
-  return [
-    [
-      [cx - h, cy - h],
-      [cx + h, cy - h],
-      [cx + h, cy + h],
-      [cx - h, cy + h],
-      [cx - h, cy - h],
-    ],
+/**
+ * Synthesizes a plausible GPS trace (point every ~25m) so seeded runs exercise the real
+ * territory engine. "loop" traces a rectangle back to the start (fills as one solid
+ * territory); "outback" goes out along a bearing and returns (a corridor strip).
+ */
+function makeRoute(
+  startLng: number,
+  startLat: number,
+  distanceKm: number,
+  bearingDeg: number,
+  shape: "loop" | "outback",
+): [number, number][] {
+  const stepKm = 0.025;
+  const steps = Math.max(4, Math.round(distanceKm / stepKm));
+  const degPerKmLat = 1 / 110.574;
+  const degPerKmLng = 1 / (111.32 * Math.cos((startLat * Math.PI) / 180));
+  const points: [number, number][] = [];
+
+  if (shape === "outback") {
+    const rad = (bearingDeg * Math.PI) / 180;
+    const half = Math.ceil(steps / 2);
+    for (let i = 0; i <= half; i++) {
+      const km = i * stepKm;
+      points.push([
+        startLng + Math.sin(rad) * km * degPerKmLng,
+        startLat + Math.cos(rad) * km * degPerKmLat,
+      ]);
+    }
+    for (let i = half - 1; i >= 0; i--) points.push(points[i]);
+    return points;
+  }
+
+  // Rectangle loop with the requested perimeter, rotated by the bearing.
+  const rad = (bearingDeg * Math.PI) / 180;
+  const w = distanceKm * 0.3;
+  const h = distanceKm * 0.2;
+  const corners: [number, number][] = [
+    [0, 0],
+    [w, 0],
+    [w, h],
+    [0, h],
+    [0, 0],
   ];
+  const rotated = corners.map(([x, y]): [number, number] => [
+    x * Math.cos(rad) - y * Math.sin(rad),
+    x * Math.sin(rad) + y * Math.cos(rad),
+  ]);
+  for (let c = 0; c < rotated.length - 1; c++) {
+    const [x1, y1] = rotated[c];
+    const [x2, y2] = rotated[c + 1];
+    const segKm = Math.hypot(x2 - x1, y2 - y1);
+    const segSteps = Math.max(1, Math.round(segKm / stepKm));
+    for (let i = 0; i < segSteps; i++) {
+      const f = i / segSteps;
+      points.push([
+        startLng + (x1 + (x2 - x1) * f) * degPerKmLng,
+        startLat + (y1 + (y2 - y1) * f) * degPerKmLat,
+      ]);
+    }
+  }
+  points.push(points[0]);
+  return points;
 }
-
-const ZONE_DEFS = [
-  { name: "Library Zone", desc: "Silent grind, loud stats.", color: "#AE93F4", gx: 12, gy: 15 },
-  { name: "Track Zone", desc: "Where the Pace Gods are made.", color: "#FDA2DE", gx: 55, gy: 10 },
-  { name: "Hostel Block A", desc: "Home turf for the early risers.", color: "#D7F24C", gx: 10, gy: 55 },
-  { name: "Hostel Block B", desc: "Late night cardio capital.", color: "#FF5E1A", gx: 30, gy: 60 },
-  { name: "Sports Complex", desc: "Contested every single week.", color: "#AE93F4", gx: 60, gy: 45 },
-  { name: "Cafeteria Quad", desc: "Diet Honesty Cards get checked here.", color: "#FDA2DE", gx: 45, gy: 75 },
-  { name: "Central Lawn", desc: "The most fought-over patch of grass on campus.", color: "#D7F24C", gx: 75, gy: 70 },
-  { name: "Stadium Loop", desc: "Home of the Calorie King.", color: "#FF5E1A", gx: 78, gy: 20 },
-];
 
 const USER_DEFS = [
   { name: "Arjun Mehta", email: "arjun@college.edu", handle: "seed_arjun" },
@@ -93,7 +133,6 @@ async function main() {
 
   await Promise.all([
     User.deleteMany({}),
-    CampusZone.deleteMany({}),
     Territory.deleteMany({}),
     Clan.deleteMany({}),
     ClanMember.deleteMany({}),
@@ -104,25 +143,6 @@ async function main() {
     Comment.deleteMany({}),
     LeaderboardHistory.deleteMany({}),
   ]);
-
-  console.log("Seeding campus zones...");
-  const zones = await CampusZone.insertMany(
-    ZONE_DEFS.map((z) => {
-      const cx = BASE_LNG + (z.gx / 100) * 0.01 * 8;
-      const cy = BASE_LAT - (z.gy / 100) * 0.01 * 8;
-      return {
-        name: z.name,
-        description: z.desc,
-        color: z.color,
-        polygon: { type: "Polygon", coordinates: squarePolygon(cx, cy, DEG_PER_150M) },
-        centroid: { type: "Point", coordinates: [cx, cy] },
-        gridX: z.gx,
-        gridY: z.gy,
-        gridW: 16,
-        gridH: 14,
-      };
-    }),
-  );
 
   console.log("Seeding users...");
   const users = await User.insertMany(
@@ -173,18 +193,48 @@ async function main() {
     }
   }
 
-  console.log("Seeding territory...");
-  for (let i = 0; i < zones.length; i++) {
-    if (i % 4 === 3) continue; // leave some zones unclaimed
-    const owner = pick(users);
-    await Territory.create({
-      zoneId: zones[i]._id,
-      ownerId: owner._id,
-      clanId: owner.clanId ?? null,
-      weeklyCalorieScore: randInt(400, 4000),
-      acquiredAt: daysAgo(randInt(1, 6)),
-      lastDefended: daysAgo(randInt(0, 3)),
-    });
+  console.log("Seeding territory runs (GPS routes through the real claim engine)...");
+  // A few dedicated route-bearing runs per user, spread around the base coords so each
+  // claims distinct land. Goes through processRunForTerritory — exactly the webhook path.
+  const routeShapes: ("loop" | "outback")[] = ["loop", "outback"];
+  for (let i = 0; i < users.length; i++) {
+    const user = users[i];
+    const runsForUser = i < 3 ? 2 : 1; // first three users get bigger empires
+    for (let r = 0; r < runsForUser; r++) {
+      const angle = ((i * 47 + r * 133) % 360) * (Math.PI / 180);
+      const spreadKm = 1.2 + ((i * 3 + r * 5) % 7) * 0.8;
+      const startLng = BASE_LNG + Math.sin(angle) * spreadKm * 0.009;
+      const startLat = BASE_LAT + Math.cos(angle) * spreadKm * 0.009;
+      const distanceKm = Math.round((3 + ((i + r) % 5) * 1.5) * 10) / 10;
+      const durationSeconds = Math.round(distanceKm * randInt(300, 380));
+      const route = makeRoute(startLng, startLat, distanceKm, (i * 61 + r * 29) % 360, pick(routeShapes));
+      const workoutDate = new Date(daysAgo(randInt(1, 8)).setHours(randInt(5, 20), randInt(0, 59)));
+
+      const workout = await Workout.create({
+        userId: user._id,
+        sourceType: "HEALTH_SYNC",
+        activityType: "RUN",
+        distanceKm,
+        durationSeconds,
+        avgPaceMinPerKm: Math.round((durationSeconds / 60 / distanceKm) * 100) / 100,
+        caloriesBurned: Math.round(distanceKm * randInt(55, 70)),
+        heartRateAvg: randInt(130, 175),
+        workoutDate,
+        verificationStatus: "VERIFIED",
+        externalId: `seed:${user._id}:${r}`,
+        route: { type: "LineString", coordinates: route },
+      });
+
+      const result = await processRunForTerritory(user, workout as any);
+      await Post.create({
+        userId: user._id,
+        workoutId: workout._id,
+        caption: result.claimed ? `Claimed ${result.claimed.name}.` : pick(CAPTIONS),
+        photoUrls: [`https://picsum.photos/seed/territory${i}${r}/800/450`],
+        isPublic: true,
+        createdAt: workoutDate,
+      });
+    }
   }
 
   console.log("Seeding workouts + posts + diet cards + engagement...");
@@ -216,13 +266,11 @@ async function main() {
         verificationStatus: "VERIFIED",
       });
 
-      const zone = Math.random() > 0.3 ? pick(zones) : null;
       const post = await Post.create({
         userId: user._id,
         workoutId: workout._id,
         caption: pick(CAPTIONS),
         photoUrls: [`https://picsum.photos/seed/${pick(photoSeeds)}${day}${p}/800/450`],
-        locationZoneId: zone?._id ?? null,
         isPublic: true,
         createdAt: workoutDate,
       });
@@ -300,7 +348,8 @@ async function main() {
     }
   }
 
-  console.log(`Done. Seeded ${users.length} users, ${zones.length} zones, ${clans.length} clans.`);
+  const territoryCount = await Territory.countDocuments({});
+  console.log(`Done. Seeded ${users.length} users, ${territoryCount} territories, ${clans.length} clans.`);
   await mongoose.disconnect();
 }
 

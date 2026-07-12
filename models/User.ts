@@ -31,6 +31,8 @@ const UserSchema = new Schema(
     // Spent automatically to bridge a single missed day instead of resetting the streak —
     // see lib/recordWorkout.ts. Starts with one freebie; replenished on weekly milestones.
     streakFreezesAvailable: { type: Number, default: 1 },
+    /** Territory-game profile points — materialized sum of PointsLedger rows, floored at 0. */
+    points: { type: Number, default: 0 },
     integrityPoints: { type: Number, default: 0 },
     battlesWon: { type: Number, default: 0 },
     battlesLost: { type: Number, default: 0 },

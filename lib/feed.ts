@@ -1,6 +1,5 @@
 import { Post } from "@/models/Post";
 import { Comment } from "@/models/Comment";
-import { CampusZone } from "@/models/CampusZone";
 import { DietCard } from "@/models/DietCard";
 import { User } from "@/models/User";
 import { Workout } from "@/models/Workout";
@@ -40,17 +39,15 @@ export async function getFeedPosts(
   const posts = await cursorQuery.lean();
 
   const postIds = posts.map((p: any) => p._id);
-  const [dietCards, commentCounts, zones, maxAgg, interestSets] = await Promise.all([
+  const [dietCards, commentCounts, maxAgg, interestSets] = await Promise.all([
     DietCard.find({ postId: { $in: postIds } }).select("postId classification estimatedCalories").lean(),
     Comment.aggregate([{ $match: { postId: { $in: postIds } } }, { $group: { _id: "$postId", count: { $sum: 1 } } }]),
-    CampusZone.find({ _id: { $in: posts.map((p: any) => p.locationZoneId).filter(Boolean) } }).select("name").lean(),
     Workout.aggregate([{ $group: { _id: "$activityType", maxDist: { $max: "$distanceKm" } } }]),
     getInterestSets(String(viewer._id), viewer.clanId),
   ]);
 
   const dietByPost = new Map(dietCards.map((d: any) => [String(d.postId), d]));
   const commentCountByPost = new Map(commentCounts.map((c: any) => [String(c._id), c.count]));
-  const zoneById = new Map(zones.map((z: any) => [String(z._id), z.name]));
   const globalMaxDistances: Record<string, number> = {};
   for (const agg of maxAgg) globalMaxDistances[agg._id] = agg.maxDist;
 
@@ -85,7 +82,6 @@ export async function getFeedPosts(
         ...p,
         dietCard: dietByPost.get(postId) ?? null,
         commentCount: commentCountByPost.get(postId) ?? 0,
-        zoneName: p.locationZoneId ? zoneById.get(String(p.locationZoneId)) : null,
         reactionSummary,
       },
       String(viewer._id),

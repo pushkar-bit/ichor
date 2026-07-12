@@ -1,6 +1,7 @@
 import { getWithCache, setWithTTL } from "./redis";
 
 export type GeocodeResult = {
+  road: string | null;
   district: string | null;
   city: string | null;
   state: string | null;
@@ -24,6 +25,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<GeocodeR
     const address = data.address ?? {};
 
     const result: GeocodeResult = {
+      road: address.road ?? address.neighbourhood ?? null,
       district: address.suburb ?? address.county ?? address.city_district ?? null,
       city: address.city ?? address.town ?? address.state_district ?? null,
       state: address.state ?? null,

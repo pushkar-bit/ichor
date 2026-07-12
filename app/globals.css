@@ -94,3 +94,18 @@ body {
   background-size: 800px 100%;
   animation: shimmer 1.6s infinite linear;
 }
+
+/* Owner-name labels on the territory map — dark chip instead of Leaflet's white default. */
+.territory-label {
+  background: rgba(0, 0, 0, 0.75) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  border-radius: 0 !important;
+  color: #fff !important;
+  font-weight: 600;
+  font-size: 11px;
+  padding: 2px 8px !important;
+  box-shadow: none !important;
+}
+.territory-label::before {
+  display: none;
+}

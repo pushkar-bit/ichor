@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 
 const CATEGORIES = [
   { key: "calories", label: "Calorie King" },
+  { key: "points", label: "Points" },
+  { key: "empire", label: "Empire" },
   { key: "streak", label: "Grind Streak" },
   { key: "pace", label: "Pace God" },
   { key: "distance", label: "Distance Destroyer" },

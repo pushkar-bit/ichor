@@ -3,12 +3,22 @@ import { Post } from "@/models/Post";
 import "@/models/Workout";
 import { Clan, ClanMember } from "@/models/Clan";
 import { Territory } from "@/models/Territory";
-import { CampusZone } from "@/models/CampusZone";
+import { PointsLedger } from "@/models/PointsLedger";
+import { getTerritoryFameLeaderboard } from "./territoryEngine";
 import { computeAllScoresForRange, type DateRange } from "./scoring";
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "./week";
 
 export type RangeKey = "week" | "month" | "all";
-export type LeaderboardCategory = "calories" | "distance" | "pace" | "streak" | "integrity" | "clans" | "territory";
+export type LeaderboardCategory =
+  | "calories"
+  | "distance"
+  | "pace"
+  | "streak"
+  | "integrity"
+  | "clans"
+  | "territory"
+  | "points"
+  | "empire";
 
 export function resolveRange(rangeKey: RangeKey): DateRange {
   const now = new Date();
@@ -140,7 +150,7 @@ async function clanRows(range: DateRange) {
       const combined = allScores
         .filter((r) => memberIds.includes(String(r.user._id)))
         .reduce((s, r) => s + r.score.finalScore, 0);
-      const zonesHeld = await Territory.countDocuments({ clanId: clan._id });
+      const zonesHeld = await Territory.countDocuments({ ownerId: { $in: memberIds } });
       return {
         clanId: String(clan._id),
         name: clan.name,
@@ -156,31 +166,84 @@ async function clanRows(range: DateRange) {
 }
 
 /**
- * Every CampusZone, ranked by fame (distinct runners + total visits — see lib/territory.ts),
- * not just the ones with a claimed Territory doc yet. Unlike the other categories this
- * ignores `range` entirely — fame is a live, cumulative reading, there's no natural
- * "fame this week" split — so every range shows the same ranking.
+ * Territories ranked by fame (distinct runners + total visits — see lib/territoryEngine.ts).
+ * Unlike the other categories this ignores `range` entirely — fame is a live, cumulative
+ * reading, there's no natural "fame this week" split — so every range shows the same ranking.
  */
 async function territoryRows() {
-  const zones = await CampusZone.find({}).lean();
-  const territories = await Territory.find({ zoneId: { $in: zones.map((z: any) => z._id) } })
-    .populate("ownerId")
-    .populate("clanId")
-    .lean();
-  const byZone = new Map(territories.map((t: any) => [String(t.zoneId), t]));
+  const territories = await getTerritoryFameLeaderboard(50);
+  return territories.map((t) => ({
+    zoneId: t.territoryId,
+    name: t.territoryName,
+    avatarUrl: t.ownerAvatarUrl,
+    ownerName: t.ownerName,
+    value: t.fameScore,
+    unit: "fame",
+  }));
+}
 
-  return zones
-    .map((z: any) => {
-      const t = byZone.get(String(z._id));
-      const owner = t?.ownerId as any;
-      const clan = t?.clanId as any;
+/**
+ * All-time ranks by the materialized User.points; week/month sum the ledger entries that
+ * landed in that window, so a hot week reads as a hot week even for a long-time player.
+ */
+async function pointsRows(range: DateRange) {
+  if (range === null) {
+    const users = await User.find({ points: { $gt: 0 } }).sort({ points: -1 }).limit(50).lean();
+    return users.map((u: any) => ({
+      userId: String(u._id),
+      username: u.username ?? null,
+      name: u.name,
+      avatarUrl: u.avatarUrl,
+      value: u.points,
+      unit: "pts",
+    }));
+  }
+
+  const createdAt: Record<string, Date> = {};
+  if (range.start) createdAt.$gte = range.start;
+  if (range.end) createdAt.$lt = range.end;
+  const entries = await PointsLedger.find({ createdAt }).select("userId amount").lean();
+  const byUser = new Map<string, number>();
+  for (const e of entries as any[]) {
+    const uid = String(e.userId);
+    byUser.set(uid, (byUser.get(uid) ?? 0) + e.amount);
+  }
+  const users = await User.find({ _id: { $in: [...byUser.keys()] } }).select("name username avatarUrl").lean();
+  return users
+    .map((u: any) => ({
+      userId: String(u._id),
+      username: u.username ?? null,
+      name: u.name,
+      avatarUrl: u.avatarUrl,
+      value: byUser.get(String(u._id)) ?? 0,
+      unit: "pts",
+    }))
+    .sort((a, b) => b.value - a.value);
+}
+
+/** Total land value held right now — a live reading, same for every range. */
+async function empireRows() {
+  const territories = await Territory.find({}).select("ownerId valuePoints").lean();
+  const byOwner = new Map<string, { value: number; count: number }>();
+  for (const t of territories as any[]) {
+    const uid = String(t.ownerId);
+    const cur = byOwner.get(uid) ?? { value: 0, count: 0 };
+    cur.value += t.valuePoints ?? 0;
+    cur.count += 1;
+    byOwner.set(uid, cur);
+  }
+  const users = await User.find({ _id: { $in: [...byOwner.keys()] } }).select("name username avatarUrl").lean();
+  return users
+    .map((u: any) => {
+      const stats = byOwner.get(String(u._id))!;
       return {
-        zoneId: String(z._id),
-        name: z.name,
-        avatarUrl: owner?.avatarUrl ?? null,
-        ownerName: owner?.name ?? clan?.name ?? null,
-        value: t?.fameScore ?? 0,
-        unit: "fame",
+        userId: String(u._id),
+        username: u.username ?? null,
+        name: u.name,
+        avatarUrl: u.avatarUrl,
+        value: stats.value,
+        territories: stats.count,
+        unit: "pts of land",
       };
     })
     .sort((a, b) => b.value - a.value);
@@ -212,6 +275,14 @@ export async function getLeaderboardRows(category: string, rangeKey: RangeKey, v
   if (category === "territory") {
     const rows = await territoryRows();
     return { rows, me: null };
+  }
+  if (category === "points") {
+    const sorted = await pointsRows(range);
+    return { rows: sorted.slice(0, 50), me: viewer ? String(viewer._id) : null };
+  }
+  if (category === "empire") {
+    const sorted = await empireRows();
+    return { rows: sorted.slice(0, 50), me: viewer ? String(viewer._id) : null };
   }
   return null;
 }
