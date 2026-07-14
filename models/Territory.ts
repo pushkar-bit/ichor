@@ -38,10 +38,13 @@ const TerritorySchema = new Schema(
     /** No attacks allowed until this passes (post-battle breathing room). */
     shieldUntil: { type: Date, default: null },
     // Fame: how "on the map" this land is, independent of who currently owns it.
-    // fameScore = distinctRunnerIds.length * 10 + totalVisits.
+    // fameScore = distinctRunnerIds.length * 10 + totalVisits + totalDistanceKm * 10.
     fameScore: { type: Number, default: 0 },
     distinctRunnerIds: [{ type: Schema.Types.ObjectId, ref: "User" }],
     totalVisits: { type: Number, default: 0 },
+    // Cumulative km credited from every run (anyone's, attack or not) whose corridor covered
+    // at least DISTANCE_CREDIT_THRESHOLD of this territory — see lib/territoryEngine.ts.
+    totalDistanceKm: { type: Number, default: 0 },
   },
   { timestamps: true },
 );

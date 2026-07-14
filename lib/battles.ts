@@ -379,6 +379,32 @@ async function transferTerritory(territory: any, winnerId: unknown, winningRun: 
   await territory.save();
 }
 
+/**
+ * Spoils of war: the attack run often also carves the attacker a brand-new territory of its
+ * own (see processRunForTerritory — claiming unclaimed ground and surfacing an attack
+ * opportunity both happen off the same run). If the defender wins, that new claim goes with
+ * it — attacking and losing costs the land you just took with that same run, not just the
+ * failed attack. A no-op if the run never claimed anything (e.g. it was entirely inside land
+ * someone already owned).
+ */
+async function seizeAttackersNewClaim(battle: any, defenderId: unknown) {
+  const spoils = await Territory.findOne({ claimRunId: battle.attackRunId, ownerId: battle.attackerId });
+  if (!spoils) return;
+
+  spoils.ownerId = defenderId;
+  spoils.color = colorForUser(String(defenderId));
+  spoils.shieldUntil = shieldDate();
+  await spoils.save();
+
+  await notify(
+    defenderId,
+    "TERRITORY_CLAIMED",
+    `You seized ${spoils.name}`,
+    "Your rival's attacking run also claimed this land for themselves — beating them took it too.",
+    { territoryId: spoils._id },
+  );
+}
+
 async function recordWinLoss(winnerId: unknown, loserId: unknown) {
   await User.updateOne({ _id: winnerId }, { $inc: { battlesWon: 1 } });
   await User.updateOne({ _id: loserId }, { $inc: { battlesLost: 1 } });
@@ -413,6 +439,7 @@ export async function resolveAsync(battleId: unknown): Promise<boolean> {
     } else if (territory) {
       territory.shieldUntil = shieldDate();
       await territory.save();
+      await seizeAttackersNewClaim(battle, battle.defenderId);
     }
     await award(winnerId, "BATTLE_WIN", BATTLE_WIN_POINTS, `battle:${battle._id}:WIN`, {
       battleId: battle._id,
@@ -431,6 +458,7 @@ export async function resolveAsync(battleId: unknown): Promise<boolean> {
     } else if (territory) {
       territory.shieldUntil = shieldDate();
       await territory.save();
+      await seizeAttackersNewClaim(battle, battle.defenderId);
     }
     await award(winnerId, "BATTLE_WIN", BATTLE_WIN_POINTS, `battle:${battle._id}:WIN`, {
       battleId: battle._id,
@@ -439,6 +467,7 @@ export async function resolveAsync(battleId: unknown): Promise<boolean> {
     await recordWinLoss(winnerId, loserId);
   } else {
     // Nobody ran: no transfer, both bleed points (the attacker more — they started it).
+    // Not a "defender win" (nobody won anything), so the attacker's own new claim is spared.
     battle.resolution = "DOUBLE_FORFEIT";
     await award(battle.attackerId, "ASYNC_DOUBLE_FORFEIT", ASYNC_FORFEIT_ATTACKER_LOSS, `battle:${battle._id}:FORFEIT_ATTACKER`, {
       battleId: battle._id,
@@ -493,6 +522,7 @@ export async function resolveDuel(battleId: unknown): Promise<boolean> {
     } else if (territory) {
       territory.shieldUntil = shieldDate();
       await territory.save();
+      await seizeAttackersNewClaim(battle, battle.defenderId);
     }
     await award(winnerId, "BATTLE_WIN", BATTLE_WIN_POINTS, `battle:${battle._id}:WIN`, {
       battleId: battle._id,
@@ -523,6 +553,7 @@ export async function resolveDuel(battleId: unknown): Promise<boolean> {
     } else if (territory) {
       territory.shieldUntil = shieldDate();
       await territory.save();
+      await seizeAttackersNewClaim(battle, battle.defenderId);
     }
     await award(winnerId, "BATTLE_WIN", BATTLE_WIN_POINTS, `battle:${battle._id}:WIN`, {
       battleId: battle._id,

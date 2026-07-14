@@ -26,6 +26,12 @@ const MIN_CLAIM_RUN_KM = 1.5;
 const MIN_PACE_MIN_PER_KM = 2.5; // faster than world record = not a run
 const MAX_PACE_MIN_PER_KM = 12; // slower = walking with a run label
 export const NEW_TERRITORY_VALUE = 1000;
+/** A run covering at least this much of an existing territory credits its distance toward
+ * that territory's fame — attack-independent, same threshold whether you're contesting the
+ * land or just passing through most of it. */
+export const DISTANCE_CREDIT_THRESHOLD = 0.06;
+/** Each credited km bumps fame as much as roughly one new distinct runner would. */
+const KM_TO_FAME_POINTS = 10;
 
 /** Deterministic per-user territory color: 12 distinguishable hues on the dark map. */
 const OWNER_COLORS = [
@@ -74,15 +80,30 @@ export function isTerritoryEligibleRun(workout: WorkoutLike): boolean {
   return true;
 }
 
-/** Every visit makes land more famous, independent of ownership. Caller saves the doc. */
+/**
+ * Every visit makes land more famous, independent of ownership. Caller saves the doc.
+ *
+ * When `run` is given and its coverage of this territory clears DISTANCE_CREDIT_THRESHOLD,
+ * the run's distance is also credited toward the territory's total — attack or not, whoever's
+ * run it is. This is separate from (and a lower bar than) ATTACK_COVERAGE_THRESHOLD: covering
+ * enough of someone's land to matter for the leaderboard doesn't require covering enough of
+ * it to contest ownership.
+ */
 export function bumpFame(
-  territory: { distinctRunnerIds: unknown[]; totalVisits: number; fameScore: number },
+  territory: { distinctRunnerIds: unknown[]; totalVisits: number; fameScore: number; totalDistanceKm: number },
   userId: string,
+  run?: { distanceKm: number; coverage: number },
 ) {
   const alreadyRan = territory.distinctRunnerIds.some((id) => String(id) === String(userId));
   if (!alreadyRan) territory.distinctRunnerIds.push(userId);
   territory.totalVisits += 1;
-  territory.fameScore = territory.distinctRunnerIds.length * 10 + territory.totalVisits;
+
+  if (run && run.coverage >= DISTANCE_CREDIT_THRESHOLD) {
+    territory.totalDistanceKm = Math.round((territory.totalDistanceKm + run.distanceKm) * 100) / 100;
+  }
+
+  territory.fameScore =
+    territory.distinctRunnerIds.length * 10 + territory.totalVisits + Math.round(territory.totalDistanceKm * KM_TO_FAME_POINTS);
 }
 
 async function nameForTerritory(centroidLngLat: [number, number], ownerName: string, ownerId: string): Promise<string> {
@@ -122,6 +143,7 @@ type StoredTerritory = {
   shieldUntil: Date | null;
   distinctRunnerIds: unknown[];
   totalVisits: number;
+  totalDistanceKm: number;
   fameScore: number;
   save: () => Promise<unknown>;
 };
@@ -169,7 +191,7 @@ export async function processRunForTerritory(
     if (coverage <= 0) continue;
 
     overlappedGeometries.push(territory.geometry);
-    bumpFame(territory, userId);
+    bumpFame(territory, userId, { distanceKm: workout.distanceKm, coverage });
     await territory.save();
 
     const ownerId = territory.ownerId ? String(territory.ownerId._id ?? territory.ownerId) : null;
@@ -263,5 +285,6 @@ export async function getTerritoryFameLeaderboard(limit = 20) {
     fameScore: t.fameScore,
     distinctRunners: t.distinctRunnerIds?.length ?? 0,
     totalVisits: t.totalVisits ?? 0,
+    totalDistanceKm: t.totalDistanceKm ?? 0,
   }));
 }

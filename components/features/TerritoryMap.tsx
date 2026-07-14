@@ -26,6 +26,7 @@ export type MapTerritory = {
   areaSqM: number;
   valuePoints: number;
   fameScore: number;
+  totalDistanceKm: number;
   shieldUntil: string | null;
   createdAt: string;
   ownerId: string | null;
@@ -49,6 +50,7 @@ type FamousTerritory = {
   fameScore: number;
   distinctRunners: number;
   totalVisits: number;
+  totalDistanceKm: number;
 };
 
 function formatArea(areaSqM: number): string {
@@ -193,7 +195,7 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
                   <div className="text-sm font-medium truncate">{t.territoryName}</div>
                   <div className="text-xs text-white/40">
                     {t.ownerName ? `Held by ${t.ownerName}` : "Unclaimed"} · {t.distinctRunners} runner
-                    {t.distinctRunners === 1 ? "" : "s"}
+                    {t.distinctRunners === 1 ? "" : "s"} · {t.totalDistanceKm.toFixed(1)}km covered
                   </div>
                 </div>
                 <div className="inline-flex items-center gap-1 text-xs font-semibold text-ignite shrink-0">
@@ -234,7 +236,7 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 mb-4">
+            <div className="grid grid-cols-3 gap-2 mb-4">
               <div className="bg-white/5 rounded-xl p-3">
                 <div className="text-[11px] uppercase tracking-wide text-white/40 mb-0.5">Value</div>
                 <div className="text-sm font-bold">{selected.valuePoints} pts</div>
@@ -244,6 +246,10 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
                 <div className="text-sm font-bold inline-flex items-center gap-1">
                   <Flame className="w-3.5 h-3.5 text-ignite" /> {selected.fameScore}
                 </div>
+              </div>
+              <div className="bg-white/5 rounded-xl p-3">
+                <div className="text-[11px] uppercase tracking-wide text-white/40 mb-0.5">Covered</div>
+                <div className="text-sm font-bold">{selected.totalDistanceKm.toFixed(1)} km</div>
               </div>
             </div>
 
