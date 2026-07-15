@@ -29,6 +29,12 @@ const WorkoutSchema = new Schema(
       enum: ["PENDING", "VERIFIED", "FLAGGED"],
       default: "PENDING",
     },
+    // Set once the territory/points/battle pipeline (lib/runGameplay.ts) completes for this
+    // workout without throwing — null means it either never ran or threw partway through, so
+    // the repair sweep (lib/strava.ts's repairMissingStravaPosts) knows to retry it. Distinct
+    // from the Post existing: a Post can exist while this is still null (that's exactly the
+    // failure mode the sweep exists to catch).
+    gameplayProcessedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
