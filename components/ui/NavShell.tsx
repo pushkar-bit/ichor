@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { motion } from "framer-motion";
 import { IchorLogo } from "./IchorMark";
 import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, Search, LogOut, Info } from "lucide-react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
@@ -78,7 +77,10 @@ export function NavShell({
     }
 
     return (
-      <motion.div key={item.href} whileHover={{ x: 4 }} whileTap={{ scale: 0.96 }}>
+      // CSS transitions instead of framer-motion so the always-mounted nav shell
+      // doesn't pull the animation library into every page's bundle. hover:translate-x-1
+      // (4px) and active:scale-[0.96] mirror the previous whileHover/whileTap.
+      <div key={item.href} className="transition-transform duration-150 hover:translate-x-1 active:scale-[0.96]">
         <Link
           href={item.splashTo ? "#" : item.href}
           onClick={(e) => handleNavClick(item, e)}
@@ -95,7 +97,7 @@ export function NavShell({
           )}
           {item.label}
         </Link>
-      </motion.div>
+      </div>
     );
   }
 
