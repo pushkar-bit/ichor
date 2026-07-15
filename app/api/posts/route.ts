@@ -5,12 +5,12 @@ import { Workout } from "@/models/Workout";
 import { Post } from "@/models/Post";
 import { DietCard } from "@/models/DietCard";
 import { classifyDiet } from "@/lib/ai";
-import { processRunForTerritory } from "@/lib/territoryEngine";
-import { attachQualifyingRunsToBattles } from "@/lib/battles";
-import { awardPointsForWorkout } from "@/lib/points";
+import { runGameplayPipeline } from "@/lib/runGameplay";
 import { findActiveGroupRunForUser, attachRunToGroupRun } from "@/lib/groupRun";
 import { recordWorkoutStats } from "@/lib/recordWorkout";
 import { getPersonalBests } from "@/lib/personalBests";
+import type { TerritoryRunResult } from "@/lib/territoryEngine";
+import type { PointsAward } from "@/lib/points";
 
 export async function POST(req: NextRequest) {
   await connectDB();
@@ -81,35 +81,41 @@ export async function POST(req: NextRequest) {
     await attachRunToGroupRun(String(activeGroupRun._id), String(me._id), String(workout._id));
   }
 
-  // Diet classification (a Gemini call — several seconds) and territory processing touch
-  // completely independent data, so run them concurrently instead of back to back.
+  // Diet classification (a Gemini call — several seconds) and gameplay processing touch
+  // completely independent data, so run them concurrently instead of back to back. The post
+  // already exists at this point — a failure in here must never turn into a 500 for a post
+  // that actually succeeded, so everything below is best-effort (logged, not thrown). See
+  // lib/runGameplay.ts for why this matters: a bug in this exact pipeline once silently
+  // stranded every Strava-synced run behind it.
   const hasDiet = Boolean(dietDescription && dietDescription.trim().length > 0);
-  const [dietCard, territoryResult] = await Promise.all([
-    hasDiet
-      ? (async () => {
-          const result = dietResult ?? (await classifyDiet(dietDescription));
-          const card = await DietCard.create({
-            postId: post._id,
-            description: dietDescription,
-            classification: result.classification,
-            estimatedCalories: result.estimatedCalories,
-            integrityBonus: result.integrityBonus,
-            suggestion: result.suggestion,
-          });
-          // Mutate in-memory rather than a separate updateOne — this rides along with the
-          // single me.save() below (and means evaluateBadges sees the up-to-date total for
-          // the integrity badge check instead of the pre-bonus value).
-          me.integrityPoints += result.integrityBonus;
-          return card;
-        })()
-      : Promise.resolve(null),
-    // No-ops for manual/OCR posts via the eligibility gate; a future HealthKit-style source
-    // with GPS routes will just start claiming without changes here.
-    processRunForTerritory({ _id: me._id, name: me.name }, workout),
-  ]);
-  const pointsAwarded = await awardPointsForWorkout(me, workout);
-  // If this run lands inside an active battle the user is fighting, it becomes their entry.
-  await attachQualifyingRunsToBattles(me, workout);
+  let dietCard = null;
+  let territoryResult: TerritoryRunResult = { claimed: null, opportunities: [] };
+  let pointsAwarded: PointsAward[] = [];
+  try {
+    [dietCard, { territoryResult, pointsAwarded }] = await Promise.all([
+      hasDiet
+        ? (async () => {
+            const result = dietResult ?? (await classifyDiet(dietDescription));
+            const card = await DietCard.create({
+              postId: post._id,
+              description: dietDescription,
+              classification: result.classification,
+              estimatedCalories: result.estimatedCalories,
+              integrityBonus: result.integrityBonus,
+              suggestion: result.suggestion,
+            });
+            me.integrityPoints += result.integrityBonus;
+            await me.save();
+            return card;
+          })()
+        : Promise.resolve(null),
+      // No-ops for manual/OCR posts via the eligibility gate; a future HealthKit-style source
+      // with GPS routes will just start claiming without changes here.
+      runGameplayPipeline({ _id: me._id, name: me.name }, workout),
+    ]);
+  } catch (err) {
+    console.error(`[posts] gameplay pipeline failed for workout ${workout._id} (post ${post._id} still created):`, err);
+  }
 
   const { newBadges } = await recordWorkoutStats(me, { distanceKm, caloriesBurned }, new Date());
 

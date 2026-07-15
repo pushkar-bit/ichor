@@ -1,12 +1,13 @@
 import { Workout } from "@/models/Workout";
 import { Post } from "@/models/Post";
+import { User } from "@/models/User";
 import { recordWorkoutStats } from "./recordWorkout";
 import { buildStravaRouteMapUrl } from "./stravaRouteMap";
 import { decodePolyline } from "./polyline";
-import { processRunForTerritory } from "./territoryEngine";
-import { attachQualifyingRunsToBattles } from "./battles";
-import { awardPointsForWorkout } from "./points";
-import { findActiveGroupRunForUser, attachRunToGroupRun } from "./groupRun";
+import { findActiveGroupRunForUser } from "./groupRun";
+import { runGameplayPipeline } from "./runGameplay";
+import type { TerritoryRunResult } from "./territoryEngine";
+import type { PointsAward } from "./points";
 
 const STRAVA_ACTIVITY_TYPE_MAP: Record<string, "RUN" | "WALK" | "CYCLE"> = {
   Run: "RUN",
@@ -179,6 +180,38 @@ export async function ingestStravaActivity(user: StravaLinkedUser, activity: Str
     throw err;
   }
 
+  return finishIngest(user, workout, activity, encodedPolyline, accessToken);
+}
+
+/**
+ * Everything that happens after a Workout row exists: route-map image, territory claim,
+ * points, battle auto-attach, group-run auto-attach, and finally the Post that makes it all
+ * visible (scoring/badges/feed all read Posts, never raw Workouts). Split out from
+ * ingestStravaActivity so `reprocessExistingWorkout` (below) can replay this exact sequence
+ * for a Workout that already exists but never got this far — e.g. if one of these steps threw
+ * on the first attempt, the webhook's fire-and-forget `after()` swallows the error and the
+ * Workout is left stranded with no Post. Never silently duplicated logic between the two paths.
+ */
+type IngestedWorkout = {
+  _id: unknown;
+  activityType: string;
+  sourceType: string;
+  verificationStatus: string;
+  distanceKm: number;
+  durationSeconds: number;
+  avgPaceMinPerKm: number | null;
+  caloriesBurned: number;
+  workoutDate: Date;
+  route?: { type: string; coordinates: [number, number][] } | null;
+};
+
+async function finishIngest(
+  user: StravaLinkedUser,
+  workout: IngestedWorkout,
+  activity: StravaActivity,
+  encodedPolyline: string | null | undefined,
+  accessToken?: string,
+) {
   // Route map always goes first (position 0) so it's the guaranteed cover image — the runner's
   // own Strava photos, if any, follow it rather than replacing it.
   const routeMapUrl = buildStravaRouteMapUrl(encodedPolyline);
@@ -188,20 +221,21 @@ export async function ingestStravaActivity(user: StravaLinkedUser, activity: Str
       : [];
   const photoUrls = [routeMapUrl, ...ownPhotos].filter((url): url is string => Boolean(url));
 
-  // Territory + points: the run claims whatever unclaimed ground it covered and earns
-  // profile points (thresholds/PBs/pace). Attacking is always a choice, so opportunities
-  // become inbox notifications here — there's no live user on the webhook path to prompt.
-  const [territoryResult, pointsAwarded] = await Promise.all([
-    processRunForTerritory({ _id: user._id, name: user.name }, workout, { notifyOpportunities: true }),
-    awardPointsForWorkout(user, workout),
-  ]);
-  // If this run lands inside an active battle the user is fighting, it becomes their entry.
-  await attachQualifyingRunsToBattles(user, workout);
+  // Best-effort — a broken lookup here shouldn't block the post any more than a broken
+  // territory claim should (see below); it just means this run doesn't get group-run-linked.
+  let activeGroupRun: { _id: unknown } | null = null;
+  try {
+    activeGroupRun = await findActiveGroupRunForUser(String(user._id), workout.workoutDate);
+  } catch (err) {
+    console.error(`[strava] group-run lookup failed for workout ${workout._id}, posting without it:`, err);
+  }
 
-  // If this run lands inside a War group run's capture window and the user is still waiting
-  // on a run for it, this is that run — same auto-link manual posts already get.
-  const activeGroupRun = await findActiveGroupRunForUser(String(user._id), workoutDate);
-
+  // The Post is the ONE guaranteed outcome of a sync — connecting Strava means every workout
+  // shows up in the feed, full stop. Everything below (territory claim, points, battles) is
+  // gameplay built on top of that run, never a prerequisite for it: a bug in any of those must
+  // not leave a run stuck with a Workout and no Post. (This split exists because exactly that
+  // happened — a stale unique index made every territory claim after the first one throw,
+  // silently stranding every synced run behind it. See scripts/repairMissingPosts.ts.)
   const post = await Post.create({
     userId: user._id,
     workoutId: workout._id,
@@ -211,11 +245,84 @@ export async function ingestStravaActivity(user: StravaLinkedUser, activity: Str
     groupRunId: activeGroupRun ? activeGroupRun._id : null,
   });
 
-  if (activeGroupRun) {
-    await attachRunToGroupRun(String(activeGroupRun._id), String(user._id), String(workout._id));
+  let territoryResult: TerritoryRunResult = { claimed: null, opportunities: [] };
+  let pointsAwarded: PointsAward[] = [];
+  try {
+    // Attacking is always a choice, so opportunities become inbox notifications here —
+    // there's no live user on the webhook path to prompt.
+    ({ territoryResult, pointsAwarded } = await runGameplayPipeline(user, workout, { notifyOpportunities: true }));
+  } catch (err) {
+    console.error(`[strava] gameplay pipeline failed for workout ${workout._id} (post ${post._id} still created):`, err);
   }
 
-  const { newBadges } = await recordWorkoutStats(user, { distanceKm, caloriesBurned }, workoutDate);
+  let newBadges: string[] = [];
+  try {
+    newBadges = (await recordWorkoutStats(user, { distanceKm: workout.distanceKm, caloriesBurned: workout.caloriesBurned }, workout.workoutDate)).newBadges;
+  } catch (err) {
+    console.error(`[strava] recordWorkoutStats failed for workout ${workout._id}:`, err);
+  }
 
   return { workout, post, newBadges, territoryResult, pointsAwarded };
+}
+
+/**
+ * Repair path: a Workout that already exists (Workout.create() succeeded on a prior attempt)
+ * but never got a Post because something after it threw. Re-fetches the activity fresh from
+ * Strava (for the polyline/photos/name — never stored raw on Workout) and replays finishIngest.
+ * Throws instead of swallowing — the caller decides how to handle/report the failure.
+ */
+export async function reprocessExistingWorkout(
+  user: StravaLinkedUser,
+  workout: IngestedWorkout & { externalId: string | null },
+) {
+  if (!workout.externalId?.startsWith("strava:")) throw new Error("Not a Strava-sourced workout");
+  const activityId = Number(workout.externalId.replace("strava:", ""));
+  const accessToken = await ensureFreshStravaToken(user);
+  const activity = await fetchStravaActivity(accessToken, activityId);
+  const encodedPolyline = activity.map?.summary_polyline ?? activity.map?.polyline;
+  return finishIngest(user, workout, activity, encodedPolyline, accessToken);
+}
+
+/**
+ * Self-healing sweep: finds every Strava-sourced Workout with no matching Post and
+ * reprocesses it via reprocessExistingWorkout. Belt-and-braces alongside the finishIngest
+ * split above — that split should make this permanently empty in steady state, but this is
+ * what actually catches it if a genuinely new failure mode ever strands a run again. Called
+ * from scripts/repairMissingPosts.ts (manual/CLI) and app/api/cron/repair-missing-posts
+ * (scheduled, same CRON_SECRET contract as sweepBattles/closeExpiredGroupRuns).
+ */
+export async function repairMissingStravaPosts(limit = 50): Promise<{ found: number; fixed: number; failures: { workoutId: string; error: string }[] }> {
+  const stravaWorkouts = await Workout.find({ sourceType: "HEALTH_SYNC", externalId: { $regex: /^strava:/ } })
+    .sort({ createdAt: 1 })
+    .limit(limit);
+
+  // Two distinct failure modes, both possible from the same "something threw mid-pipeline"
+  // root cause: no Post at all (finishIngest never reached Post.create()), or a Post exists
+  // but gameplayProcessedAt is still null (the Post got created, then territory/points/battle
+  // processing threw and was caught — correct behavior post-fix, but still needs a retry).
+  const needsWork: { workout: (typeof stravaWorkouts)[number]; hasPost: boolean }[] = [];
+  for (const w of stravaWorkouts) {
+    if (w.gameplayProcessedAt) continue; // fully done, nothing to do
+    const post = await Post.findOne({ workoutId: w._id }).select("_id").lean();
+    needsWork.push({ workout: w, hasPost: Boolean(post) });
+  }
+
+  let fixed = 0;
+  const failures: { workoutId: string; error: string }[] = [];
+  for (const { workout, hasPost } of needsWork) {
+    const user = await User.findById(workout.userId);
+    if (!user) continue; // owner deleted since — nothing to reprocess for
+    try {
+      if (hasPost) {
+        await runGameplayPipeline({ _id: user._id, name: user.name }, workout, { notifyOpportunities: true });
+      } else {
+        await reprocessExistingWorkout(user, workout);
+      }
+      fixed++;
+    } catch (err) {
+      failures.push({ workoutId: String(workout._id), error: (err as Error).message });
+    }
+  }
+
+  return { found: needsWork.length, fixed, failures };
 }
