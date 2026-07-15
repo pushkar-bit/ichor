@@ -4,9 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Flame, PlusCircle } from "lucide-react";
 import { ActivityCard, type ActivityCardData } from "./ActivityCard";
+import { ForYouRail } from "./ForYouRail";
 import { LeaderboardWidget, type LeaderboardWidgetRow } from "./LeaderboardWidget";
 import { FollowWidget } from "./FollowWidget";
 import type { FollowSuggestion } from "@/lib/followSuggestions";
+import type { ForYouCard } from "@/lib/forYou";
 import { EmptyState, SkeletonCard } from "@/components/ui/StatChip";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +25,7 @@ type FeedClientProps = {
   initialGlobalMaxDistances?: Record<string, number>;
   initialLeaderboardData?: { rows: LeaderboardWidgetRow[]; me: string | null };
   initialSuggestions?: FollowSuggestion[];
+  forYou?: ForYouCard[];
 };
 
 export function FeedClient({
@@ -31,6 +34,7 @@ export function FeedClient({
   initialGlobalMaxDistances = {},
   initialLeaderboardData,
   initialSuggestions,
+  forYou = [],
 }: FeedClientProps) {
   const [tab, setTab] = useState("all");
   const [posts, setPosts] = useState<ActivityCardData[]>(initialPosts ?? []);
@@ -110,6 +114,10 @@ export function FeedClient({
             </button>
           ))}
         </div>
+
+        {/* The personalized rail is viewer-specific, so it rides the default "all" view only —
+            the filtered tabs (following/clan/top) are about other people's posts, not you. */}
+        {tab === "all" && forYou.length > 0 && <ForYouRail cards={forYou} />}
 
         {loading ? (
           <div className="space-y-4">

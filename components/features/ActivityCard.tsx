@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Footprints, Bike, Timer, Flame as FlameIcon, MessageSquare, BadgeCheck, Camera } from "lucide-react";
+import { Footprints, Bike, Timer, Flame as FlameIcon, MessageSquare, BadgeCheck, Camera, Swords, TrendingUp } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { RunVisualizer } from "./RunVisualizer";
 import { PostImageCarousel } from "./PostImageCarousel";
@@ -38,6 +38,7 @@ export type ActivityCardData = {
   zoneName?: string | null;
   linkToDetail?: boolean;
   reactionSummary?: { featuredName: string; featuredAvatarUrl: string; totalCount: number } | null;
+  personalization?: import("@/lib/postPersonalization").PostPersonalization | null;
 };
 
 const ACTIVITY_ICON = { RUN: Footprints, WALK: Footprints, CYCLE: Bike };
@@ -116,6 +117,47 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
           {post.workout.activityType}
         </span>
       </div>
+
+      {/* Viewer-specific personalization: how this run relates to YOU — the author's streak,
+          your battle record with them, and a benchmark-vs-your-bests nudge. */}
+      {post.personalization && (
+        <div className="px-3 sm:px-4 pb-2.5 flex flex-col gap-1.5">
+          {(post.personalization.authorStreakDays || post.personalization.headToHead) && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {post.personalization.authorStreakDays && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-ignite bg-ignite/10 px-2 py-0.5 rounded-full">
+                  <FlameIcon className="w-3 h-3" /> {post.personalization.authorStreakDays}-day streak
+                </span>
+              )}
+              {post.personalization.headToHead && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-white/70 bg-white/5 px-2 py-0.5 rounded-full">
+                  <Swords className="w-3 h-3" />{" "}
+                  {post.personalization.headToHead.wins > post.personalization.headToHead.losses
+                    ? "You lead"
+                    : post.personalization.headToHead.wins < post.personalization.headToHead.losses
+                      ? "You trail"
+                      : "Even"}{" "}
+                  {post.personalization.headToHead.wins}–{post.personalization.headToHead.losses}
+                </span>
+              )}
+            </div>
+          )}
+          {post.personalization.message && (
+            <div
+              className={`flex items-start gap-1.5 text-xs leading-snug rounded-lg px-2.5 py-1.5 ${
+                post.personalization.message.tone === "chase"
+                  ? "text-ignite bg-ignite/10"
+                  : post.personalization.message.tone === "ahead"
+                    ? "text-lime bg-lime/10"
+                    : "text-white/60 bg-white/5"
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>{post.personalization.message.text}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {post.photoUrls.length > 0 && (
         <PostImageCarousel
