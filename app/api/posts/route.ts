@@ -26,7 +26,6 @@ export async function POST(req: NextRequest) {
     caloriesBurned,
     heartRateAvg,
     workoutDate,
-    sourceType,
     screenshotUrl,
     caption,
     photoUrls,
@@ -50,9 +49,14 @@ export async function POST(req: NextRequest) {
     .lean();
   const priorBests = getPersonalBests((priorPosts as unknown as PopulatedPost[]).map((p) => p.workoutId));
 
+  // This is the manual/self-reported path: it is ALWAYS MANUAL + PENDING. sourceType and
+  // verificationStatus are never taken from the request body — trusting a client-supplied
+  // "HEALTH_SYNC" would let anyone mint a VERIFIED run and (once a manual path carries a GPS
+  // route) claim/attack territory with fabricated geometry. Only the Strava webhook, which
+  // owns the OAuth-backed data, may create VERIFIED HEALTH_SYNC workouts.
   const workout = await Workout.create({
     userId: me._id,
-    sourceType: sourceType ?? "MANUAL",
+    sourceType: "MANUAL",
     activityType,
     distanceKm,
     durationSeconds,
@@ -61,7 +65,7 @@ export async function POST(req: NextRequest) {
     heartRateAvg: heartRateAvg ?? null,
     workoutDate: workoutDate ? new Date(workoutDate) : new Date(),
     screenshotUrl: screenshotUrl ?? null,
-    verificationStatus: sourceType === "HEALTH_SYNC" ? "VERIFIED" : "PENDING",
+    verificationStatus: "PENDING",
   });
 
   // If this run lands inside a War group run's capture window and the user is a participant

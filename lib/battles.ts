@@ -51,6 +51,12 @@ const STAT_PENALTY_LOSS = -25;
 const SHIELD_HOURS = 72;
 const ATTACKER_COOLDOWN_DAYS = 7;
 const MAX_ACTIVE_OUTGOING = 3;
+/** Anti-harassment: you can't re-attack the same person right after a battle between you
+ * resolves, whatever the outcome — stops one runner from serially targeting another. */
+const SAME_DEFENDER_COOLDOWN_HOURS = 24;
+/** A duel must be scheduled at least this far out so the attacker gets fair warning — the
+ * defender can't ambush with a window at 3am tonight in the attacker's timezone. */
+export const DUEL_MIN_NOTICE_HOURS = 6;
 
 type RunStats = {
   distanceKm: number;
@@ -82,11 +88,12 @@ async function revealAndNotify(battle: any, headline: (side: "attacker" | "defen
   });
 }
 
-/** Atomic claim of the right to resolve — the loser of the race gets null and backs off. */
+/** Atomic claim of the right to resolve — the loser of the race gets null and backs off.
+ * Clears openTerritoryId in the same flip so the territory frees up for new attacks. */
 async function claimResolution(battleId: unknown, expectedStatus: string) {
   return Battle.findOneAndUpdate(
     { _id: battleId, status: expectedStatus },
-    { $set: { status: "RESOLVED", resolvedAt: new Date() } },
+    { $set: { status: "RESOLVED", resolvedAt: new Date() }, $unset: { openTerritoryId: "" } },
     { new: true },
   );
 }
@@ -107,8 +114,13 @@ export async function createBattle(params: {
   const workout = await Workout.findOne({ _id: workoutId, userId: attacker._id }).lean();
   if (!workout) return { error: "Run not found." };
   if (!isTerritoryEligibleRun(workout as any)) return { error: "Only GPS-verified runs can attack." };
-  const ageHours = (Date.now() - new Date((workout as any).workoutDate).getTime()) / 3600e3;
-  if (ageHours > ATTACK_RUN_MAX_AGE_HOURS) return { error: "That run is too old to attack with — attacks must come from a fresh run." };
+  // Freshness is gated on when WE ingested the run (createdAt), not the athlete-editable
+  // workoutDate — otherwise backdating an old Strava activity to "now" would unlock attacks.
+  const ingestAgeHours = (Date.now() - new Date((workout as any).createdAt).getTime()) / 3600e3;
+  const runAgeHours = (Date.now() - new Date((workout as any).workoutDate).getTime()) / 3600e3;
+  if (ingestAgeHours > ATTACK_RUN_MAX_AGE_HOURS || runAgeHours > ATTACK_RUN_MAX_AGE_HOURS) {
+    return { error: "That run is too old to attack with — attacks must come from a fresh run." };
+  }
 
   const territory = await Territory.findById(territoryId);
   if (!territory) return { error: "Territory not found." };
@@ -132,6 +144,15 @@ export async function createBattle(params: {
   });
   if (recentLoss) return { error: "You lost here recently — wait out the cooldown before attacking again." };
 
+  // Anti-harassment: back off the same person for a day after any battle between you resolves.
+  const recentClash = await Battle.exists({
+    attackerId: attacker._id,
+    defenderId: territory.ownerId,
+    status: "RESOLVED",
+    resolvedAt: { $gte: new Date(Date.now() - SAME_DEFENDER_COOLDOWN_HOURS * 3600e3) },
+  });
+  if (recentClash) return { error: "You just battled this athlete — give it a day before attacking them again." };
+
   // Re-derive the corridor and coverage server-side; never trust the client's numbers.
   const corridor = buildRunCorridor((workout as any).route.coordinates);
   if (!corridor) return { error: "Couldn't read this run's route." };
@@ -140,17 +161,25 @@ export async function createBattle(params: {
     return { error: `Your run covered ${Math.round(coverage * 100)}% of this territory — attacks need at least ${ATTACK_COVERAGE_THRESHOLD * 100}%.` };
   }
 
-  const battle = await Battle.create({
-    attackerId: attacker._id,
-    defenderId: territory.ownerId,
-    territoryId,
-    attackRunId: workout._id,
-    attackCorridor: corridor.geometry,
-    coverageRatio: Math.round(coverage * 100) / 100,
-    proposedMetric,
-    status: "PENDING_RESPONSE",
-    respondBy: new Date(Date.now() + RESPOND_HOURS * 3600e3),
-  });
+  let battle;
+  try {
+    battle = await Battle.create({
+      attackerId: attacker._id,
+      defenderId: territory.ownerId,
+      territoryId,
+      openTerritoryId: territoryId, // DB-enforced one-open-battle-per-territory lock
+      attackRunId: workout._id,
+      attackCorridor: corridor.geometry,
+      coverageRatio: Math.round(coverage * 100) / 100,
+      proposedMetric,
+      status: "PENDING_RESPONSE",
+      respondBy: new Date(Date.now() + RESPOND_HOURS * 3600e3),
+    });
+  } catch (err) {
+    // Lost the race to another attacker who opened a battle on this territory microseconds ago.
+    if ((err as { code?: number }).code === 11000) return { error: "There's already an active battle for this territory." };
+    throw err;
+  }
 
   // Fog of war: the defender learns WHO and WHERE — never the run behind it.
   await notify(
@@ -210,7 +239,9 @@ export async function respondToBattle(
   const start = new Date(response.windowStart);
   const end = new Date(response.windowEnd);
   if (isNaN(start.getTime()) || isNaN(end.getTime())) return { error: "Invalid duel window dates." };
-  if (start < new Date()) return { error: "The duel window must start in the future." };
+  if (start < new Date(Date.now() + DUEL_MIN_NOTICE_HOURS * 3600e3)) {
+    return { error: `The duel must start at least ${DUEL_MIN_NOTICE_HOURS}h from now so your challenger has fair warning.` };
+  }
   if (start > new Date(Date.now() + DUEL_MAX_START_DAYS * 86400e3)) {
     return { error: `The duel must start within ${DUEL_MAX_START_DAYS} days.` };
   }
@@ -243,8 +274,21 @@ export async function respondToBattle(
 // Resolutions
 // ---------------------------------------------------------------------------
 
-/** Owner refused (or ignored for 48h): the land is divided and its value decays. */
-export async function resolveRefusal(battleId: unknown): Promise<boolean> {
+/**
+ * Owner refused, or let the 48h clock run out.
+ *
+ * The land is only divided when the attacker's run actually BEAT the defender's claim run on
+ * the proposed metric — a weak challenger gets repelled with nothing (and forfeits the new
+ * claim their attacking run made elsewhere), so attacking is no longer a guaranteed land grab.
+ *
+ * `viaTimeout` separates an active refusal (a wager the defender chose — the weaker run pays
+ * points) from 48h silence (no choice was made — neither side loses points, so being away
+ * doesn't bleed you). Land still moves either way; only the point stakes differ.
+ */
+export async function resolveRefusal(
+  battleId: unknown,
+  { viaTimeout = false }: { viaTimeout?: boolean } = {},
+): Promise<boolean> {
   const battle = await claimResolution(battleId, "PENDING_RESPONSE");
   if (!battle) return false;
 
@@ -253,7 +297,6 @@ export async function resolveRefusal(battleId: unknown): Promise<boolean> {
   const attacker = await User.findById(battle.attackerId).select("name").lean();
 
   battle.mode = "REFUSED";
-  battle.resolution = "SPLIT";
 
   if (territory && attackRun) {
     const attackerStats: RunStats = attackRun as any;
@@ -261,103 +304,120 @@ export async function resolveRefusal(battleId: unknown): Promise<boolean> {
 
     // Server-side comparison on the attacker's proposed metric — never revealed until now.
     const attackerBetter = compareOnMetric(attackerStats, defenderStats, battle.proposedMetric) > 0;
-    await award(
-      battle.attackerId,
-      attackerBetter ? "REFUSAL_BETTER" : "REFUSAL_WORSE",
-      attackerBetter ? REFUSAL_BETTER_LOSS : REFUSAL_WORSE_LOSS,
-      `battle:${battle._id}:REFUSAL_ATTACKER`,
-      { battleId: battle._id, territoryId: territory._id },
-    );
-    await award(
-      battle.defenderId,
-      attackerBetter ? "REFUSAL_WORSE" : "REFUSAL_BETTER",
-      attackerBetter ? REFUSAL_WORSE_LOSS : REFUSAL_BETTER_LOSS,
-      `battle:${battle._id}:REFUSAL_DEFENDER`,
-      { battleId: battle._id, territoryId: territory._id },
-    );
 
-    const split = splitTerritory(territory.geometry as TerritoryGeometry, battle.attackCorridor as TerritoryGeometry);
-    const decayedTotal = Math.round(territory.valuePoints * REFUSAL_VALUE_KEEP);
-
-    if (split && split.ownerPiece) {
-      // Normal case: attacker takes the strip they ran; owner keeps the rest.
-      const totalArea = split.attackerPiece.areaSqM + split.ownerPiece.areaSqM;
-      const attackerValue = Math.round((decayedTotal * split.attackerPiece.areaSqM) / totalArea);
-
-      const geo = await reverseGeocode(split.attackerPiece.centroid[1], split.attackerPiece.centroid[0]);
-      const pieceName = geo?.road ?? geo?.district ?? `${(attacker as any)?.name ?? "Rival"}'s cut of ${territory.name}`;
-
-      const attackerPieceDoc = await Territory.create({
-        name: pieceName,
-        ownerId: battle.attackerId,
-        color: colorForUser(String(battle.attackerId)),
-        geometry: split.attackerPiece.geometry,
-        bbox: split.attackerPiece.bbox,
-        centroid: { type: "Point", coordinates: split.attackerPiece.centroid },
-        areaSqM: split.attackerPiece.areaSqM,
-        valuePoints: attackerValue,
-        claimRunId: battle.attackRunId,
-        claimStats: {
-          distanceKm: attackerStats.distanceKm,
-          avgPaceMinPerKm: attackerStats.avgPaceMinPerKm,
-          durationSeconds: (attackRun as any).durationSeconds,
-          workoutDate: (attackRun as any).workoutDate,
-        },
-        parentTerritoryId: territory._id,
-        shieldUntil: shieldDate(),
-        distinctRunnerIds: [battle.attackerId],
-        totalVisits: 1,
-        fameScore: 11,
-      });
-
-      territory.geometry = split.ownerPiece.geometry;
-      territory.bbox = split.ownerPiece.bbox;
-      territory.centroid = { type: "Point", coordinates: split.ownerPiece.centroid };
-      territory.areaSqM = split.ownerPiece.areaSqM;
-      territory.valuePoints = decayedTotal - attackerValue;
-      territory.shieldUntil = shieldDate();
-      await territory.save();
-
-      battle.resultTerritoryIds = [attackerPieceDoc._id, territory._id];
-    } else {
-      // The attack corridor covered essentially the whole territory — it changes hands
-      // outright (still at the decayed value; refusing has a price either way).
-      territory.ownerId = battle.attackerId;
-      territory.color = colorForUser(String(battle.attackerId));
-      territory.valuePoints = decayedTotal;
-      territory.claimRunId = battle.attackRunId;
-      territory.claimStats = {
-        distanceKm: attackerStats.distanceKm,
-        avgPaceMinPerKm: attackerStats.avgPaceMinPerKm,
-        durationSeconds: (attackRun as any).durationSeconds,
-        workoutDate: (attackRun as any).workoutDate,
-      };
-      territory.shieldUntil = shieldDate();
-      await territory.save();
-      battle.resultTerritoryIds = [territory._id];
+    // Point stakes apply only to an ACTIVE refusal; silence costs neither side.
+    if (!viaTimeout) {
+      await award(
+        battle.attackerId,
+        attackerBetter ? "REFUSAL_BETTER" : "REFUSAL_WORSE",
+        attackerBetter ? REFUSAL_BETTER_LOSS : REFUSAL_WORSE_LOSS,
+        `battle:${battle._id}:REFUSAL_ATTACKER`,
+        { battleId: battle._id, territoryId: territory._id },
+      );
+      await award(
+        battle.defenderId,
+        attackerBetter ? "REFUSAL_WORSE" : "REFUSAL_BETTER",
+        attackerBetter ? REFUSAL_WORSE_LOSS : REFUSAL_BETTER_LOSS,
+        `battle:${battle._id}:REFUSAL_DEFENDER`,
+        { battleId: battle._id, territoryId: territory._id },
+      );
     }
 
-    battle.revealedStats = {
-      attacker: {
-        distanceKm: attackerStats.distanceKm,
-        avgPaceMinPerKm: attackerStats.avgPaceMinPerKm,
-        durationSeconds: (attackRun as any).durationSeconds,
-        workoutDate: (attackRun as any).workoutDate,
-      },
-      defender: defenderStats,
+    const attackerData = {
+      distanceKm: attackerStats.distanceKm,
+      avgPaceMinPerKm: attackerStats.avgPaceMinPerKm,
+      durationSeconds: (attackRun as any).durationSeconds,
+      workoutDate: (attackRun as any).workoutDate,
     };
+
+    if (attackerBetter) {
+      // The challenger earned ground. Divide the land along their corridor; value decays.
+      battle.resolution = "SPLIT";
+      const split = splitTerritory(territory.geometry as TerritoryGeometry, battle.attackCorridor as TerritoryGeometry);
+      const decayedTotal = Math.round(territory.valuePoints * REFUSAL_VALUE_KEEP);
+
+      if (split && split.ownerPiece) {
+        // Normal case: attacker takes the strip they ran; owner keeps the rest.
+        const totalArea = split.attackerPiece.areaSqM + split.ownerPiece.areaSqM;
+        const attackerValue = Math.round((decayedTotal * split.attackerPiece.areaSqM) / totalArea);
+
+        const geo = await reverseGeocode(split.attackerPiece.centroid[1], split.attackerPiece.centroid[0]);
+        const pieceName = geo?.road ?? geo?.district ?? `${(attacker as any)?.name ?? "Rival"}'s cut of ${territory.name}`;
+
+        const attackerPieceDoc = await Territory.create({
+          name: pieceName,
+          ownerId: battle.attackerId,
+          color: colorForUser(String(battle.attackerId)),
+          geometry: split.attackerPiece.geometry,
+          bbox: split.attackerPiece.bbox,
+          centroid: { type: "Point", coordinates: split.attackerPiece.centroid },
+          areaSqM: split.attackerPiece.areaSqM,
+          valuePoints: attackerValue,
+          claimRunId: battle.attackRunId,
+          claimStats: attackerData,
+          parentTerritoryId: territory._id,
+          shieldUntil: shieldDate(),
+          distinctRunnerIds: [battle.attackerId],
+          totalVisits: 1,
+          fameScore: 11,
+        });
+
+        territory.geometry = split.ownerPiece.geometry;
+        territory.bbox = split.ownerPiece.bbox;
+        territory.centroid = { type: "Point", coordinates: split.ownerPiece.centroid };
+        territory.areaSqM = split.ownerPiece.areaSqM;
+        territory.valuePoints = decayedTotal - attackerValue;
+        territory.shieldUntil = shieldDate();
+        await territory.save();
+
+        battle.resultTerritoryIds = [attackerPieceDoc._id, territory._id];
+      } else {
+        // The attack corridor covered essentially the whole territory — it changes hands
+        // outright (still at the decayed value; refusing a stronger run has a price).
+        territory.ownerId = battle.attackerId;
+        territory.color = colorForUser(String(battle.attackerId));
+        territory.valuePoints = decayedTotal;
+        territory.claimRunId = battle.attackRunId;
+        territory.claimStats = attackerData;
+        territory.shieldUntil = shieldDate();
+        await territory.save();
+        battle.resultTerritoryIds = [territory._id];
+      }
+
+      await notify(battle.attackerId, "TERRITORY_SPLIT", "Refused — but your run was stronger, so the land split", "You took the ground you ran through. The territory's value decayed 30%.", {
+        battleId: battle._id,
+        territoryId: battle.territoryId,
+      });
+      await notify(battle.defenderId, "TERRITORY_SPLIT", viaTimeout ? "You didn't respond — the stronger run took a strip" : "You refused a stronger run — your land was divided", "The attacker carved off the strip they ran. The land's value decayed 30%.", {
+        battleId: battle._id,
+        territoryId: battle.territoryId,
+      });
+    } else {
+      // Repelled: the challenger's run wasn't good enough to take ground. The owner keeps
+      // everything, and the attacker forfeits any new land that same attacking run claimed
+      // elsewhere — losing an attack costs the run's spoils.
+      battle.resolution = "DEFENDER_WIN";
+      battle.winnerId = battle.defenderId;
+      territory.shieldUntil = shieldDate();
+      await territory.save();
+      await seizeAttackersNewClaim(battle, battle.defenderId);
+      await recordWinLoss(battle.defenderId, battle.attackerId);
+      battle.resultTerritoryIds = [territory._id];
+
+      await notify(battle.attackerId, "BATTLE_RESOLVED", "Your attack was repelled", "Your run wasn't stronger than the owner's claim, so you took no ground — and any land that same run claimed elsewhere went to them.", {
+        battleId: battle._id,
+        territoryId: battle.territoryId,
+      });
+      await notify(battle.defenderId, "BATTLE_RESOLVED", viaTimeout ? "An attack expired — your land held" : "You refused a weaker run — your land held", "The challenger's run wasn't strong enough to carve off any ground. You kept the whole territory.", {
+        battleId: battle._id,
+        territoryId: battle.territoryId,
+      });
+    }
+
+    battle.revealedStats = { attacker: attackerData, defender: defenderStats };
   }
 
   await battle.save();
-
-  await notify(battle.attackerId, "TERRITORY_SPLIT", "The owner refused — the land was divided", "You took the ground you ran. Both sides lost points; the territory's value decayed.", {
-    battleId: battle._id,
-    territoryId: battle.territoryId,
-  });
-  await notify(battle.defenderId, "TERRITORY_SPLIT", "You refused — your territory was divided", "The attacker took the strip they ran through. Both sides lost points; the land's value decayed.", {
-    battleId: battle._id,
-    territoryId: battle.territoryId,
-  });
   await revealAndNotify(battle, () => "Battle report ready");
   return true;
 }
@@ -673,7 +733,8 @@ export async function sweepBattles(scope?: { userId?: string }) {
   ]);
 
   let resolved = 0;
-  for (const b of expiredPending) if (await resolveRefusal(b._id)) resolved++;
+  // Expired-pending = 48h silence, not an active refusal: no point penalties (see resolveRefusal).
+  for (const b of expiredPending) if (await resolveRefusal(b._id, { viaTimeout: true })) resolved++;
   for (const b of expiredAsync) if (await resolveAsync(b._id)) resolved++;
   for (const b of expiredDuels) if (await resolveDuel(b._id)) resolved++;
   return resolved;
