@@ -24,9 +24,11 @@ function toLeafletPositions(geometry: MapTerritory["geometry"]): LatLngExpressio
 export function LeafletTerritoryMap({
   territories,
   onTerritoryClick,
+  underAttackIds,
 }: {
   territories: MapTerritory[];
   onTerritoryClick: (territory: MapTerritory) => void;
+  underAttackIds?: Set<string>;
 }) {
   // Frame the whole empire: union of every territory's bbox ([minLng,minLat,maxLng,maxLat]).
   let bounds: LatLngBoundsExpression | null = null;
@@ -58,16 +60,18 @@ export function LeafletTerritoryMap({
       />
       {territories.map((t) => {
         const shielded = t.shieldUntil && new Date(t.shieldUntil) > new Date();
+        const underAttack = underAttackIds?.has(t.id) ?? false;
         return (
           <Polygon
             key={t.id}
             positions={toLeafletPositions(t.geometry)}
             pathOptions={{
-              color: t.isMine ? "#FFFFFF" : t.color,
-              weight: t.isMine ? 3 : 2,
+              // Under-attack land gets an ignite outline so contested ground reads at a glance.
+              color: underAttack ? "#FF5E1A" : t.isMine ? "#FFFFFF" : t.color,
+              weight: underAttack ? 4 : t.isMine ? 3 : 2,
               fillColor: t.color,
               fillOpacity: t.isMine ? 0.45 : 0.3,
-              dashArray: shielded ? "6 4" : undefined,
+              dashArray: underAttack ? "2 6" : shielded ? "6 4" : undefined,
             }}
             eventHandlers={{ click: () => onTerritoryClick(t) }}
           >
