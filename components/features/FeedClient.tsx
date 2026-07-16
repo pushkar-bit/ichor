@@ -13,6 +13,7 @@ import { EmptyState, SkeletonCard } from "@/components/ui/StatChip";
 import { cn } from "@/lib/utils";
 
 const TABS = [
+  { key: "foryou", label: "For You" },
   { key: "all", label: "All" },
   { key: "following", label: "Following" },
   { key: "clan", label: "Clan" },
@@ -63,6 +64,9 @@ export function FeedClient({
   }, []);
 
   useEffect(() => {
+    // "For You" isn't a server-side post filter — it's the personalized cards already in
+    // hand from props, so there's nothing to fetch and no post list to show underneath.
+    if (tab === "foryou") return;
     if (skipNextLoad.current) {
       skipNextLoad.current = false;
       return;
@@ -115,11 +119,19 @@ export function FeedClient({
           ))}
         </div>
 
-        {/* The personalized rail is viewer-specific, so it rides the default "all" view only —
-            the filtered tabs (following/clan/top) are about other people's posts, not you. */}
-        {tab === "all" && forYou.length > 0 && <ForYouRail cards={forYou} />}
-
-        {loading ? (
+        {tab === "foryou" ? (
+          forYou.length > 0 ? (
+            // Its own dedicated tab now, not an inline banner above the posts — so nothing
+            // here needs to be dismissible; dismissal existed to declutter a shared view.
+            <ForYouRail cards={forYou} dismissible={false} />
+          ) : (
+            <EmptyState
+              icon={<Flame className="w-6 h-6" />}
+              title="Nothing personalized yet"
+              description="Log a run or two and this tab fills up with things relevant to you."
+            />
+          )
+        ) : loading ? (
           <div className="space-y-4">
             <SkeletonCard />
             <SkeletonCard />

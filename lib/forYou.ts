@@ -1,6 +1,5 @@
 import { Workout } from "@/models/Workout";
 import { Battle } from "@/models/Battle";
-import { Territory } from "@/models/Territory";
 import { CoachMessage } from "@/models/CoachMessage";
 import { ClanMember, Clan } from "@/models/Clan";
 import { Notification } from "@/models/Notification";
@@ -416,17 +415,56 @@ function buildOnThisDayCard(workouts: WorkoutLean[], now: Date): ForYouCard | nu
   return null;
 }
 
+// "Today's mission" calibration. The target is a SINGLE run the user can realistically do
+// today — sized to their own typical run, never the whole weekly deficit (which produced
+// nonsense like "run 26 km today"). A base level everyone gets nudged toward keeps brand-new
+// or lapsed runners moving without overwhelming them.
+const BASE_SESSION_KM = 2; // the smallest run that counts as "you showed up"
+const BASE_WEEKLY_KM = 10; // a healthy floor we gently push everyone toward
+const MISSION_MAX_KM = 12; // never suggest more than this as a single day's mission
+const MISSION_TYPICAL_SAMPLE = 15; // recent runs used to gauge "typical"
+
+/** The user's typical single-run distance (median of recent runs), clamped to a sane,
+ * do-able range — the basis for a realistic daily target rather than a weekly total. */
+function typicalRunKm(runs: WorkoutLean[]): number {
+  const dists = runs
+    .slice(0, MISSION_TYPICAL_SAMPLE)
+    .map((r) => r.distanceKm)
+    .filter((d) => d > 0)
+    .sort((a, b) => a - b);
+  if (dists.length === 0) return BASE_SESSION_KM;
+  const median = dists[Math.floor(dists.length / 2)];
+  return Math.min(MISSION_MAX_KM, Math.max(BASE_SESSION_KM, median));
+}
+
 function buildTodaysMissionCard(viewer: ViewerLike, workouts: WorkoutLean[], now: Date): ForYouCard | null {
   const ranToday = workouts.some((w) => dayKey(new Date(w.workoutDate)) === dayKey(now));
   if (ranToday) return null;
-  const thisWeek = windowStats(workouts, now, 0, 7);
-  const lastWeek = windowStats(workouts, now, 7, 14);
-  // A concrete, reachable target beats a vague "go run".
-  if (lastWeek.distanceKm > 0 && thisWeek.distanceKm < lastWeek.distanceKm) {
-    const gap = Math.round((lastWeek.distanceKm - thisWeek.distanceKm) * 10) / 10;
-    if (gap >= 1) return { kind: "todays_mission", id: id("mission"), priority: 58, text: `Run ${gap} km today to match last week's distance.`, targetKm: gap };
+
+  const runs = workouts.filter((w) => w.activityType === "RUN");
+  const target = Math.round(typicalRunKm(runs) * 2) / 2; // realistic single run, nearest 0.5 km
+  const weekly = windowStats(workouts, now, 0, 7).distanceKm;
+  const lastWeekly = windowStats(workouts, now, 7, 14).distanceKm;
+
+  // Tone scales with how much they've already done — push the under-active toward the base
+  // level, keep the on-track steady, and celebrate (don't nag) the already-ahead.
+  let text: string;
+  let priority: number;
+  if (weekly < BASE_WEEKLY_KM) {
+    priority = 62;
+    text =
+      weekly <= 0
+        ? `Your week's a blank slate — a ${target} km run gets you on the board.`
+        : `You're at ${Math.round(weekly * 10) / 10} km this week. A ${target} km run moves you toward a solid ${BASE_WEEKLY_KM} km week.`;
+  } else if (lastWeekly > 0 && weekly < lastWeekly) {
+    priority = 54;
+    text = `A ${target} km run today keeps you on pace with last week — right in your range.`;
+  } else {
+    priority = 46;
+    text = `You're already ahead of last week 🔥 An easy ${target} km keeps the momentum going.`;
   }
-  return { kind: "todays_mission", id: id("mission"), priority: 44, text: "Log any run today to keep your momentum going.", targetKm: null };
+
+  return { kind: "todays_mission", id: id("mission"), priority, text, targetKm: target };
 }
 
 function buildCoachCard(coach: { text?: string } | null): ForYouCard | null {

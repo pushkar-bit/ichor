@@ -84,9 +84,13 @@ export default function FeedDemoPage() {
       <h1 className="font-display italic font-bold text-3xl mb-1">Feed personalization demo</h1>
       <p className="text-xs text-white/40 mb-6">Real components, fixture data — the For-You rail + per-post personalization.</p>
 
+      <h2 className="text-sm font-semibold text-white/60 mb-2">Ambient (dismissible=true, above the posts tab)</h2>
       <ForYouRail cards={CARDS} />
 
-      <div className="flex items-center gap-1.5 mb-2.5">
+      <h2 className="text-sm font-semibold text-white/60 mb-2 mt-8">Dedicated &quot;For You&quot; tab (dismissible=false)</h2>
+      <ForYouRail cards={CARDS} dismissible={false} />
+
+      <div className="flex items-center gap-1.5 mb-2.5 mt-8">
         <h2 className="text-sm font-semibold text-white/60">Posts with viewer-specific personalization</h2>
       </div>
       <div className="space-y-4">
