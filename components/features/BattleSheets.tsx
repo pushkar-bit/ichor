@@ -5,6 +5,7 @@ import confetti from "canvas-confetti";
 import { X, Swords, Shield, Scissors, Timer, Footprints, EyeOff, Trophy, Loader2, Clock } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatPace, formatDuration, timeAgo } from "@/lib/utils";
+import { Countdown } from "./Countdown";
 
 type MiniGeometry =
   | { type: "Polygon"; coordinates: number[][][] }
@@ -36,53 +37,6 @@ export type BattleListItem = {
   revealGeometry: { territory: MiniGeometry; corridor: MiniGeometry } | null;
   createdAt: string;
 };
-
-/** Ticks once a second so every deadline in view stays live. */
-function useNow(intervalMs = 1000): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(id);
-  }, [intervalMs]);
-  return now;
-}
-
-function formatRemaining(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  const d = Math.floor(s / 86400);
-  const h = Math.floor((s % 86400) / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${sec}s`;
-  return `${sec}s`;
-}
-
-/** A live-ticking countdown to a deadline; turns urgent under an hour, "expired" when past. */
-export function Countdown({
-  to,
-  prefix = "",
-  suffix = " left",
-  expiredText = "expired",
-  className = "",
-}: {
-  to: string | null;
-  prefix?: string;
-  suffix?: string;
-  expiredText?: string;
-  className?: string;
-}) {
-  const now = useNow();
-  if (!to) return null;
-  const ms = new Date(to).getTime() - now;
-  const urgent = ms > 0 && ms < 3600_000;
-  return (
-    <span className={`tabular-nums ${urgent ? "text-ignite font-semibold" : ""} ${className}`}>
-      {ms <= 0 ? expiredText : `${prefix}${formatRemaining(ms)}${suffix}`}
-    </span>
-  );
-}
 
 const shortTz =
   typeof Intl !== "undefined"

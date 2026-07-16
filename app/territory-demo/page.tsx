@@ -13,9 +13,9 @@ import { Crown, Flame, ShieldAlert, Swords, Footprints, EyeOff, Shield, Info, He
 import {
   BattleRespondSheet,
   BattleRevealCard,
-  Countdown,
   type BattleListItem,
 } from "@/components/features/BattleSheets";
+import { Countdown } from "@/components/features/Countdown";
 import type { MapTerritory } from "@/components/features/TerritoryMap";
 
 const LeafletTerritoryMap = dynamic(

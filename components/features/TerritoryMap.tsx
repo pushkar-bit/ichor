@@ -5,7 +5,8 @@ import dynamic from "next/dynamic";
 import { X, Crown, Flame, EyeOff, Footprints, Shield, ShieldAlert, Swords, Timer, Hourglass, Info, HelpCircle } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatPace, formatDuration, timeAgo } from "@/lib/utils";
-import { BattleRespondSheet, BattleRevealCard, Countdown, type BattleListItem } from "./BattleSheets";
+import { BattleRespondSheet, BattleRevealCard, type BattleListItem } from "./BattleSheets";
+import { Countdown } from "./Countdown";
 
 const LeafletTerritoryMap = dynamic(
   () => import("./LeafletTerritoryMap").then((mod) => mod.LeafletTerritoryMap),
