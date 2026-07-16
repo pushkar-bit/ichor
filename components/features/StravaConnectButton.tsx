@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Link2, Unlink } from "lucide-react";
+import { Link2, Unlink, RefreshCw } from "lucide-react";
 
 export function StravaConnectButton({ connected }: { connected: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   async function disconnect() {
     setBusy(true);
@@ -23,6 +25,26 @@ export function StravaConnectButton({ connected }: { connected: boolean }) {
       setError("Network error. Try again.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function syncNow() {
+    setSyncing(true);
+    setError(null);
+    setSyncMsg(null);
+    try {
+      const res = await fetch("/api/integrations/strava/sync", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setSyncMsg(data.synced > 0 ? `Synced ${data.synced} new run${data.synced === 1 ? "" : "s"}.` : "You're all caught up.");
+        if (data.synced > 0) router.refresh();
+      } else {
+        setError(data.error ?? "Sync failed. Try again.");
+      }
+    } catch {
+      setError("Network error. Try again.");
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -54,7 +76,18 @@ export function StravaConnectButton({ connected }: { connected: boolean }) {
           Disconnect
         </button>
       </div>
-      <p className="text-xs text-white/40">New runs will sync in automatically from now on.</p>
+      <button
+        onClick={syncNow}
+        disabled={syncing}
+        className="w-full flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 transition-colors text-white text-sm font-semibold rounded-xl py-2.5 disabled:opacity-50"
+      >
+        <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
+        {syncing ? "Syncing…" : "Sync recent runs"}
+      </button>
+      <p className="text-xs text-white/40">
+        New runs sync automatically, but tap Sync to pull anything that hasn&apos;t come through yet.
+      </p>
+      {syncMsg && <p className="text-xs text-momentum">{syncMsg}</p>}
       {error && <p className="text-xs text-ignite">{error}</p>}
     </div>
   );

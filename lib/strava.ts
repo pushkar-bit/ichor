@@ -40,7 +40,20 @@ export type StravaActivity = {
   calories?: number | null;
   map?: { summary_polyline?: string | null; polyline?: string | null } | null;
   photos?: { count: number } | null;
+  /** True for activities the athlete TYPED IN on Strava (no device recording) — fabricated
+   * numbers, so we never grant these the "verified GPS run" trust the rest of the app assumes. */
+  manual?: boolean;
+  /** Treadmill/stationary flag — legitimate device-recorded indoor runs (kept VERIFIED). */
+  trainer?: boolean;
+  /** Strava privacy: true / visibility != "everyone" means the athlete didn't intend this
+   * public, so we must not auto-publish it to the ICHOR feed. */
+  private?: boolean;
+  visibility?: string;
 };
+
+/** Weight sanity bounds so a profile weight of 9000kg can't inflate calorie estimates. */
+const MIN_PLAUSIBLE_WEIGHT_KG = 35;
+const MAX_PLAUSIBLE_WEIGHT_KG = 250;
 
 type StravaLinkedUser = {
   _id: unknown;
@@ -95,11 +108,31 @@ export async function ensureFreshStravaToken(user: StravaLinkedUser): Promise<st
   }
   if (!user.stravaRefreshToken) throw new Error("No Strava refresh token on file for this user");
 
-  const data = await exchangeWithStrava({ grant_type: "refresh_token", refresh_token: user.stravaRefreshToken });
+  // Two activities syncing at once each spawn a handler; a naive refresh has both spend the same
+  // refresh token and clobber each other (Strava may rotate it, killing one). Re-read the live
+  // tokens first — if a concurrent handler already refreshed, use its result and skip the
+  // exchange entirely; otherwise persist via a targeted $set (not user.save()) so we never
+  // overwrite unrelated fields.
+  const latest = await User.findById(user._id)
+    .select("stravaAccessToken stravaRefreshToken stravaTokenExpiresAt")
+    .lean() as { stravaAccessToken?: string | null; stravaRefreshToken?: string | null; stravaTokenExpiresAt?: Date | null } | null;
+  const latestExp = latest?.stravaTokenExpiresAt ? Math.floor(new Date(latest.stravaTokenExpiresAt).getTime() / 1000) : 0;
+  if (latest?.stravaAccessToken && latestExp - nowSeconds > 60) {
+    user.stravaAccessToken = latest.stravaAccessToken;
+    user.stravaRefreshToken = latest.stravaRefreshToken ?? user.stravaRefreshToken;
+    user.stravaTokenExpiresAt = latest.stravaTokenExpiresAt ?? user.stravaTokenExpiresAt;
+    return latest.stravaAccessToken;
+  }
+
+  const refreshToken = latest?.stravaRefreshToken ?? user.stravaRefreshToken;
+  const data = await exchangeWithStrava({ grant_type: "refresh_token", refresh_token: refreshToken as string });
+  await User.updateOne(
+    { _id: user._id },
+    { $set: { stravaAccessToken: data.access_token, stravaRefreshToken: data.refresh_token, stravaTokenExpiresAt: new Date(data.expires_at * 1000) } },
+  );
   user.stravaAccessToken = data.access_token;
   user.stravaRefreshToken = data.refresh_token;
   user.stravaTokenExpiresAt = new Date(data.expires_at * 1000);
-  await user.save();
   return data.access_token;
 }
 
@@ -109,6 +142,49 @@ export async function fetchStravaActivity(accessToken: string, activityId: numbe
   });
   if (!res.ok) throw new Error(`Strava activity fetch failed: ${res.status}`);
   return res.json();
+}
+
+/** Lists the athlete's recent activities (summary objects) newer than `afterEpoch`. Used by the
+ * manual "sync now" path so a run shows up even when the push webhook can't reach us (e.g. any
+ * non-public deployment / localhost, where Strava literally cannot POST to the callback). */
+export async function getRecentStravaActivities(accessToken: string, afterEpoch: number, perPage = 30): Promise<StravaActivity[]> {
+  const params = new URLSearchParams({ after: String(afterEpoch), per_page: String(perPage) });
+  const res = await fetch(`https://www.strava.com/api/v3/athlete/activities?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error(`Strava activity list failed: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Pulls the user's Strava activities from the last `sinceDays` days and ingests any that aren't
+ * already synced. This is the reliable fallback to the push webhook: the webhook needs a public
+ * URL Strava can reach, so on localhost/dev nothing auto-syncs — this lets a signed-in user pull
+ * their recent runs on demand. Idempotent (unique userId+externalId means re-runs skip dupes).
+ */
+export async function syncRecentStravaActivities(
+  user: StravaLinkedUser,
+  { sinceDays = 14 }: { sinceDays?: number } = {},
+): Promise<{ scanned: number; synced: number; skipped: number }> {
+  if (!user.stravaRefreshToken) throw new Error("Strava isn't connected for this user");
+  const accessToken = await ensureFreshStravaToken(user);
+  const afterEpoch = Math.floor((Date.now() - sinceDays * 86400e3) / 1000);
+  const activities = await getRecentStravaActivities(accessToken, afterEpoch);
+
+  let synced = 0;
+  for (const summary of activities) {
+    // The summary omits calories and full photo detail; fetch the full activity so ingest gets
+    // the same data the webhook path would (calories, private flag, photo count).
+    let full: StravaActivity;
+    try {
+      full = await fetchStravaActivity(accessToken, summary.id);
+    } catch {
+      full = summary; // fall back to the summary if the detail fetch fails — better than skipping
+    }
+    const result = await ingestStravaActivity(user, full, accessToken);
+    if (result) synced++;
+  }
+  return { scanned: activities.length, synced, skipped: activities.length - synced };
 }
 
 async function fetchStravaActivityPhotos(accessToken: string, activityId: number): Promise<string[]> {
@@ -139,13 +215,19 @@ export async function ingestStravaActivity(user: StravaLinkedUser, activity: Str
 
   const distanceKm = activity.distance / 1000;
   const durationSeconds = activity.moving_time || activity.elapsed_time;
-  if (!distanceKm || !durationSeconds) return null;
+  // `!distanceKm` used to reject this whole activity whenever distance was exactly 0 — but 0 is
+  // a legitimate value Strava reports for indoor/trainer activities with no distance sensor
+  // (e.g. a treadmill run logged by a watch that only tracks duration/HR/calories). Only bail
+  // when there's truly no usable data: a negative distance, or no duration at all.
+  if (distanceKm < 0 || !durationSeconds) return null;
 
-  const avgPaceMinPerKm = activityType === "RUN" ? durationSeconds / 60 / distanceKm : null;
+  // Pace is undefined (not zero or Infinity) when there's no distance to divide by.
+  const avgPaceMinPerKm = activityType === "RUN" && distanceKm > 0 ? durationSeconds / 60 / distanceKm : null;
+  const weightKg = Math.min(MAX_PLAUSIBLE_WEIGHT_KG, Math.max(MIN_PLAUSIBLE_WEIGHT_KG, user.weightKg || 62));
   const caloriesBurned =
     activity.calories && activity.calories > 0
       ? Math.round(activity.calories)
-      : Math.round(distanceKm * (user.weightKg || 62) * 1.036);
+      : Math.round(distanceKm * weightKg * 1.036); // 0 for a distance-less activity w/o reported calories — degraded but not a crash
   const workoutDate = new Date(activity.start_date);
 
   const encodedPolyline = activity.map?.summary_polyline ?? activity.map?.polyline;
@@ -158,6 +240,13 @@ export async function ingestStravaActivity(user: StravaLinkedUser, activity: Str
   // least 2 *distinct* vertices), and it's not a real route to detect a zone from anyway.
   const hasRealRoute = decoded && new Set(decoded.map(([lng, lat]) => `${lng},${lat}`)).size >= 2;
   const routeCoordinates = hasRealRoute ? decoded : null;
+
+  // A TYPED-IN Strava activity (activity.manual) has fabricated numbers and no device recording,
+  // so it must never get the "VERIFIED GPS run" trust the app grants real syncs — it stays
+  // PENDING (same tier as a manual/OCR post) and, being route-less, earns no territory/points.
+  // Device-recorded runs — including treadmill/indoor with no GPS map — remain VERIFIED and sync
+  // normally; they simply don't touch the map-based gameplay (that's route-gated already).
+  const verificationStatus = activity.manual ? "PENDING" : "VERIFIED";
 
   let workout;
   try {
@@ -172,7 +261,7 @@ export async function ingestStravaActivity(user: StravaLinkedUser, activity: Str
       heartRateAvg: activity.average_heartrate ?? null,
       workoutDate,
       externalId: `strava:${activity.id}`,
-      verificationStatus: "VERIFIED",
+      verificationStatus,
       route: routeCoordinates && routeCoordinates.length >= 2 ? { type: "LineString", coordinates: routeCoordinates } : undefined,
     });
   } catch (err) {
@@ -180,7 +269,12 @@ export async function ingestStravaActivity(user: StravaLinkedUser, activity: Str
     throw err;
   }
 
-  return finishIngest(user, workout, activity, encodedPolyline, accessToken);
+  // Respect the athlete's Strava privacy: an activity they marked private / not "everyone" must
+  // not be auto-published to the public ICHOR feed (closes the forced-publication vector where a
+  // spoofed webhook could out a private run). It still syncs as a Workout the owner can see.
+  const isPublic = !activity.private && (activity.visibility === undefined || activity.visibility === "everyone" || activity.visibility === "followers_only");
+
+  return finishIngest(user, workout, activity, encodedPolyline, accessToken, isPublic);
 }
 
 /**
@@ -211,6 +305,7 @@ async function finishIngest(
   activity: StravaActivity,
   encodedPolyline: string | null | undefined,
   accessToken?: string,
+  isPublic = true,
 ) {
   // Route map always goes first (position 0) so it's the guaranteed cover image — the runner's
   // own Strava photos, if any, follow it rather than replacing it.
@@ -241,7 +336,7 @@ async function finishIngest(
     workoutId: workout._id,
     caption: activity.name ?? "",
     photoUrls,
-    isPublic: true,
+    isPublic,
     groupRunId: activeGroupRun ? activeGroupRun._id : null,
   });
 
@@ -280,7 +375,8 @@ export async function reprocessExistingWorkout(
   const accessToken = await ensureFreshStravaToken(user);
   const activity = await fetchStravaActivity(accessToken, activityId);
   const encodedPolyline = activity.map?.summary_polyline ?? activity.map?.polyline;
-  return finishIngest(user, workout, activity, encodedPolyline, accessToken);
+  const isPublic = !activity.private && (activity.visibility === undefined || activity.visibility === "everyone" || activity.visibility === "followers_only");
+  return finishIngest(user, workout, activity, encodedPolyline, accessToken, isPublic);
 }
 
 /**

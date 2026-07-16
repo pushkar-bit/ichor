@@ -42,13 +42,21 @@ const UserSchema = new Schema(
     badges: [{ type: String }],
     lastPostDate: { type: Date, default: null },
     fcmToken: { type: String, default: null },
-    stravaAthleteId: { type: String, default: null, index: true },
+    stravaAthleteId: { type: String, default: null },
     stravaAccessToken: { type: String, default: null },
     stravaRefreshToken: { type: String, default: null },
     stravaTokenExpiresAt: { type: Date, default: null },
     stravaConnectedAt: { type: Date, default: null },
   },
   { timestamps: true },
+);
+
+// One Strava athlete maps to at most one ICHOR account — otherwise a single Strava account
+// could be linked to many accounts and the webhook's findOne would deliver each activity to an
+// arbitrary one. Partial index so the many `null` (unconnected) users don't collide.
+UserSchema.index(
+  { stravaAthleteId: 1 },
+  { unique: true, partialFilterExpression: { stravaAthleteId: { $type: "string" } } },
 );
 
 export type UserDoc = InferSchemaType<typeof UserSchema>;
