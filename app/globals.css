@@ -109,3 +109,49 @@ body {
 .territory-label::before {
   display: none;
 }
+
+/* Landing page (app/page.tsx + components/features/landing/*) — scroll-driven particle
+   scene, glass sign-up panel, and a custom running-shoe cursor. These three rules aren't
+   used elsewhere in the app; the reduced-motion block below them is intentionally global. */
+
+.glass-panel {
+  background: color-mix(in srgb, var(--ichor-midnight-raised) 55%, transparent);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid color-mix(in srgb, var(--ichor-border) 80%, transparent);
+}
+
+/* Only applied when CustomCursor.tsx confirms a fine hover-capable pointer, so touch devices
+   keep their native cursor. */
+body.cursor-none-custom,
+body.cursor-none-custom a,
+body.cursor-none-custom button {
+  cursor: none;
+}
+
+/* Running-shoe cursor: transform is updated imperatively per footstep from CustomCursor.tsx,
+   the browser compositor handles the actual motion so it never drops frames on the main thread. */
+.shoe-cursor {
+  transition-property: transform, opacity;
+  transition-timing-function: cubic-bezier(0.22, 0.9, 0.32, 1);
+  transition-duration: 160ms, 260ms;
+  will-change: transform;
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--ichor-momentum) 65%, transparent))
+    drop-shadow(0 0 2px color-mix(in srgb, var(--ichor-afterrun) 55%, transparent));
+}
+
+.shoe-cursor.is-hover {
+  filter: drop-shadow(0 0 11px color-mix(in srgb, var(--ichor-momentum) 85%, transparent))
+    drop-shadow(0 0 4px color-mix(in srgb, var(--ichor-afterrun) 75%, transparent));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
