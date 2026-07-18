@@ -31,7 +31,7 @@ function inBand(km: number, band: { min: number; max: number }) {
 function paceGapSeconds(a: number, b: number) {
   return Math.round(Math.abs(a - b) * 60);
 }
-function firstName(name: string) {
+export function firstName(name: string) {
   return name.split(/\s+/)[0] || name;
 }
 

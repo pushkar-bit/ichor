@@ -34,3 +34,14 @@ export function formatDuration(seconds: number): string {
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
 }
+
+// The Monday (UTC, YYYY-MM-DD) that starts the calendar week containing `date`. Fixed to UTC
+// rather than the viewer's local time so the week boundary — and the reset — is the same
+// instant for every user, not staggered across time zones.
+export function weekBucketKey(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const utcMidnight = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const daysSinceMonday = (utcMidnight.getUTCDay() + 6) % 7; // Mon=0 ... Sun=6
+  utcMidnight.setUTCDate(utcMidnight.getUTCDate() - daysSinceMonday);
+  return utcMidnight.toISOString().slice(0, 10);
+}

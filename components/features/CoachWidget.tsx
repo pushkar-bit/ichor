@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { X, Send, Loader2 } from "lucide-react";
+import { CoachAvatarMark } from "@/components/ui/CoachAvatarMark";
 import { cn } from "@/lib/utils";
 
 type Message = { id?: string; role: "user" | "coach"; text: string };
@@ -67,7 +67,7 @@ export function CoachWidget() {
         className="fixed bottom-24 right-5 md:bottom-6 md:right-6 z-50 w-14 h-14 rounded-full shadow-2xl overflow-hidden border-2 border-momentum/60 hover:border-momentum transition-all hover:scale-110 active:scale-95"
         aria-label="Open AI Coach"
       >
-        <Image src="/coach-avatar.png" alt="Coach Dhruv" fill className="object-cover" />
+        <CoachAvatarMark className="w-full h-full" />
         {pulse && (
           <span className="absolute inset-0 rounded-full animate-ping bg-momentum/30 pointer-events-none" />
         )}
@@ -80,7 +80,7 @@ export function CoachWidget() {
           {/* Header */}
           <div className="flex items-center gap-3 px-4 py-3 border-b border-border-ichor bg-midnight-raised shrink-0">
             <div className="relative w-9 h-9 rounded-full overflow-hidden border border-momentum/40 shrink-0">
-              <Image src="/coach-avatar.png" alt="Coach" fill className="object-cover" />
+              <CoachAvatarMark className="w-full h-full" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold">Coach Dhruv</div>
@@ -119,7 +119,7 @@ export function CoachWidget() {
               <div key={m.id ?? i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start gap-2")}>
                 {m.role === "coach" && (
                   <div className="relative w-6 h-6 rounded-full overflow-hidden shrink-0 mt-0.5">
-                    <Image src="/coach-avatar.png" alt="" fill className="object-cover" />
+                    <CoachAvatarMark className="w-full h-full" />
                   </div>
                 )}
                 <div
@@ -137,7 +137,7 @@ export function CoachWidget() {
             {sending && (
               <div className="flex justify-start gap-2">
                 <div className="relative w-6 h-6 rounded-full overflow-hidden shrink-0">
-                  <Image src="/coach-avatar.png" alt="" fill className="object-cover" />
+                  <CoachAvatarMark className="w-full h-full" />
                 </div>
                 <div className="bg-midnight-raised rounded-2xl px-3 py-2 inline-flex gap-1 items-center">
                   <Dot delay="0ms" /><Dot delay="150ms" /><Dot delay="300ms" />

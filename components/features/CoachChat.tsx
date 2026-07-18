@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import { Send, Loader2 } from "lucide-react";
+import { CoachAvatarMark } from "@/components/ui/CoachAvatarMark";
 import { cn } from "@/lib/utils";
 
 type Message = { id?: string; role: "user" | "coach"; text: string };
@@ -54,7 +54,7 @@ export function CoachChat() {
     <div className="max-w-xl mx-auto px-4 py-6 flex flex-col h-[calc(100vh-4rem)] md:h-screen">
       <div className="flex items-center gap-3 mb-4">
         <div className="relative w-10 h-10 rounded-full overflow-hidden border border-momentum/40 shrink-0">
-          <Image src="/coach-avatar.png" alt="Coach Dhruv" fill className="object-cover" />
+          <CoachAvatarMark className="w-full h-full" />
         </div>
         <div>
           <h1 className="font-semibold">Coach Dhruv</h1>
