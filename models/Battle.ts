@@ -74,6 +74,14 @@ const BattleSchema = new Schema(
     },
     /** Territories created/kept by a refusal split. */
     resultTerritoryIds: [{ type: Schema.Types.ObjectId, ref: "Territory" }],
+    /**
+     * Concurrency lock: equals `territoryId` while the battle is unresolved, unset the moment
+     * it resolves. A unique sparse index on it means the DB — not a read-then-write race —
+     * guarantees at most one open battle per territory, so two simultaneous attacks can't both
+     * be created. See createBattle (catches the duplicate-key error) and claimResolution
+     * (clears it under the same atomic status flip).
+     */
+    openTerritoryId: { type: Schema.Types.ObjectId, ref: "Territory" },
   },
   { timestamps: true },
 );
@@ -81,5 +89,7 @@ const BattleSchema = new Schema(
 BattleSchema.index({ status: 1, respondBy: 1 });
 BattleSchema.index({ status: 1, asyncDeadline: 1 });
 BattleSchema.index({ status: 1, duelWindowEnd: 1 });
+// At most one unresolved battle per territory (sparse: resolved battles unset the field).
+BattleSchema.index({ openTerritoryId: 1 }, { unique: true, sparse: true });
 
 export const Battle = models.Battle || model("Battle", BattleSchema);

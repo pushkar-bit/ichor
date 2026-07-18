@@ -4,8 +4,11 @@ import { DietCard } from "@/models/DietCard";
 import { User } from "@/models/User";
 import { Workout } from "@/models/Workout";
 import { Follow } from "@/models/Follow";
+import { Battle } from "@/models/Battle";
 import { serializePost } from "./serialize";
 import { getInterestSets, combineReactorIds, pickFeaturedReactorId } from "./reactionSummary";
+import { getPersonalBests } from "./personalBests";
+import { personalizePost } from "./postPersonalization";
 
 const PAGE_SIZE = 20;
 
@@ -33,7 +36,7 @@ export async function getFeedPosts(
   const cursorQuery = Post.find(query)
     .sort(filter === "top" ? { hypeCount: -1, respectCount: -1 } : { createdAt: -1 })
     .limit(filter === "top" ? 50 : PAGE_SIZE)
-    .populate({ path: "userId", select: "name username avatarUrl" })
+    .populate({ path: "userId", select: "name username avatarUrl streakDays" })
     .populate({ path: "workoutId", select: "activityType distanceKm durationSeconds avgPaceMinPerKm caloriesBurned heartRateAvg workoutDate sourceType verificationStatus" });
 
   const posts = await cursorQuery.lean();
@@ -64,6 +67,34 @@ export async function getFeedPosts(
   const featuredUsers = await User.find({ _id: { $in: [...allFeaturedIds] } }).select("name avatarUrl").lean();
   const featuredUserById = new Map(featuredUsers.map((u: any) => [String(u._id), u]));
 
+  // Per-post personalization inputs, gathered once for the whole page:
+  //  - the viewer's PBs (to benchmark each post's run against),
+  //  - a batched head-to-head battle tally against every author in view.
+  const viewerId = String(viewer._id);
+  const authorIds = [...new Set(posts.map((p: any) => String(p.userId?._id)).filter((aid) => aid && aid !== viewerId))];
+  const [viewerRuns, h2hBattles] = await Promise.all([
+    Workout.find({ userId: viewer._id, activityType: "RUN" }).select("distanceKm avgPaceMinPerKm activityType").lean(),
+    authorIds.length
+      ? Battle.find({
+          status: "RESOLVED",
+          winnerId: { $ne: null },
+          $or: [
+            { attackerId: viewer._id, defenderId: { $in: authorIds } },
+            { defenderId: viewer._id, attackerId: { $in: authorIds } },
+          ],
+        }).select("attackerId defenderId winnerId").lean()
+      : Promise.resolve([]),
+  ]);
+  const viewerBests = getPersonalBests(viewerRuns as any);
+  const h2hByAuthor = new Map<string, { wins: number; losses: number }>();
+  for (const b of h2hBattles as any[]) {
+    const opponentId = String(b.attackerId) === viewerId ? String(b.defenderId) : String(b.attackerId);
+    const rec = h2hByAuthor.get(opponentId) ?? { wins: 0, losses: 0 };
+    if (String(b.winnerId) === viewerId) rec.wins++;
+    else rec.losses++;
+    h2hByAuthor.set(opponentId, rec);
+  }
+
   const serialized = posts.map((p: any) => {
     const postId = String(p._id);
     const reactorIds = reactorIdsByPost.get(postId) ?? [];
@@ -77,15 +108,32 @@ export async function getFeedPosts(
             totalCount: reactorIds.length,
           }
         : null;
-    return serializePost(
-      {
-        ...p,
-        dietCard: dietByPost.get(postId) ?? null,
-        commentCount: commentCountByPost.get(postId) ?? 0,
-        reactionSummary,
+    const author = p.userId;
+    const authorId = String(author?._id);
+    const personalization = personalizePost({
+      authorName: author?.name ?? "Athlete",
+      authorStreakDays: author?.streakDays ?? null,
+      viewerBests,
+      workout: {
+        activityType: p.workoutId?.activityType ?? "RUN",
+        distanceKm: p.workoutId?.distanceKm ?? 0,
+        avgPaceMinPerKm: p.workoutId?.avgPaceMinPerKm ?? null,
       },
-      String(viewer._id),
-    );
+      headToHead: h2hByAuthor.get(authorId) ?? null,
+      isOwnPost: authorId === viewerId,
+    });
+    return {
+      ...serializePost(
+        {
+          ...p,
+          dietCard: dietByPost.get(postId) ?? null,
+          commentCount: commentCountByPost.get(postId) ?? 0,
+          reactionSummary,
+        },
+        viewerId,
+      ),
+      personalization,
+    };
   });
 
   const nextCursor = filter !== "top" && posts.length === PAGE_SIZE ? posts[posts.length - 1].createdAt : null;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { Battle } from "@/models/Battle";
+import { PointsLedger } from "@/models/PointsLedger";
 import { createBattle, sweepBattles } from "@/lib/battles";
 import "@/models/User";
 import "@/models/Territory";
@@ -40,10 +41,21 @@ export async function GET() {
     .limit(25)
     .populate("attackerId", "name avatarUrl")
     .populate("defenderId", "name avatarUrl")
-    .populate("territoryId", "name color")
+    .populate("territoryId", "name color geometry")
     .lean();
 
   const myId = String(me._id);
+
+  // My net point change per resolved battle, summed from the ledger — the reveal card shows
+  // the exact number I gained/lost, not just a generic "+100 on a win".
+  const resolvedIds = battles.filter((b: any) => b.status === "RESOLVED").map((b: any) => b._id);
+  const deltaRows = resolvedIds.length
+    ? await PointsLedger.aggregate([
+        { $match: { userId: me._id, battleId: { $in: resolvedIds } } },
+        { $group: { _id: "$battleId", total: { $sum: "$amount" } } },
+      ])
+    : [];
+  const deltaByBattle = new Map<string, number>(deltaRows.map((r: any) => [String(r._id), r.total]));
   return NextResponse.json({
     battles: battles.map((b: any) => {
       const iAmAttacker = String(b.attackerId?._id) === myId;
@@ -73,6 +85,12 @@ export async function GET() {
         resolution: b.status === "RESOLVED" ? b.resolution : null,
         winnerId: b.status === "RESOLVED" && b.winnerId ? String(b.winnerId) : null,
         revealedStats: b.status === "RESOLVED" ? b.revealedStats : null,
+        // My exact point change and the fog-lifted geometry — only once resolved.
+        myPointsDelta: b.status === "RESOLVED" ? deltaByBattle.get(String(b._id)) ?? 0 : null,
+        revealGeometry:
+          b.status === "RESOLVED" && b.territoryId?.geometry && b.attackCorridor
+            ? { territory: b.territoryId.geometry, corridor: b.attackCorridor }
+            : null,
         createdAt: b.createdAt,
         resolvedAt: b.resolvedAt,
       };

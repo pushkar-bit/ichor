@@ -1,6 +1,7 @@
 import type { Position } from "geojson";
 import { Territory } from "@/models/Territory";
 import { Battle } from "@/models/Battle";
+import { FameCredit } from "@/models/FameCredit";
 import { reverseGeocode } from "./geocoding";
 import { notify } from "./notifications";
 import {
@@ -26,10 +27,12 @@ const MIN_CLAIM_RUN_KM = 1.5;
 const MIN_PACE_MIN_PER_KM = 2.5; // faster than world record = not a run
 const MAX_PACE_MIN_PER_KM = 12; // slower = walking with a run label
 export const NEW_TERRITORY_VALUE = 1000;
-/** A run covering at least this much of an existing territory credits its distance toward
- * that territory's fame — attack-independent, same threshold whether you're contesting the
- * land or just passing through most of it. */
-export const DISTANCE_CREDIT_THRESHOLD = 0.06;
+/** A run must cover at least this much of an existing territory to touch its fame at all —
+ * a visit, a distinct-runner credit, and distance credit all require meaningfully crossing
+ * the land, not just clipping a corner (which used to mint free fame). Attack-independent. */
+export const FAME_MIN_COVERAGE = 0.06;
+/** @deprecated kept for callers/tests — same value, clearer name is FAME_MIN_COVERAGE. */
+export const DISTANCE_CREDIT_THRESHOLD = FAME_MIN_COVERAGE;
 /** Each credited km bumps fame as much as roughly one new distinct runner would. */
 const KM_TO_FAME_POINTS = 10;
 
@@ -81,13 +84,15 @@ export function isTerritoryEligibleRun(workout: WorkoutLike): boolean {
 }
 
 /**
- * Every visit makes land more famous, independent of ownership. Caller saves the doc.
+ * Credits one run's fame to a territory it meaningfully crossed. Caller is responsible for
+ * only invoking this when coverage >= FAME_MIN_COVERAGE AND the (territory, workout) pair
+ * hasn't been credited before (see the FameCredit idempotency guard in processRunForTerritory)
+ * — this function is a pure mutation and does no gating itself. Caller saves the doc.
  *
- * When `run` is given and its coverage of this territory clears DISTANCE_CREDIT_THRESHOLD,
- * the run's distance is also credited toward the territory's total — attack or not, whoever's
- * run it is. This is separate from (and a lower bar than) ATTACK_COVERAGE_THRESHOLD: covering
- * enough of someone's land to matter for the leaderboard doesn't require covering enough of
- * it to contest ownership.
+ * Distance credit is proportional to how much of the territory the run actually covered
+ * (`distanceKm * coverage`), so a huge loop that merely clips several territories no longer
+ * credits its full length to each — you get fame for the ground you truly ran, not the ground
+ * you passed near.
  */
 export function bumpFame(
   territory: { distinctRunnerIds: unknown[]; totalVisits: number; fameScore: number; totalDistanceKm: number },
@@ -98,8 +103,9 @@ export function bumpFame(
   if (!alreadyRan) territory.distinctRunnerIds.push(userId);
   territory.totalVisits += 1;
 
-  if (run && run.coverage >= DISTANCE_CREDIT_THRESHOLD) {
-    territory.totalDistanceKm = Math.round((territory.totalDistanceKm + run.distanceKm) * 100) / 100;
+  if (run) {
+    const creditedKm = run.distanceKm * Math.min(1, run.coverage);
+    territory.totalDistanceKm = Math.round((territory.totalDistanceKm + creditedKm) * 100) / 100;
   }
 
   territory.fameScore =
@@ -190,9 +196,26 @@ export async function processRunForTerritory(
     const coverage = coverageRatio(corridor.geometry, territory.geometry);
     if (coverage <= 0) continue;
 
+    // Always carve this territory out of the fresh-claim remainder, even for a tiny clip —
+    // subtraction correctness is independent of whether the clip is big enough to earn fame.
     overlappedGeometries.push(territory.geometry);
-    bumpFame(territory, userId, { distanceKm: workout.distanceKm, coverage });
-    await territory.save();
+
+    // Fame is earned only by meaningfully crossing the land, and only once per run per
+    // territory: the FameCredit insert is the idempotency gate (re-sync / backfill replays
+    // hit the unique index and no-op instead of double-counting visits or distance).
+    if (coverage >= FAME_MIN_COVERAGE) {
+      let firstCredit = false;
+      try {
+        await FameCredit.create({ territoryId: territory._id, workoutId: workout._id, userId: user._id });
+        firstCredit = true;
+      } catch (err) {
+        if ((err as { code?: number }).code !== 11000) throw err; // already credited — skip
+      }
+      if (firstCredit) {
+        bumpFame(territory, userId, { distanceKm: workout.distanceKm, coverage });
+        await territory.save();
+      }
+    }
 
     const ownerId = territory.ownerId ? String(territory.ownerId._id ?? territory.ownerId) : null;
     const shielded = territory.shieldUntil && new Date(territory.shieldUntil) > new Date();

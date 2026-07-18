@@ -4,13 +4,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Flame, PlusCircle } from "lucide-react";
 import { ActivityCard, type ActivityCardData } from "./ActivityCard";
+import { ForYouRail } from "./ForYouRail";
 import { LeaderboardWidget, type LeaderboardWidgetRow } from "./LeaderboardWidget";
 import { FollowWidget } from "./FollowWidget";
 import type { FollowSuggestion } from "@/lib/followSuggestions";
+import type { ForYouCard } from "@/lib/forYou";
 import { EmptyState, SkeletonCard } from "@/components/ui/StatChip";
 import { cn } from "@/lib/utils";
 
 const TABS = [
+  { key: "foryou", label: "For You" },
   { key: "all", label: "All" },
   { key: "following", label: "Following" },
   { key: "clan", label: "Clan" },
@@ -23,6 +26,7 @@ type FeedClientProps = {
   initialGlobalMaxDistances?: Record<string, number>;
   initialLeaderboardData?: { rows: LeaderboardWidgetRow[]; me: string | null };
   initialSuggestions?: FollowSuggestion[];
+  forYou?: ForYouCard[];
 };
 
 export function FeedClient({
@@ -31,6 +35,7 @@ export function FeedClient({
   initialGlobalMaxDistances = {},
   initialLeaderboardData,
   initialSuggestions,
+  forYou = [],
 }: FeedClientProps) {
   const [tab, setTab] = useState("all");
   const [posts, setPosts] = useState<ActivityCardData[]>(initialPosts ?? []);
@@ -59,6 +64,9 @@ export function FeedClient({
   }, []);
 
   useEffect(() => {
+    // "For You" isn't a server-side post filter — it's the personalized cards already in
+    // hand from props, so there's nothing to fetch and no post list to show underneath.
+    if (tab === "foryou") return;
     if (skipNextLoad.current) {
       skipNextLoad.current = false;
       return;
@@ -111,7 +119,19 @@ export function FeedClient({
           ))}
         </div>
 
-        {loading ? (
+        {tab === "foryou" ? (
+          forYou.length > 0 ? (
+            // Its own dedicated tab now, not an inline banner above the posts — so nothing
+            // here needs to be dismissible; dismissal existed to declutter a shared view.
+            <ForYouRail cards={forYou} dismissible={false} />
+          ) : (
+            <EmptyState
+              icon={<Flame className="w-6 h-6" />}
+              title="Nothing personalized yet"
+              description="Log a run or two and this tab fills up with things relevant to you."
+            />
+          )
+        ) : loading ? (
           <div className="space-y-4">
             <SkeletonCard />
             <SkeletonCard />

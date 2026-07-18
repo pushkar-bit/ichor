@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { X, Crown, Flame, EyeOff, Footprints, Shield, ShieldAlert, Swords, Timer, Hourglass } from "lucide-react";
+import { X, Crown, Flame, EyeOff, Footprints, Shield, ShieldAlert, Swords, Timer, Hourglass, Info, HelpCircle } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatPace, formatDuration, timeAgo } from "@/lib/utils";
 import { BattleRespondSheet, BattleRevealCard, type BattleListItem } from "./BattleSheets";
+import { Countdown } from "./Countdown";
 
 const LeafletTerritoryMap = dynamic(
   () => import("./LeafletTerritoryMap").then((mod) => mod.LeafletTerritoryMap),
@@ -67,11 +68,42 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
   const [showBattles, setShowBattles] = useState(false);
   const [responding, setResponding] = useState<BattleListItem | null>(null);
   const [revealing, setRevealing] = useState<BattleListItem | null>(null);
+  const [showRules, setShowRules] = useState(false);
 
   const myLand = territories.filter((t) => t.isMine);
   const myLandValue = myLand.reduce((s, t) => s + t.valuePoints, 0);
   const activeBattles = battles.filter((b) => b.status !== "RESOLVED");
   const needsMyResponse = activeBattles.filter((b) => b.status === "PENDING_RESPONSE" && b.role === "defender");
+  // Territories with a live battle — the map outlines these in ignite.
+  const underAttackIds = new Set(activeBattles.map((b) => b.territory?.id).filter((id): id is string => Boolean(id)));
+
+  // Show the rules once, automatically, on a runner's first visit to the map.
+  useEffect(() => {
+    if (typeof window !== "undefined" && !localStorage.getItem("ichor.territoryRulesSeen")) {
+      setShowRules(true);
+      localStorage.setItem("ichor.territoryRulesSeen", "1");
+    }
+  }, []);
+
+  // Deep-link from the feed's For-You battle cards (/map?battle=<id>&sheet=respond|reveal):
+  // once battles load, open the exact sheet for that battle, then clean the URL so a refresh
+  // doesn't reopen it. Falls back to the battles panel if the specific sheet isn't applicable.
+  const deepLinkHandled = useRef(false);
+  useEffect(() => {
+    if (deepLinkHandled.current || battles.length === 0 || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const battleId = params.get("battle");
+    if (!battleId) return;
+    deepLinkHandled.current = true;
+    const b = battles.find((x) => x.id === battleId);
+    if (b) {
+      const sheet = params.get("sheet");
+      if (b.status === "RESOLVED" && (sheet === "reveal" || !sheet)) setRevealing(b);
+      else if (b.status === "PENDING_RESPONSE" && b.role === "defender") setResponding(b);
+      else setShowBattles(true);
+    }
+    window.history.replaceState(null, "", "/map");
+  }, [battles]);
 
   async function refresh() {
     const [terrRes, battlesRes] = await Promise.all([fetch("/api/territories"), fetch("/api/battles")]);
@@ -94,6 +126,13 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
       <div className="flex items-center justify-between mb-5">
         <h1 className="font-display italic font-bold text-3xl">Territory</h1>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowRules(true)}
+            aria-label="How territory works"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-full border border-white/15 text-white/60 hover:text-white/90"
+          >
+            <HelpCircle className="w-3.5 h-3.5" /> How it works
+          </button>
           {activeBattles.length > 0 && (
             <button
               onClick={() => setShowBattles(true)}
@@ -125,11 +164,28 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
         </div>
       ) : (
         <div className="relative w-full aspect-square rounded-2xl border border-border-ichor bg-midnight-raised overflow-hidden">
-          <LeafletTerritoryMap territories={territories} onTerritoryClick={setSelected} />
+          <LeafletTerritoryMap territories={territories} onTerritoryClick={setSelected} underAttackIds={underAttackIds} />
         </div>
       )}
 
-      <p className="mt-3 text-xs text-white/40">
+      {territories.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-white/50">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm border-2 border-white bg-white/30 inline-block" /> Yours
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm bg-white/20 border border-white/40 inline-block" /> Rivals
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm border border-dashed border-white/60 inline-block" /> Shielded
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm border-2 border-dotted border-ignite inline-block" /> Under attack
+          </span>
+        </div>
+      )}
+
+      <p className="mt-2 text-xs text-white/40">
         Run somewhere nobody owns to claim it. Cover 40%+ of someone else&apos;s territory in a single run to unlock an attack.
       </p>
 
@@ -209,7 +265,7 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
 
       {/* Territory detail sheet */}
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60" onClick={() => setSelected(null)}>
+        <div className="fixed inset-0 z-[2000] flex items-end sm:items-center justify-center bg-black/60" onClick={() => setSelected(null)}>
           <div
             className="w-full sm:max-w-sm bg-midnight-raised border border-border-ichor rounded-t-3xl sm:rounded-3xl p-5"
             onClick={(e) => e.stopPropagation()}
@@ -253,10 +309,17 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
               </div>
             </div>
 
+            {underAttackIds.has(selected.id) && (
+              <div className="flex items-center gap-2 text-xs text-ignite bg-ignite/10 border border-ignite/25 rounded-xl p-3 mb-3">
+                <ShieldAlert className="w-4 h-4 shrink-0" />
+                This land is in an active battle right now.
+              </div>
+            )}
+
             {selected.shieldUntil && new Date(selected.shieldUntil) > new Date() && (
               <div className="flex items-center gap-2 text-xs text-white/50 bg-white/5 rounded-xl p-3 mb-3">
                 <Shield className="w-4 h-4 text-momentum shrink-0" />
-                Shielded from attacks until {new Date(selected.shieldUntil).toLocaleString()}.
+                Shielded from attacks — <Countdown to={selected.shieldUntil} suffix=" left" expiredText="lifting…" />.
               </div>
             )}
 
@@ -284,7 +347,7 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
 
       {/* Active battles sheet */}
       {showBattles && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60" onClick={() => setShowBattles(false)}>
+        <div className="fixed inset-0 z-[2000] flex items-end sm:items-center justify-center bg-black/60" onClick={() => setShowBattles(false)}>
           <div
             className="w-full sm:max-w-sm bg-midnight-raised border-2 border-border-ichor rounded-t-3xl sm:rounded-none sm:shadow-[6px_6px_0_var(--ichor-border)] p-5 max-h-[80vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
@@ -323,16 +386,28 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
                       </button>
                     ) : b.status === "PENDING_RESPONSE" ? (
                       <p className="text-xs text-white/40 inline-flex items-center gap-1.5">
-                        <Hourglass className="w-3.5 h-3.5" /> Awaiting their response
-                        {deadline && <> · silence past {new Date(deadline).toLocaleString()} splits the land</>}
+                        <Hourglass className="w-3.5 h-3.5" /> Awaiting their response ·{" "}
+                        <Countdown to={deadline} suffix=" left" expiredText="resolving…" />
                       </p>
                     ) : (
                       <div className="text-xs text-white/50 space-y-1">
-                        <div className="inline-flex items-center gap-1.5">
-                          <Timer className="w-3.5 h-3.5" />
-                          {b.status === "ASYNC_ACTIVE"
-                            ? `Open ${b.asyncMetric?.toLowerCase()} challenge — run in the territory before ${deadline ? new Date(deadline).toLocaleString() : "the deadline"}`
-                            : `Duel (${b.duelMetric?.toLowerCase()}) — window ${b.duelWindowStart ? new Date(b.duelWindowStart).toLocaleString() : ""} to ${b.duelWindowEnd ? new Date(b.duelWindowEnd).toLocaleString() : ""}`}
+                        <div className="inline-flex items-center gap-1.5 flex-wrap">
+                          <Timer className="w-3.5 h-3.5 shrink-0" />
+                          {b.status === "ASYNC_ACTIVE" ? (
+                            <span>
+                              Open {b.asyncMetric?.toLowerCase()} challenge — run in the territory ·{" "}
+                              <Countdown to={deadline} suffix=" left" expiredText="resolving…" />
+                            </span>
+                          ) : (
+                            <span>
+                              Duel ({b.duelMetric?.toLowerCase()}) —{" "}
+                              {b.duelWindowStart && new Date(b.duelWindowStart) > new Date() ? (
+                                <>opens in <Countdown to={b.duelWindowStart} prefix="" suffix="" expiredText="now" /></>
+                              ) : (
+                                <>window <Countdown to={b.duelWindowEnd} suffix=" left" expiredText="closed" /></>
+                              )}
+                            </span>
+                          )}
                         </div>
                         <div>
                           You: {b.iHaveSubmitted ? "✓ ran" : "no run yet"} · Them: {b.opponentHasSubmitted ? "✓ ran (stats hidden)" : "no run yet"}
@@ -357,6 +432,53 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
         />
       )}
       {revealing && <BattleRevealCard battle={revealing} currentUserId={currentUserId} onClose={() => setRevealing(null)} />}
+
+      {/* How it works — rules onboarding (auto-shown once, reopenable from the header) */}
+      {showRules && (
+        <div className="fixed inset-0 z-[2000] flex items-end sm:items-center justify-center bg-black/60" onClick={() => setShowRules(false)}>
+          <div
+            className="w-full sm:max-w-sm bg-midnight-raised border-2 border-border-ichor rounded-t-3xl sm:rounded-none sm:shadow-[6px_6px_0_var(--ichor-border)] p-5 max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-lg inline-flex items-center gap-2">
+                <Info className="w-5 h-5 text-momentum" /> How territory works
+              </h2>
+              <button onClick={() => setShowRules(false)} aria-label="Close">
+                <X className="w-5 h-5 text-white/40" />
+              </button>
+            </div>
+            <div className="space-y-3.5 text-sm text-white/70">
+              <div className="flex gap-3">
+                <Footprints className="w-5 h-5 text-momentum shrink-0 mt-0.5" />
+                <p><b className="text-white">Run to claim.</b> Any GPS-verified run over 1.5km turns the unclaimed ground it covers into your territory — automatically, the moment it syncs.</p>
+              </div>
+              <div className="flex gap-3">
+                <Swords className="w-5 h-5 text-ignite shrink-0 mt-0.5" />
+                <p><b className="text-white">Cover 40% to attack.</b> Run through 40%+ of someone else&apos;s land in a single run and you can challenge them — on pace or on distance.</p>
+              </div>
+              <div className="flex gap-3">
+                <EyeOff className="w-5 h-5 text-white/50 shrink-0 mt-0.5" />
+                <p><b className="text-white">Fog of war.</b> Neither side sees the other&apos;s run until the battle resolves. You attack, and defend, blind.</p>
+              </div>
+              <div className="flex gap-3">
+                <Shield className="w-5 h-5 text-momentum shrink-0 mt-0.5" />
+                <p><b className="text-white">Defenders choose.</b> Accept an open challenge (72h) or schedule a live duel — best run wins the whole territory, +100 points, and a 72h shield. Refuse, and it&apos;s decided on the spot: only a run that beats your claim carves off land; a weaker one takes nothing.</p>
+              </div>
+              <div className="flex gap-3">
+                <Flame className="w-5 h-5 text-ignite shrink-0 mt-0.5" />
+                <p><b className="text-white">Fame is separate.</b> Every run through a piece of land — anyone&apos;s — makes it more famous, whoever owns it. Famous ground climbs the leaderboard below.</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowRules(false)}
+              className="w-full mt-5 bg-momentum text-midnight font-semibold py-3 rounded-none border-2 border-border-ichor"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
