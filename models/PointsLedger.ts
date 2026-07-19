@@ -12,13 +12,21 @@ export const POINT_REASONS = [
   "PB_10K",
   "PB_LONGEST",
   "PACE_BAND",
+  "DAILY_ACTIVITY",
+  "PER_KM_BONUS",
+  // Territory deltas (lib/territoryEngine.ts)
+  "TERRITORY_CLAIMED",
+  "TERRITORY_VALUE_GROWTH",
   // Battle deltas (lib/battles.ts)
   "REFUSAL_BETTER",
   "REFUSAL_WORSE",
+  "OWNERSHIP_DIVIDED",
   "DUEL_DOUBLE_FORFEIT",
   "ASYNC_DOUBLE_FORFEIT",
   "BATTLE_WIN",
   "BATTLE_STAT_PENALTY",
+  // Leaderboard deltas (lib/points.ts sweep)
+  "LEADERBOARD_RANK_UP",
 ] as const;
 
 export type PointReason = (typeof POINT_REASONS)[number];

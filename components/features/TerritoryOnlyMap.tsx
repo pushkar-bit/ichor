@@ -1,20 +1,27 @@
 "use client";
 
-import { MapContainer, TileLayer } from "react-leaflet";
+import { MapContainer } from "react-leaflet";
 import type { LatLngBoundsExpression, LatLngExpression } from "leaflet";
 import type { MapTerritory } from "./TerritoryMap";
 import { TerritoryLayer } from "./TerritoryLayer";
 
-export function LeafletTerritoryMap({
+/**
+ * The "territories only" view — same land, same data, no OSM street tiles underneath. Just a
+ * dark tactical grid so panning still reads as a map, and the polygons plus their level
+ * badges are all that's on screen. An original ICHOR alternative to the real-world map, not
+ * a copy of any base-building game's UI.
+ */
+export function TerritoryOnlyMap({
   territories,
   onTerritoryClick,
   underAttackIds,
+  colorFor,
 }: {
   territories: MapTerritory[];
   onTerritoryClick: (territory: MapTerritory) => void;
   underAttackIds?: Set<string>;
+  colorFor?: (territory: MapTerritory) => string;
 }) {
-  // Frame the whole empire: union of every territory's bbox ([minLng,minLat,maxLng,maxLat]).
   let bounds: LatLngBoundsExpression | null = null;
   if (territories.length > 0) {
     let [minLng, minLat, maxLng, maxLat] = territories[0].bbox;
@@ -36,13 +43,17 @@ export function LeafletTerritoryMap({
         ? { bounds, boundsOptions: { padding: [40, 40] } }
         : { center: [28.6139, 77.209] as LatLngExpression, zoom: 14 })}
       scrollWheelZoom={true}
-      style={{ height: "100%", width: "100%", background: "#171516" }}
+      zoomControl={true}
+      attributionControl={false}
+      className="territory-grid-bg"
+      style={{ height: "100%", width: "100%" }}
     >
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      <TerritoryLayer
+        territories={territories}
+        onTerritoryClick={onTerritoryClick}
+        underAttackIds={underAttackIds}
+        colorFor={colorFor}
       />
-      <TerritoryLayer territories={territories} onTerritoryClick={onTerritoryClick} underAttackIds={underAttackIds} />
     </MapContainer>
   );
 }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { IchorLogo } from "./IchorMark";
-import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, Search, LogOut, Info } from "lucide-react";
+import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, Search, LogOut, Info, Castle } from "lucide-react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { Avatar } from "./Avatar";
 import { CoachWidget } from "@/components/features/CoachWidget";
@@ -27,6 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/post/create", label: "Post", icon: PlusCircle },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
   { href: "/clans", label: "Clans", icon: Users },
+  { href: "/empire", label: "Empire", icon: Castle },
   { href: "/coach", label: "Coach", icon: MessageCircle },
   { href: "/profile", label: "Profile", icon: User },
   { href: "/search", label: "Search", icon: Search },

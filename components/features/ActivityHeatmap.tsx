@@ -1,6 +1,19 @@
+"use client";
+
+import { useEffect, useRef } from "react";
 import { dayKey } from "@/lib/week";
 
 export function ActivityHeatmap({ data }: { data: Record<string, number> }) {
+  // The grid renders oldest-week-first (left) to today (right) — without this, a first-time
+  // viewer only ever sees ~52 weeks of empty history at the left edge and never scrolls far
+  // enough right to find their actual (recent) activity, which looks exactly like "nothing
+  // is here" even when the data is real.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, []);
+
   const days: { key: string; value: number }[] = [];
   const today = new Date();
   for (let i = 363; i >= 0; i--) {
@@ -22,7 +35,7 @@ export function ActivityHeatmap({ data }: { data: Record<string, number> }) {
   }
 
   return (
-    <div className="overflow-x-auto no-scrollbar">
+    <div ref={scrollRef} className="overflow-x-auto no-scrollbar">
       <div className="flex gap-[3px]">
         {weeks.map((week, wi) => (
           <div key={wi} className="flex flex-col gap-[3px]">

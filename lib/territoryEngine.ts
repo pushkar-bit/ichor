@@ -4,6 +4,7 @@ import { Battle } from "@/models/Battle";
 import { FameCredit } from "@/models/FameCredit";
 import { reverseGeocode } from "./geocoding";
 import { notify } from "./notifications";
+import { award, TERRITORY_CLAIMED_POINTS, TERRITORY_VALUE_GROWTH_POINTS_PER_KM } from "./points";
 import {
   buildTerritoryPolygon,
   buildRunCorridor,
@@ -18,21 +19,21 @@ import {
 /**
  * The run→land pipeline: every GPS-verified run claims whatever unclaimed ground its corridor
  * covers, fame-bumps every territory it crosses, and surfaces attack opportunities (territories
- * it covered ≥40% of). Battles themselves live in lib/battles.ts — this module never transfers
- * ownership.
+ * it covered ≥6% of, same bar as fame — see FAME_MIN_COVERAGE). Battles themselves live in
+ * lib/battles.ts — this module never transfers ownership.
  */
 
-export const ATTACK_COVERAGE_THRESHOLD = 0.4;
-const MIN_CLAIM_RUN_KM = 1.5;
+/** A run must cover at least this much of an existing territory to touch its fame OR unlock
+ * an attack on it — a visit, a distinct-runner credit, distance credit, and attack eligibility
+ * all require meaningfully crossing the land, not just clipping a corner. */
+export const FAME_MIN_COVERAGE = 0.06;
+export const ATTACK_COVERAGE_THRESHOLD = FAME_MIN_COVERAGE;
+/** @deprecated kept for callers/tests — same value, clearer name is FAME_MIN_COVERAGE. */
+export const DISTANCE_CREDIT_THRESHOLD = FAME_MIN_COVERAGE;
+const MIN_CLAIM_RUN_KM = 2;
 const MIN_PACE_MIN_PER_KM = 2.5; // faster than world record = not a run
 const MAX_PACE_MIN_PER_KM = 12; // slower = walking with a run label
 export const NEW_TERRITORY_VALUE = 1000;
-/** A run must cover at least this much of an existing territory to touch its fame at all —
- * a visit, a distinct-runner credit, and distance credit all require meaningfully crossing
- * the land, not just clipping a corner (which used to mint free fame). Attack-independent. */
-export const FAME_MIN_COVERAGE = 0.06;
-/** @deprecated kept for callers/tests — same value, clearer name is FAME_MIN_COVERAGE. */
-export const DISTANCE_CREDIT_THRESHOLD = FAME_MIN_COVERAGE;
 /** Each credited km bumps fame as much as roughly one new distinct runner would. */
 const KM_TO_FAME_POINTS = 10;
 
@@ -214,6 +215,21 @@ export async function processRunForTerritory(
       if (firstCredit) {
         bumpFame(territory, userId, { distanceKm: workout.distanceKm, coverage });
         await territory.save();
+
+        // Landlord bonus: the OWNER earns points for their land's value growing, regardless
+        // of whose run just credited it (including their own — maintaining your own ground
+        // counts). Same credited-km formula bumpFame just applied. See points.md.
+        if (territory.ownerId) {
+          const creditedKm = workout.distanceKm * Math.min(1, coverage);
+          const growthPoints = Math.round(creditedKm * TERRITORY_VALUE_GROWTH_POINTS_PER_KM);
+          if (growthPoints > 0) {
+            const ownerId = (territory.ownerId as { _id?: unknown })._id ?? territory.ownerId;
+            await award(ownerId, "TERRITORY_VALUE_GROWTH", growthPoints, `territory:${territory._id}:wk:${workout._id}:growth`, {
+              territoryId: territory._id,
+              workoutId: workout._id,
+            });
+          }
+        }
       }
     }
 
@@ -267,6 +283,11 @@ export async function processRunForTerritory(
     });
 
     claimed = { territoryId: String(doc._id), name, areaSqM: remainder.areaSqM, valuePoints };
+
+    await award(user._id, "TERRITORY_CLAIMED", TERRITORY_CLAIMED_POINTS, `wk:${workout._id}:TERRITORY_CLAIMED`, {
+      territoryId: doc._id,
+      workoutId: workout._id,
+    });
 
     await notify(
       user._id,

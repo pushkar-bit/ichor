@@ -33,6 +33,10 @@ const UserSchema = new Schema(
     streakFreezesAvailable: { type: Number, default: 1 },
     /** Territory-game profile points — materialized sum of PointsLedger rows, floored at 0. */
     points: { type: Number, default: 0 },
+    // Last-seen position (1 = top) on the all-time Points leaderboard, snapshotted by
+    // lib/points.ts's checkAndAwardRankImprovements sweep — null until the first sweep runs
+    // for this user. See points.md "Climbing the leaderboard."
+    lastKnownRank: { type: Number, default: null },
     integrityPoints: { type: Number, default: 0 },
     battlesWon: { type: Number, default: 0 },
     battlesLost: { type: Number, default: 0 },

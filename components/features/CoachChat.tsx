@@ -54,10 +54,10 @@ export function CoachChat() {
     <div className="max-w-xl mx-auto px-4 py-6 flex flex-col h-[calc(100vh-4rem)] md:h-screen">
       <div className="flex items-center gap-3 mb-4">
         <div className="relative w-10 h-10 rounded-full overflow-hidden border border-momentum/40 shrink-0">
-          <Image src="/coach-avatar.png" alt="Coach Dhruv" fill className="object-cover" />
+          <Image src="/coach-avatar.png" alt="Coach Vikas Yadav" fill className="object-cover" />
         </div>
         <div>
-          <h1 className="font-semibold">Coach Dhruv</h1>
+          <h1 className="font-semibold">Coach Vikas Yadav</h1>
           <p className="text-xs text-white/40">Your AI performance coach</p>
         </div>
       </div>
@@ -110,7 +110,7 @@ export function CoachChat() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send(input)}
-          placeholder="Ask Dhruv anything..."
+          placeholder="Ask Vikas anything..."
           className="flex-1 bg-midnight-raised border border-border-ichor rounded-full px-4 py-2.5 text-sm placeholder:text-white/30 focus:outline-none focus:border-momentum/50"
         />
         <button
