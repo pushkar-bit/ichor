@@ -1,16 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Flame, PlusCircle } from "lucide-react";
-import { ActivityCard, type ActivityCardData } from "./ActivityCard";
+import type { ActivityCardData } from "./ActivityCard";
+import { CreatorFeedGroup } from "./CreatorFeedGroup";
 import { ForYouRail } from "./ForYouRail";
 import { LeaderboardWidget, type LeaderboardWidgetRow } from "./LeaderboardWidget";
 import { FollowWidget } from "./FollowWidget";
 import type { FollowSuggestion } from "@/lib/followSuggestions";
 import type { ForYouCard } from "@/lib/forYou";
 import { EmptyState, SkeletonCard } from "@/components/ui/StatChip";
-import { cn } from "@/lib/utils";
+import { cn, weekBucketKey } from "@/lib/utils";
 
 const TABS = [
   { key: "foryou", label: "For You" },
@@ -91,6 +92,28 @@ export function FeedClient({
     return () => observer.disconnect();
   }, [tab, cursor, hasMore, loadingMore, loading, load]);
 
+  // Collapse an author's posts from the CURRENT calendar week (Mon-Sun UTC, so the reset
+  // instant is the same for every viewer) down to one slot, in first-appearance order (==
+  // most-recent-post order, since posts arrive sorted newest-first) — so someone posting
+  // several workouts in a row this week fills one horizontally-scrollable slot instead of
+  // flooding the feed with repeats. Posts from an earlier week never join that slot — each
+  // renders as its own standalone card, so the carousel only ever reflects "this week."
+  const groups = useMemo(() => {
+    const currentWeek = weekBucketKey(new Date());
+    const order: string[] = [];
+    const byKey = new Map<string, ActivityCardData[]>();
+    for (const post of posts) {
+      const authorKey = post.author.id ?? post.author.username ?? post.author.name;
+      const key = weekBucketKey(post.createdAt) === currentWeek ? `${authorKey}:${currentWeek}` : post.id;
+      if (!byKey.has(key)) {
+        order.push(key);
+        byKey.set(key, []);
+      }
+      byKey.get(key)!.push(post);
+    }
+    return order.map((key) => byKey.get(key)!);
+  }, [posts]);
+
   return (
     <div className="max-w-6xl mx-auto px-4 lg:pl-24 py-6 lg:flex lg:items-start lg:justify-center lg:gap-16">
       <div className="max-w-2xl w-full mx-auto lg:mx-0 lg:flex-1">
@@ -149,8 +172,8 @@ export function FeedClient({
           />
         ) : (
           <div className="space-y-4">
-            {posts.map((post) => (
-              <ActivityCard key={post.id} post={post} maxDistance={globalMaxDistances[post.workout.activityType]} />
+            {groups.map((group) => (
+              <CreatorFeedGroup key={group[0].id} posts={group} globalMaxDistances={globalMaxDistances} />
             ))}
             <div ref={sentinelRef} className="h-4" />
             {loadingMore && <SkeletonCard />}

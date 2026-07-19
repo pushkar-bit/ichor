@@ -14,7 +14,7 @@ import { motion } from "framer-motion";
 
 export type ActivityCardData = {
   id: string;
-  author: { name: string; username?: string | null; avatarUrl?: string };
+  author: { id?: string; name: string; username?: string | null; avatarUrl?: string };
   createdAt: string;
   workout: {
     activityType: "RUN" | "WALK" | "CYCLE";
