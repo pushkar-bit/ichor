@@ -83,7 +83,7 @@ export function CoachWidget() {
               <CoachAvatarMark className="w-full h-full" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold">Coach Dhruv</div>
+              <div className="text-sm font-semibold">Coach Vikas Yadav</div>
               <div className="text-[10px] text-momentum">AI Performance Coach · Online</div>
             </div>
             <button
@@ -153,7 +153,7 @@ export function CoachWidget() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && send(input)}
-              placeholder="Ask Dhruv..."
+              placeholder="Ask Vikas..."
               className="flex-1 bg-midnight-raised border border-border-ichor rounded-full px-3 py-2 text-xs placeholder:text-white/30 focus:outline-none focus:border-momentum/50"
             />
             <button

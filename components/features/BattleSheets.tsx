@@ -164,7 +164,7 @@ export function BattleRespondSheet({
         <div className="flex items-center gap-3 mb-3">
           <Avatar src={battle.opponent?.avatarUrl} name={battle.opponent?.name ?? "?"} size={36} />
           <div className="text-sm">
-            <span className="font-semibold">{battle.opponent?.name}</span> ran 40%+ of your land and attacked.
+            <span className="font-semibold">{battle.opponent?.name}</span> ran 6%+ of your land and attacked.
           </div>
         </div>
 

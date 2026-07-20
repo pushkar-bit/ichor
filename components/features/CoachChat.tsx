@@ -57,7 +57,7 @@ export function CoachChat() {
           <CoachAvatarMark className="w-full h-full" />
         </div>
         <div>
-          <h1 className="font-semibold">Coach Dhruv</h1>
+          <h1 className="font-semibold">Coach Vikas Yadav</h1>
           <p className="text-xs text-white/40">Your AI performance coach</p>
         </div>
       </div>
@@ -110,7 +110,7 @@ export function CoachChat() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send(input)}
-          placeholder="Ask Dhruv anything..."
+          placeholder="Ask Vikas anything..."
           className="flex-1 bg-midnight-raised border border-border-ichor rounded-full px-4 py-2.5 text-sm placeholder:text-white/30 focus:outline-none focus:border-momentum/50"
         />
         <button

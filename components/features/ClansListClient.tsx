@@ -4,8 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Search, Plus, Users } from "lucide-react";
 import { EmptyState } from "@/components/ui/StatChip";
+import { LevelBadge } from "@/components/ui/LevelBadge";
+import { clanLevel } from "@/lib/leveling";
 
-type ClanRow = { id: string; name: string; tag: string; color: string; memberCount: number; score: number };
+type ClanRow = {
+  id: string;
+  name: string;
+  tag: string;
+  color: string;
+  memberCount: number;
+  score: number;
+  zonesHeld?: number;
+};
 
 export function ClansListClient({ myClanId, initialClans }: { myClanId: string | null; initialClans?: ClanRow[] }) {
   const [clans, setClans] = useState<ClanRow[]>(initialClans ?? []);
@@ -86,6 +96,13 @@ export function ClansListClient({ myClanId, initialClans }: { myClanId: string |
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-sm truncate">{clan.name}</span>
                   <span className="text-[10px] font-bold text-white/40 bg-white/5 px-1.5 py-0.5 rounded">{clan.tag}</span>
+                  {clan.zonesHeld !== undefined && (
+                    <LevelBadge
+                      tier={clanLevel({ zonesHeld: clan.zonesHeld, memberCount: clan.memberCount })}
+                      kind="clan"
+                      size={20}
+                    />
+                  )}
                 </div>
                 <span className="text-xs text-white/40">{clan.memberCount}/10 members</span>
               </div>

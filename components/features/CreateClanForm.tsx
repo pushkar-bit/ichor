@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 const PRESET_COLORS = ["#AE93F4", "#FDA2DE", "#D7F24C", "#FF5E1A", "#8a72d9", "#f5f3f6", "#6b6568", "#231F20"];
 
-export function CreateClanForm() {
+export function CreateClanForm({ redirectTo }: { redirectTo?: (clanId: string) => string } = {}) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [tag, setTag] = useState("");
@@ -33,7 +33,7 @@ export function CreateClanForm() {
         setError(data.error);
         return;
       }
-      router.push(`/clans/${data.id}`);
+      router.push(redirectTo ? redirectTo(data.id) : `/clans/${data.id}`);
       router.refresh();
     } finally {
       setSubmitting(false);

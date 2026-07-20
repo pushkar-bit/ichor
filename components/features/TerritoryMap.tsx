@@ -2,14 +2,20 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { X, Crown, Flame, EyeOff, Footprints, Shield, ShieldAlert, Swords, Timer, Hourglass, Info, HelpCircle } from "lucide-react";
+import { X, Crown, Flame, EyeOff, Footprints, Map, Grid3x3, Shield, ShieldAlert, Swords, Timer, Hourglass, Info, HelpCircle } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
+import { LevelBadge } from "@/components/ui/LevelBadge";
+import { territoryLevel } from "@/lib/leveling";
 import { formatPace, formatDuration, timeAgo } from "@/lib/utils";
 import { BattleRespondSheet, BattleRevealCard, type BattleListItem } from "./BattleSheets";
 import { Countdown } from "./Countdown";
 
 const LeafletTerritoryMap = dynamic(
   () => import("./LeafletTerritoryMap").then((mod) => mod.LeafletTerritoryMap),
+  { ssr: false, loading: () => <div className="w-full h-full skeleton" /> },
+);
+const TerritoryOnlyMap = dynamic(
+  () => import("./TerritoryOnlyMap").then((mod) => mod.TerritoryOnlyMap),
   { ssr: false, loading: () => <div className="w-full h-full skeleton" /> },
 );
 
@@ -69,6 +75,7 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
   const [responding, setResponding] = useState<BattleListItem | null>(null);
   const [revealing, setRevealing] = useState<BattleListItem | null>(null);
   const [showRules, setShowRules] = useState(false);
+  const [view, setView] = useState<"street" | "territories">("street");
 
   const myLand = territories.filter((t) => t.isMine);
   const myLandValue = myLand.reduce((s, t) => s + t.valuePoints, 0);
@@ -153,6 +160,27 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
         </div>
       </div>
 
+      {territories.length > 0 && !loading && (
+        <div className="inline-flex rounded-full border border-border-ichor p-0.5 bg-midnight-raised mb-3">
+          <button
+            onClick={() => setView("street")}
+            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${
+              view === "street" ? "bg-momentum text-midnight" : "text-white/50"
+            }`}
+          >
+            <Map className="w-3.5 h-3.5" /> Street
+          </button>
+          <button
+            onClick={() => setView("territories")}
+            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${
+              view === "territories" ? "bg-momentum text-midnight" : "text-white/50"
+            }`}
+          >
+            <Grid3x3 className="w-3.5 h-3.5" /> Territories
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="aspect-square w-full rounded-2xl skeleton" />
       ) : territories.length === 0 ? (
@@ -164,7 +192,11 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
         </div>
       ) : (
         <div className="relative w-full aspect-square rounded-2xl border border-border-ichor bg-midnight-raised overflow-hidden">
-          <LeafletTerritoryMap territories={territories} onTerritoryClick={setSelected} underAttackIds={underAttackIds} />
+          {view === "street" ? (
+            <LeafletTerritoryMap territories={territories} onTerritoryClick={setSelected} underAttackIds={underAttackIds} />
+          ) : (
+            <TerritoryOnlyMap territories={territories} onTerritoryClick={setSelected} underAttackIds={underAttackIds} />
+          )}
         </div>
       )}
 
@@ -186,7 +218,7 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
       )}
 
       <p className="mt-2 text-xs text-white/40">
-        Run somewhere nobody owns to claim it. Cover 40%+ of someone else&apos;s territory in a single run to unlock an attack.
+        Run somewhere nobody owns to claim it. Cover 6%+ of someone else&apos;s territory in a single run to unlock an attack.
       </p>
 
       {battles.filter((b) => b.status === "RESOLVED" && b.revealedStats).length > 0 && (
@@ -272,7 +304,7 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
           >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-sm inline-block shrink-0" style={{ backgroundColor: selected.color }} />
+                <LevelBadge tier={territoryLevel(selected)} size={26} />
                 <h2 className="font-semibold text-lg">{selected.name}</h2>
               </div>
               <button onClick={() => setSelected(null)}>
@@ -336,7 +368,7 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
               <div className="flex items-start gap-2 text-xs text-white/50 bg-white/5 rounded-xl p-3">
                 <EyeOff className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
-                  Run stats hidden — fog of war. Nobody knows what run earned this land. Cover 40%+ of it in a single
+                  Run stats hidden — fog of war. Nobody knows what run earned this land. Cover 6%+ of it in a single
                   run to unlock an attack.
                 </span>
               </div>
@@ -451,11 +483,11 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
             <div className="space-y-3.5 text-sm text-white/70">
               <div className="flex gap-3">
                 <Footprints className="w-5 h-5 text-momentum shrink-0 mt-0.5" />
-                <p><b className="text-white">Run to claim.</b> Any GPS-verified run over 1.5km turns the unclaimed ground it covers into your territory — automatically, the moment it syncs.</p>
+                <p><b className="text-white">Run to claim.</b> Any GPS-verified run over 2km turns the unclaimed ground it covers into your territory — automatically, the moment it syncs.</p>
               </div>
               <div className="flex gap-3">
                 <Swords className="w-5 h-5 text-ignite shrink-0 mt-0.5" />
-                <p><b className="text-white">Cover 40% to attack.</b> Run through 40%+ of someone else&apos;s land in a single run and you can challenge them — on pace or on distance.</p>
+                <p><b className="text-white">Cover 6% to attack.</b> Run at least as far as the territory&apos;s own claim distance (capped at 3km) and cover 6%+ of its land in a single run, and you can challenge its owner — on pace or on distance.</p>
               </div>
               <div className="flex gap-3">
                 <EyeOff className="w-5 h-5 text-white/50 shrink-0 mt-0.5" />

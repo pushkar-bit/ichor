@@ -18,6 +18,10 @@ import {
 import { Countdown } from "@/components/features/Countdown";
 import type { MapTerritory } from "@/components/features/TerritoryMap";
 
+const TerritoryOnlyMap = dynamic(
+  () => import("@/components/features/TerritoryOnlyMap").then((m) => m.TerritoryOnlyMap),
+  { ssr: false },
+);
 const LeafletTerritoryMap = dynamic(
   () => import("@/components/features/LeafletTerritoryMap").then((m) => m.LeafletTerritoryMap),
   { ssr: false, loading: () => <div className="w-full h-full skeleton" /> },
@@ -148,6 +152,12 @@ export default function TerritoryDemoPage() {
         <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm border-2 border-dotted border-ignite inline-block" /> Under attack</span>
       </div>
 
+      {/* 1b — Territories-only view (no street tiles) */}
+      <h2 className="text-sm font-semibold text-white/60 mb-2">1b · Territories-only view</h2>
+      <div className="relative w-full aspect-square max-w-md rounded-2xl border border-border-ichor bg-midnight-raised overflow-hidden mb-8">
+        <TerritoryOnlyMap territories={DEMO_TERRITORIES} onTerritoryClick={() => {}} underAttackIds={UNDER_ATTACK} />
+      </div>
+
       {/* 2 — Live countdowns */}
       <h2 className="text-sm font-semibold text-white/60 mb-2">2 · Live countdowns (tick every second)</h2>
       <div className="flex flex-wrap gap-3 text-sm mb-8">
@@ -182,8 +192,8 @@ export default function TerritoryDemoPage() {
               <button onClick={() => setOverlay(null)}><X className="w-5 h-5 text-white/40" /></button>
             </div>
             <div className="space-y-3.5 text-sm text-white/70">
-              <div className="flex gap-3"><Footprints className="w-5 h-5 text-momentum shrink-0 mt-0.5" /><p><b className="text-white">Run to claim.</b> Any GPS-verified run over 1.5km turns the unclaimed ground it covers into your territory — automatically.</p></div>
-              <div className="flex gap-3"><Swords className="w-5 h-5 text-ignite shrink-0 mt-0.5" /><p><b className="text-white">Cover 40% to attack.</b> Run through 40%+ of someone&apos;s land in a single run and you can challenge them — on pace or on distance.</p></div>
+              <div className="flex gap-3"><Footprints className="w-5 h-5 text-momentum shrink-0 mt-0.5" /><p><b className="text-white">Run to claim.</b> Any GPS-verified run over 2km turns the unclaimed ground it covers into your territory — automatically.</p></div>
+              <div className="flex gap-3"><Swords className="w-5 h-5 text-ignite shrink-0 mt-0.5" /><p><b className="text-white">Cover 6% to attack.</b> Match the territory&apos;s claim distance (capped at 3km) and cover 6%+ of its land in a single run to challenge its owner — on pace or on distance.</p></div>
               <div className="flex gap-3"><EyeOff className="w-5 h-5 text-white/50 shrink-0 mt-0.5" /><p><b className="text-white">Fog of war.</b> Neither side sees the other&apos;s run until the battle resolves.</p></div>
               <div className="flex gap-3"><Shield className="w-5 h-5 text-momentum shrink-0 mt-0.5" /><p><b className="text-white">Defenders choose.</b> Accept a challenge or duel — best run wins the land. Refuse, and only a run that beats your claim carves off ground.</p></div>
               <div className="flex gap-3"><Flame className="w-5 h-5 text-ignite shrink-0 mt-0.5" /><p><b className="text-white">Fame is separate.</b> Every run through a piece of land makes it more famous, whoever owns it.</p></div>

@@ -3,7 +3,7 @@ import { Territory } from "@/models/Territory";
 import { User } from "@/models/User";
 import { Workout } from "@/models/Workout";
 import { notify } from "./notifications";
-import { award } from "./points";
+import { award, OWNERSHIP_DIVIDED_PENALTY_RATE } from "./points";
 import { colorForUser, isTerritoryEligibleRun, ATTACK_COVERAGE_THRESHOLD } from "./territoryEngine";
 import { reverseGeocode } from "./geocoding";
 import {
@@ -34,6 +34,9 @@ const ASYNC_HOURS = 72;
 export const PACE_MIN_KM = 3;
 export const DISTANCE_MIN_KM = 8;
 const ATTACK_RUN_MAX_AGE_HOURS = 24;
+/** The attack-run distance requirement caps out here even against a huge territory — see
+ * the distance gate in createBattle. */
+const MAX_ATTACK_REQUIRED_DISTANCE_KM = 3;
 const DUEL_MAX_START_DAYS = 7;
 const DUEL_MIN_WINDOW_HOURS = 1;
 const DUEL_MAX_WINDOW_HOURS = 24;
@@ -152,6 +155,14 @@ export async function createBattle(params: {
     resolvedAt: { $gte: new Date(Date.now() - SAME_DEFENDER_COOLDOWN_HOURS * 3600e3) },
   });
   if (recentClash) return { error: "You just battled this athlete — give it a day before attacking them again." };
+
+  // Distance gate: a fair fight scales down for small land, but never demands more than
+  // MAX_ATTACK_REQUIRED_DISTANCE_KM even against a huge territory. A 2km territory only
+  // needs a 2km attack run; a 10km territory still only needs 3km, not 10.
+  const requiredDistanceKm = Math.min((territory.claimStats as any)?.distanceKm ?? MAX_ATTACK_REQUIRED_DISTANCE_KM, MAX_ATTACK_REQUIRED_DISTANCE_KM);
+  if ((workout as any).distanceKm < requiredDistanceKm) {
+    return { error: `This territory needs at least a ${requiredDistanceKm}km run to attack — yours was ${(workout as any).distanceKm.toFixed(1)}km.` };
+  }
 
   // Re-derive the corridor and coverage server-side; never trust the client's numbers.
   const corridor = buildRunCorridor((workout as any).route.coordinates);
@@ -371,6 +382,17 @@ export async function resolveRefusal(
         await territory.save();
 
         battle.resultTerritoryIds = [attackerPieceDoc._id, territory._id];
+
+        // Ownership-divided penalty: on top of the flat REFUSAL_WORSE/BETTER delta above,
+        // the defender loses points scaled to how much value they actually forfeited to the
+        // attacker — a bigger split costs more, not just a flat fee. See points.md.
+        const dividedPenalty = -Math.round(attackerValue * OWNERSHIP_DIVIDED_PENALTY_RATE);
+        if (dividedPenalty < 0) {
+          await award(battle.defenderId, "OWNERSHIP_DIVIDED", dividedPenalty, `battle:${battle._id}:OWNERSHIP_DIVIDED`, {
+            battleId: battle._id,
+            territoryId: territory._id,
+          });
+        }
       } else {
         // The attack corridor covered essentially the whole territory — it changes hands
         // outright (still at the decayed value; refusing a stronger run has a price).
