@@ -117,6 +117,10 @@ export function FeedClient({
     return order.map((key) => byKey.get(key)!);
   }, [posts]);
 
+  // "Top Today" is scoped to just today, not the week — keep its empty-state copy accurate
+  // instead of also claiming a weekly reset that isn't what's happening on that tab.
+  const isWeekScopedTab = tab === "all" || tab === "following" || tab === "clan";
+
   return (
     <div className="max-w-6xl mx-auto px-4 lg:pl-24 py-6 lg:flex lg:items-start lg:justify-center lg:gap-16">
       <div className="max-w-2xl w-full mx-auto lg:mx-0 lg:flex-1">
@@ -149,6 +153,16 @@ export function FeedClient({
           ))}
         </div>
 
+        {/* All/Following/Clan are scoped to the current Mon-Sun (UTC) week at the query level
+            (lib/feed.ts) — a standing caption, not just empty-state copy, so it's clear year
+            round why last week's posts aren't here, not only in the jarring moment right after
+            a reset empties the feed out. */}
+        {isWeekScopedTab && (
+          <p className="text-xs text-white/30 -mt-3 mb-4">
+            Showing this week&apos;s posts only — the feed resets every Monday.
+          </p>
+        )}
+
         {/* The single highest-priority "For You" card, planted above the main feed tabs —
             the same ranked-by-the-moment engine that drives the dedicated tab, so whatever's
             most worth the viewer's attention right now (a streak on the line, a territory
@@ -180,8 +194,12 @@ export function FeedClient({
         ) : posts.length === 0 ? (
           <EmptyState
             icon={<Flame className="w-6 h-6" />}
-            title="No posts yet"
-            description="Be the first to import a workout and post it to the club."
+            title={isWeekScopedTab ? "No posts yet this week" : "No posts yet today"}
+            description={
+              isWeekScopedTab
+                ? "The feed resets every Monday, so last week's posts have moved on — be the first to post this week."
+                : "Come back once some runs get logged today, or check back tomorrow."
+            }
             action={
               <Link href="/post/create" className="bg-momentum text-midnight text-sm font-semibold px-4 py-2 rounded-full">
                 Create a post
