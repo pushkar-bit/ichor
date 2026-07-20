@@ -28,7 +28,9 @@ export async function POST(req: NextRequest) {
     if (!me.username) updates.username = normalizedUsername;
 
     await User.updateOne({ _id: me._id }, { $set: updates }, { strict: false });
-    return NextResponse.json({ success: true });
+    // Tells the onboarding client whether to show the "connect Strava" step next — a user who
+    // signed up via Strava itself (app/api/auth/strava/callback.ts) already has this set.
+    return NextResponse.json({ success: true, stravaConnected: Boolean(me.stravaAthleteId) });
   } catch (err: any) {
     if (err?.code === 11000) {
       return NextResponse.json({ error: "That username is already taken." }, { status: 409 });

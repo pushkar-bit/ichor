@@ -3,6 +3,7 @@ import { randomBytes } from "crypto";
 import { getSessionUserId } from "@/lib/session";
 
 export const STRAVA_OAUTH_STATE_COOKIE = "strava_oauth_state";
+export const STRAVA_RETURN_TO_COOKIE = "strava_connect_return_to";
 
 export async function GET(req: NextRequest) {
   const userId = await getSessionUserId();
@@ -12,6 +13,12 @@ export async function GET(req: NextRequest) {
   if (!clientId) {
     return NextResponse.json({ error: "Strava isn't configured" }, { status: 500 });
   }
+
+  // Where to land after connecting — e.g. the onboarding flow wants /feed instead of the
+  // default /profile. Same-origin relative paths only (starts with exactly one leading slash)
+  // so this can't be turned into an open redirect via an absolute or protocol-relative URL.
+  const returnToParam = req.nextUrl.searchParams.get("returnTo");
+  const returnTo = returnToParam && returnToParam.startsWith("/") && !returnToParam.startsWith("//") ? returnToParam : null;
 
   // Callback domain is locked per Strava app registration, so the redirect_uri must match
   // whatever this request's own origin is (localhost in dev, the real domain in prod).
@@ -38,5 +45,14 @@ export async function GET(req: NextRequest) {
     path: "/",
     maxAge: 600, // 10 minutes to complete the OAuth round-trip
   });
+  if (returnTo) {
+    res.cookies.set(STRAVA_RETURN_TO_COOKIE, returnTo, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 600,
+    });
+  }
   return res;
 }

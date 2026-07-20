@@ -3,9 +3,9 @@ import { firstName } from "./postPersonalization";
 
 // Rolls up per-post viewer personalization (already computed server-side in lib/feed.ts,
 // null on the viewer's own posts) plus the group's own workout stats into one summary for a
-// creator's whole group, so swiping through several of the same person's runs reads as one
-// continuous story — what they've been up to, the numbers, and why it's worth your attention
-// — instead of the same streak/head-to-head chips just repeating on every card.
+// creator's whole slot on the feed — one per person per week, whether that's a single post
+// or several — so every container gets the same "what they've been up to, the numbers, and
+// why it's worth your attention" line above it, not just the ones with multiple posts.
 export type CreatorGroupInsight = {
   name: string;
   runCount: number;
@@ -21,20 +21,21 @@ export type CreatorGroupInsight = {
 
 const TONE_RANK = { chase: 0, neutral: 1, ahead: 2 } as const;
 
-function summarizeSpan(posts: ActivityCardData[]): string {
-  const times = posts.map((p) => new Date(p.createdAt).getTime());
-  const spanHours = (Math.max(...times) - Math.min(...times)) / (1000 * 60 * 60);
-  if (spanHours < 20) return "today";
-  if (spanHours < 48) return "in the last 2 days";
-  const days = Math.round(spanHours / 24);
-  return days <= 9 ? `over the last ${days} days` : "over the past week+";
+// How long ago this person's earliest post in the slot went up, measured from now — not just
+// the span between their own posts — so a single post from three days ago correctly reads
+// "3 days ago" instead of always "today".
+function summarizeRecency(posts: ActivityCardData[]): string {
+  const oldest = Math.min(...posts.map((p) => new Date(p.createdAt).getTime()));
+  const hoursAgo = (Date.now() - oldest) / (1000 * 60 * 60);
+  if (hoursAgo < 20) return "today";
+  if (hoursAgo < 48) return "since yesterday";
+  const days = Math.min(7, Math.round(hoursAgo / 24));
+  return `over the last ${days} days`;
 }
 
 export function summarizeCreatorGroup(posts: ActivityCardData[]): CreatorGroupInsight | null {
-  if (posts.length < 2) return null;
-
   const personalized = posts.map((p) => p.personalization).filter((p) => p != null);
-  if (personalized.length === 0) return null; // the viewer's own group, or nothing to say
+  if (personalized.length === 0) return null; // the viewer's own slot, or nothing to say
 
   const streakDays = personalized.find((p) => p.authorStreakDays)?.authorStreakDays ?? null;
   const headToHead = personalized.find((p) => p.headToHead)?.headToHead ?? null;
@@ -47,14 +48,15 @@ export function summarizeCreatorGroup(posts: ActivityCardData[]): CreatorGroupIn
   if (!streakDays && !headToHead && !message) return null;
 
   const activityTypes = new Set(posts.map((p) => p.workout.activityType));
-  const activityLabel =
+  const activityBase =
     activityTypes.size > 1
-      ? "workouts"
+      ? "workout"
       : posts[0].workout.activityType === "RUN"
-        ? "runs"
+        ? "run"
         : posts[0].workout.activityType === "CYCLE"
-          ? "rides"
-          : "walks";
+          ? "ride"
+          : "walk";
+  const activityLabel = posts.length === 1 ? activityBase : `${activityBase}s`;
 
   const totalDistanceKm = posts.reduce((sum, p) => sum + p.workout.distanceKm, 0);
   const longestDistanceKm = Math.max(...posts.map((p) => p.workout.distanceKm));
@@ -65,7 +67,7 @@ export function summarizeCreatorGroup(posts: ActivityCardData[]): CreatorGroupIn
     name: firstName(posts[0].author.name),
     runCount: posts.length,
     activityLabel,
-    spanLabel: summarizeSpan(posts),
+    spanLabel: summarizeRecency(posts),
     totalDistanceKm,
     bestPaceMinPerKm,
     longestDistanceKm,

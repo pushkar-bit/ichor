@@ -11,11 +11,17 @@ export function PostImageCarousel({
   zoneName,
   onOpen,
   heightClass = "max-h-[70vh]",
+  fixedHeight = false,
 }: {
   photoUrls: string[];
   zoneName?: string | null;
   onOpen?: () => void;
   heightClass?: string;
+  // Feed cards need every post the same height regardless of the photo's own aspect ratio
+  // (and regardless of whether there's a photo at all — see FeedMediaPlaceholder in
+  // ActivityCard) so the per-creator carousel doesn't jump around as you swipe between
+  // posts. The post detail page keeps the default: box sized to the image's real ratio.
+  fixedHeight?: boolean;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [ratios, setRatios] = useState<Record<number, number>>({});
@@ -59,7 +65,7 @@ export function PostImageCarousel({
   return (
     <div
       className={`relative w-full bg-black overflow-hidden ${heightClass} ${onOpen ? "cursor-pointer" : ""}`}
-      style={{ aspectRatio: String(activeRatio) }}
+      style={fixedHeight ? undefined : { aspectRatio: String(activeRatio) }}
     >
       <div
         ref={scrollRef}
@@ -74,7 +80,7 @@ export function PostImageCarousel({
             src={url}
             alt=""
             onLoad={handleLoad(i)}
-            className="w-full h-full shrink-0 snap-center object-contain bg-midnight-card"
+            className={`w-full h-full shrink-0 snap-center bg-midnight-card ${fixedHeight ? "object-cover" : "object-contain"}`}
           />
         ))}
       </div>

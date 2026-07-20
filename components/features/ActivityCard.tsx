@@ -43,6 +43,32 @@ export type ActivityCardData = {
 
 const ACTIVITY_ICON = { RUN: Footprints, WALK: Footprints, CYCLE: Bike };
 
+// Every feed card gets the same media height whether or not it has a photo — otherwise a
+// photo post and a caption-only post sit at very different heights right next to each other
+// in the per-creator carousel, which reads as broken rather than just "no photo this time."
+const FEED_MEDIA_HEIGHT_CLASS = "h-56 sm:h-72";
+
+function FeedMediaPlaceholder({
+  activityType,
+  hue,
+  onOpen,
+}: {
+  activityType: ActivityCardData["workout"]["activityType"];
+  hue: number;
+  onOpen?: () => void;
+}) {
+  const Icon = ACTIVITY_ICON[activityType];
+  return (
+    <div
+      className={`relative w-full ${FEED_MEDIA_HEIGHT_CLASS} flex items-center justify-center overflow-hidden ${onOpen ? "cursor-pointer" : ""}`}
+      style={{ background: `linear-gradient(135deg, hsl(${hue}, 55%, 13%), var(--ichor-midnight))` }}
+      onClick={onOpen}
+    >
+      <Icon className="w-16 h-16 sm:w-20 sm:h-20 opacity-20" style={{ color: `hsl(${hue}, 85%, 65%)` }} />
+    </div>
+  );
+}
+
 export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; maxDistance?: number }) {
   const router = useRouter();
   const ActivityIcon = ACTIVITY_ICON[post.workout.activityType];
@@ -159,12 +185,19 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
         </div>
       )}
 
-      {post.photoUrls.length > 0 && (
+      {post.photoUrls.length > 0 ? (
         <PostImageCarousel
           photoUrls={post.photoUrls}
           zoneName={post.zoneName}
           onOpen={post.linkToDetail !== false ? openDetail : undefined}
-          heightClass="max-h-[420px] sm:max-h-[480px]"
+          heightClass={FEED_MEDIA_HEIGHT_CLASS}
+          fixedHeight
+        />
+      ) : (
+        <FeedMediaPlaceholder
+          activityType={post.workout.activityType}
+          hue={hue}
+          onOpen={post.linkToDetail !== false ? openDetail : undefined}
         />
       )}
 

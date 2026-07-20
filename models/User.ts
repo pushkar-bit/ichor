@@ -2,8 +2,12 @@ import { Schema, model, models, type InferSchemaType } from "mongoose";
 
 const UserSchema = new Schema(
   {
-    googleId: { type: String, required: true, unique: true, index: true },
-    email: { type: String, required: true },
+    // Not required — a user who signed up via Strava (app/api/auth/strava/callback.ts) has
+    // no Google identity at all. Sparse so the many users without one don't collide on a
+    // shared `null` in the unique index (same reasoning as the `username` field below).
+    googleId: { type: String, unique: true, sparse: true, index: true },
+    // Not required for the same reason — Strava's OAuth doesn't reliably return an email.
+    email: { type: String, default: "" },
     name: { type: String, required: true },
     username: {
       type: String,

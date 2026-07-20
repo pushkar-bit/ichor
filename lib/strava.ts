@@ -91,7 +91,10 @@ async function exchangeWithStrava(body: Record<string, string>) {
     access_token: string;
     refresh_token: string;
     expires_at: number;
-    athlete?: { id: number };
+    // Strava always includes this summary athlete object on token exchange regardless of
+    // scope — firstname/lastname/profile (avatar URL) are what app/api/auth/strava/callback
+    // uses to name a brand-new account when someone signs up via Strava instead of Google.
+    athlete?: { id: number; firstname?: string; lastname?: string; profile?: string };
   }>;
 }
 

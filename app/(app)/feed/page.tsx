@@ -33,6 +33,7 @@ export default async function FeedPage() {
       initialLeaderboardData={leaderboard ?? undefined}
       initialSuggestions={suggestions}
       forYou={forYou}
+      stravaConnected={Boolean(me.stravaAthleteId)}
     />
   );
 }

@@ -235,8 +235,11 @@ function Heatmap({ days }: { days: { date: string; level: number }[] }) {
 }
 
 /** The hero: the single highest-priority item, given real presence via a soft accent wash
- * behind it (no hard box), a large icon chip, a prominent title, and a clear CTA. */
-function Lead({ card, onDismiss, showDismiss }: { card: ForYouCard; onDismiss: () => void; showDismiss: boolean }) {
+ * behind it (no hard box), a large icon chip, a prominent title, and a clear CTA. Exported so
+ * FeedClient can plant the same top-priority card at the top of the main feed tabs — the
+ * ever-changing "most relevant thing right now" banner — without duplicating the per-kind
+ * presentation logic here. */
+export function Lead({ card, onDismiss, showDismiss }: { card: ForYouCard; onDismiss: () => void; showDismiss: boolean }) {
   const p = describe(card);
   const { glow } = accentStyles(p.accent);
 

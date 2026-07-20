@@ -5,7 +5,8 @@ import Link from "next/link";
 import { Flame, PlusCircle } from "lucide-react";
 import type { ActivityCardData } from "./ActivityCard";
 import { CreatorFeedGroup } from "./CreatorFeedGroup";
-import { ForYouRail } from "./ForYouRail";
+import { ForYouRail, Lead as TopInsight } from "./ForYouRail";
+import { StravaConnectNudge } from "./StravaConnectNudge";
 import { LeaderboardWidget, type LeaderboardWidgetRow } from "./LeaderboardWidget";
 import { FollowWidget } from "./FollowWidget";
 import type { FollowSuggestion } from "@/lib/followSuggestions";
@@ -28,6 +29,7 @@ type FeedClientProps = {
   initialLeaderboardData?: { rows: LeaderboardWidgetRow[]; me: string | null };
   initialSuggestions?: FollowSuggestion[];
   forYou?: ForYouCard[];
+  stravaConnected?: boolean;
 };
 
 export function FeedClient({
@@ -37,6 +39,7 @@ export function FeedClient({
   initialLeaderboardData,
   initialSuggestions,
   forYou = [],
+  stravaConnected = false,
 }: FeedClientProps) {
   const [tab, setTab] = useState("all");
   const [posts, setPosts] = useState<ActivityCardData[]>(initialPosts ?? []);
@@ -127,6 +130,10 @@ export function FeedClient({
           </Link>
         </div>
 
+        {/* Account-level status, not tied to any one tab — shows regardless of which feed
+            tab is active, unlike the per-tab dynamic insight banner below. */}
+        <StravaConnectNudge connected={stravaConnected} />
+
         <div className="flex items-center gap-1.5 mb-6 overflow-x-auto no-scrollbar">
           {TABS.map((t) => (
             <button
@@ -141,6 +148,17 @@ export function FeedClient({
             </button>
           ))}
         </div>
+
+        {/* The single highest-priority "For You" card, planted above the main feed tabs —
+            the same ranked-by-the-moment engine that drives the dedicated tab, so whatever's
+            most worth the viewer's attention right now (a streak on the line, a territory
+            under attack, a pattern about to repeat) surfaces without a tab switch. Skipped on
+            the "For You" tab itself, which already leads with this same card. */}
+        {tab !== "foryou" && forYou.length > 0 && (
+          <div className="mb-5">
+            <TopInsight card={forYou[0]} onDismiss={() => {}} showDismiss={false} />
+          </div>
+        )}
 
         {tab === "foryou" ? (
           forYou.length > 0 ? (

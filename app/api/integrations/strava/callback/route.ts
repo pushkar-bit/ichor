@@ -3,16 +3,25 @@ import { connectDB } from "@/lib/mongodb";
 import { getSessionUserId } from "@/lib/session";
 import { User } from "@/models/User";
 import { exchangeStravaCode } from "@/lib/strava";
-import { STRAVA_OAUTH_STATE_COOKIE } from "../connect/route";
+import { STRAVA_OAUTH_STATE_COOKIE, STRAVA_RETURN_TO_COOKIE } from "../connect/route";
 
 export async function GET(req: NextRequest) {
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.redirect(new URL("/sign-in", req.url));
 
+  // Where /connect was asked to send us back to (e.g. onboarding wants /feed instead of the
+  // default /profile) — validated as a same-origin relative path when it was first set.
+  const returnTo = req.cookies.get(STRAVA_RETURN_TO_COOKIE)?.value || "/profile";
+  const redirectTo = (status: string) => {
+    const url = new URL(returnTo, req.url);
+    url.searchParams.set("strava", status);
+    return url;
+  };
+
   const code = req.nextUrl.searchParams.get("code");
   const error = req.nextUrl.searchParams.get("error");
   if (error || !code) {
-    return NextResponse.redirect(new URL("/profile?strava=error", req.url));
+    return NextResponse.redirect(redirectTo("error"));
   }
 
   // CSRF: the state we set in /connect must round-trip back unchanged. A callback without a
@@ -21,10 +30,11 @@ export async function GET(req: NextRequest) {
   const expectedState = req.cookies.get(STRAVA_OAUTH_STATE_COOKIE)?.value;
   const clearState = (res: NextResponse) => {
     res.cookies.delete(STRAVA_OAUTH_STATE_COOKIE);
+    res.cookies.delete(STRAVA_RETURN_TO_COOKIE);
     return res;
   };
   if (!state || !expectedState || state !== expectedState) {
-    return clearState(NextResponse.redirect(new URL("/profile?strava=error", req.url)));
+    return clearState(NextResponse.redirect(redirectTo("error")));
   }
 
   await connectDB();
@@ -40,7 +50,7 @@ export async function GET(req: NextRequest) {
     // rather than silently create a duplicate link (the DB unique index would also reject it).
     const existing = await User.findOne({ stravaAthleteId: athleteId }).select("_id").lean();
     if (existing && String((existing as { _id: unknown })._id) !== String(me._id)) {
-      return clearState(NextResponse.redirect(new URL("/profile?strava=already-linked", req.url)));
+      return clearState(NextResponse.redirect(redirectTo("already-linked")));
     }
 
     me.stravaAthleteId = athleteId;
@@ -53,8 +63,8 @@ export async function GET(req: NextRequest) {
     // sync in, delivered by the webhook (app/api/integrations/strava/webhook/route.ts).
   } catch (err) {
     console.error("[strava/callback] failed:", err);
-    return clearState(NextResponse.redirect(new URL("/profile?strava=error", req.url)));
+    return clearState(NextResponse.redirect(redirectTo("error")));
   }
 
-  return clearState(NextResponse.redirect(new URL("/profile?strava=connected", req.url)));
+  return clearState(NextResponse.redirect(redirectTo("connected")));
 }

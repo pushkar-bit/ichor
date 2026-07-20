@@ -35,13 +35,20 @@ export function formatDuration(seconds: number): string {
   return `${m}m`;
 }
 
-// The Monday (UTC, YYYY-MM-DD) that starts the calendar week containing `date`. Fixed to UTC
-// rather than the viewer's local time so the week boundary — and the reset — is the same
-// instant for every user, not staggered across time zones.
-export function weekBucketKey(date: Date | string): string {
+// The Monday 00:00 UTC that starts the calendar week containing `date` (defaults to now).
+// Fixed to UTC rather than the viewer's local time so the week boundary — and the reset —
+// is the same instant for every user, not staggered across time zones. Safe to import from
+// both server (lib/feed.ts) and client (FeedClient.tsx) code — plain date math, no browser
+// or Node-only APIs.
+export function startOfWeekUTC(date: Date | string = new Date()): Date {
   const d = typeof date === "string" ? new Date(date) : date;
   const utcMidnight = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const daysSinceMonday = (utcMidnight.getUTCDay() + 6) % 7; // Mon=0 ... Sun=6
   utcMidnight.setUTCDate(utcMidnight.getUTCDate() - daysSinceMonday);
-  return utcMidnight.toISOString().slice(0, 10);
+  return utcMidnight;
+}
+
+// The YYYY-MM-DD key for the week `date` falls in — a cheap equality check for "same week."
+export function weekBucketKey(date: Date | string): string {
+  return startOfWeekUTC(date).toISOString().slice(0, 10);
 }

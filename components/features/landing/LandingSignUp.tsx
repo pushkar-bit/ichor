@@ -1,7 +1,9 @@
 import { GoogleSignInButton, GoogleNotConfiguredNotice } from "@/components/features/GoogleSignInButton";
+import { StravaSignInButton, StravaNotConfiguredNotice } from "@/components/features/StravaSignInButton";
 
 export default function LandingSignUp() {
   const googleConfigured = Boolean(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID);
+  const stravaConfigured = Boolean(process.env.STRAVA_CLIENT_ID);
 
   return (
     <section
@@ -24,8 +26,9 @@ export default function LandingSignUp() {
           start line.
         </p>
 
-        <div className="mt-10 w-full max-w-sm" data-magnetic data-cursor-hover>
+        <div className="mt-10 w-full max-w-sm space-y-3" data-magnetic data-cursor-hover>
           {googleConfigured ? <GoogleSignInButton /> : <GoogleNotConfiguredNotice />}
+          {stravaConfigured ? <StravaSignInButton /> : <StravaNotConfiguredNotice />}
         </div>
 
         <p className="mt-6 max-w-xs text-xs leading-relaxed text-white/40">

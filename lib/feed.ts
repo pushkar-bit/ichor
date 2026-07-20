@@ -9,6 +9,7 @@ import { serializePost } from "./serialize";
 import { getInterestSets, combineReactorIds, pickFeaturedReactorId } from "./reactionSummary";
 import { getPersonalBests } from "./personalBests";
 import { personalizePost } from "./postPersonalization";
+import { startOfWeekUTC } from "./utils";
 
 const PAGE_SIZE = 20;
 
@@ -31,6 +32,15 @@ export async function getFeedPosts(
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     query.createdAt = { ...(query.createdAt ?? {}), $gte: start };
+  }
+
+  // The main feed tabs (all/following/clan) are scoped to the current calendar week — the
+  // same Mon-Sun UTC boundary the per-creator carousel grouping resets on client-side — so
+  // older posts don't just fall out of grouping, they don't appear on the feed at all. Once
+  // a page's results run dry within the week, `posts.length < PAGE_SIZE` below naturally
+  // nulls out nextCursor and infinite scroll stops, rather than crossing into last week.
+  if (filter !== "top") {
+    query.createdAt = { ...(query.createdAt ?? {}), $gte: startOfWeekUTC() };
   }
 
   const cursorQuery = Post.find(query)

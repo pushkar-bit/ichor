@@ -1,11 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, ArrowRight, Scale, Ruler, AtSign } from "lucide-react";
+import { Loader2, ArrowRight, Scale, Ruler, AtSign, Link2 } from "lucide-react";
 
 const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 
 export default function OnboardingPage() {
+  // "profile" is the original weight/height/username form; "strava" is a second, skippable
+  // step shown only when the account doesn't already have Strava connected (someone who signed
+  // up via Strava itself is already connected by the time they reach here, so this step is
+  // naturally skipped for them — see the stravaConnected flag from the profile-submit response).
+  const [step, setStep] = useState<"profile" | "strava">("profile");
   const [username, setUsername] = useState("");
   const [weightKg, setWeightKg] = useState("");
   const [heightUnit, setHeightUnit] = useState<"cm" | "ft">("cm");
@@ -46,8 +51,14 @@ export default function OnboardingPage() {
         body: JSON.stringify({ weightKg, heightCm: finalHeightCm, username: username.trim().toLowerCase() }),
       });
       if (res.ok) {
-        // Force hard refresh to update server-side layout redirect checks
-        window.location.href = "/feed";
+        const data = await res.json().catch(() => ({ stravaConnected: false }));
+        if (data.stravaConnected) {
+          // Force hard refresh to update server-side layout redirect checks
+          window.location.href = "/feed";
+        } else {
+          setLoading(false);
+          setStep("strava");
+        }
       } else {
         const data = await res.json().catch(() => null);
         setError(data?.error ?? "Failed to save. Please try again.");
@@ -57,6 +68,35 @@ export default function OnboardingPage() {
       setError("Network error.");
       setLoading(false);
     }
+  }
+
+  if (step === "strava") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-midnight px-4">
+        <div className="w-full max-w-sm bg-midnight-raised border border-border-ichor rounded-3xl p-6 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-[#FC4C02]/15 flex items-center justify-center mx-auto mb-4">
+            <Link2 className="w-7 h-7 text-[#FC4C02]" />
+          </div>
+          <h1 className="font-display italic font-bold text-2xl mb-2">Connect Strava?</h1>
+          <p className="text-sm text-white/60 mb-6">
+            Link Strava and every run you log there syncs to ICHOR automatically — no manual posting.
+          </p>
+          <a
+            href="/api/integrations/strava/connect?returnTo=/feed"
+            className="w-full flex items-center justify-center gap-2 bg-[#FC4C02] text-white font-bold py-3.5 rounded-full mb-3"
+          >
+            <Link2 className="w-4 h-4" /> Connect Strava
+          </a>
+          <button
+            type="button"
+            onClick={() => { window.location.href = "/feed"; }}
+            className="w-full text-sm text-white/40 hover:text-white/60 py-2"
+          >
+            Skip for now
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
