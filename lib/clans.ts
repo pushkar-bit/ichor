@@ -53,7 +53,10 @@ export async function getClanEmpire(clanId: string, viewerId?: string) {
   const clan = await Clan.findById(clanId).lean();
   if (!clan) return null;
 
-  const members = await ClanMember.find({ clanId }).populate("userId").sort({ role: 1, joinedAt: 1 }).lean();
+  // A ClanMember whose User was deleted populates userId as null — drop those rather than
+  // crash on it (Mongoose doesn't enforce referential integrity across models).
+  const allMembers = await ClanMember.find({ clanId }).populate("userId").sort({ role: 1, joinedAt: 1 }).lean();
+  const members = allMembers.filter((m: any) => m.userId);
   const memberIds = members.map((m: any) => String(m.userId._id));
 
   const territories = memberIds.length
@@ -155,6 +158,7 @@ export async function getClanEmpire(clanId: string, viewerId?: string) {
       ownerClanName: (clan as any).name as string,
       ownerClanTag: (clan as any).tag as string,
       ownerClanColor: (clan as any).color as string,
+      ownerClanMemberCount: memberIds.length,
     })),
     zonesHeld: territories.length,
     collectiveKm: Math.round(collectiveKm * 100) / 100,

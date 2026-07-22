@@ -16,11 +16,15 @@ export function TerritoryOnlyMap({
   onTerritoryClick,
   underAttackIds,
   colorFor,
+  children,
 }: {
   territories: MapTerritory[];
   onTerritoryClick: (territory: MapTerritory) => void;
   underAttackIds?: Set<string>;
   colorFor?: (territory: MapTerritory) => string | null | undefined;
+  /** Extra Leaflet layers rendered inside the same MapContainer, above the territory layer
+   * (e.g. ClanMap's inter-territory network lines). */
+  children?: React.ReactNode;
 }) {
   let bounds: LatLngBoundsExpression | null = null;
   if (territories.length > 0) {
@@ -54,6 +58,7 @@ export function TerritoryOnlyMap({
         underAttackIds={underAttackIds}
         colorFor={colorFor}
       />
+      {children}
     </MapContainer>
   );
 }

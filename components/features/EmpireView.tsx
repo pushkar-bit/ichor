@@ -8,12 +8,14 @@ import { Avatar } from "@/components/ui/Avatar";
 import { LevelBadge } from "@/components/ui/LevelBadge";
 import { clanLevel } from "@/lib/leveling";
 import { ClanActions } from "./ClanActions";
+import { groupByClan } from "./ClanMap";
 import type { MapTerritory } from "./TerritoryMap";
 
 const TerritoryOnlyMap = dynamic(() => import("./TerritoryOnlyMap").then((m) => m.TerritoryOnlyMap), {
   ssr: false,
   loading: () => <div className="w-full h-full skeleton" />,
 });
+const ClanNetworkLayer = dynamic(() => import("./ClanMap").then((m) => m.ClanNetworkLayer), { ssr: false });
 
 type EmpireMember = {
   userId: string;
@@ -164,7 +166,9 @@ export function EmpireView({
         </div>
       ) : (
         <div className="relative w-full rounded-2xl border border-border-ichor bg-midnight-raised overflow-hidden mb-3" style={{ height: 300 }}>
-          <TerritoryOnlyMap territories={territories} onTerritoryClick={() => {}} colorFor={() => clan.color} />
+          <TerritoryOnlyMap territories={territories} onTerritoryClick={() => {}} colorFor={() => clan.color}>
+            <ClanNetworkLayer groups={groupByClan(territories)} />
+          </TerritoryOnlyMap>
         </div>
       )}
       <p className="text-xs text-white/40 mb-6">

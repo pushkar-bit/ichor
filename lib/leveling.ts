@@ -13,6 +13,7 @@ export type LevelTier = {
   ringWidth: number;
   size: number;
   glow: boolean;
+  glowPx: number;
   pulse: boolean;
   icon: BadgeIcon;
 };
@@ -23,11 +24,11 @@ export type LevelTier = {
  * territory and a level-7 clan read as the same tier of "power" at a glance.
  */
 const VISUAL_BANDS: Omit<LevelTier, "level" | "name">[] = [
-  { ringColor: "#6B6570", ringWidth: 2, size: 32, glow: false, pulse: false, icon: "swords" }, // 1-2
-  { ringColor: "#9CA3AF", ringWidth: 2, size: 36, glow: false, pulse: false, icon: "shield" }, // 3-4
-  { ringColor: "#AE93F4", ringWidth: 3, size: 40, glow: true, pulse: false, icon: "flame" }, // 5-6
-  { ringColor: "#D4AF37", ringWidth: 3, size: 44, glow: true, pulse: false, icon: "crown" }, // 7-8
-  { ringColor: "#D4AF37", ringWidth: 4, size: 48, glow: true, pulse: true, icon: "burst" }, // 9-10
+  { ringColor: "#6B6570", ringWidth: 2, size: 32, glow: false, glowPx: 0, pulse: false, icon: "swords" }, // 1-2 Outpost
+  { ringColor: "#9CA3AF", ringWidth: 2, size: 36, glow: false, glowPx: 0, pulse: false, icon: "shield" }, // 3-4 Settlement
+  { ringColor: "#AE93F4", ringWidth: 3, size: 40, glow: true, glowPx: 8, pulse: false, icon: "flame" }, // 5-6 Fortress
+  { ringColor: "#D4AF37", ringWidth: 3, size: 44, glow: true, glowPx: 12, pulse: false, icon: "crown" }, // 7-8 Dominion
+  { ringColor: "#D4AF37", ringWidth: 4, size: 48, glow: true, glowPx: 16, pulse: true, icon: "burst" }, // 9-10 Eternal
 ];
 
 function visualBandFor(level: number): Omit<LevelTier, "level" | "name"> {

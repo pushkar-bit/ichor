@@ -77,6 +77,7 @@ function mapTerritory(over: Partial<MapTerritory> & Pick<MapTerritory, "id" | "n
     ownerClanName: null,
     ownerClanTag: null,
     ownerClanColor: null,
+    ownerClanMemberCount: null,
     ...over,
   };
 }
@@ -92,6 +93,7 @@ const DEMO_TERRITORIES: MapTerritory[] = [
     ownerClanName: "Iron Lungs",
     ownerClanTag: "IRON",
     ownerClanColor: "#D7F24C",
+    ownerClanMemberCount: 6,
     geometry: { type: "Polygon", coordinates: square(77.196, 28.611, 0.004) },
   }),
   mapTerritory({
@@ -102,6 +104,7 @@ const DEMO_TERRITORIES: MapTerritory[] = [
     ownerClanName: "Pace Setters",
     ownerClanTag: "PACE",
     ownerClanColor: "#4CC9F0",
+    ownerClanMemberCount: 9,
     geometry: { type: "Polygon", coordinates: square(77.201, 28.611, 0.004) },
   }),
   mapTerritory({
@@ -113,6 +116,7 @@ const DEMO_TERRITORIES: MapTerritory[] = [
     ownerClanName: "Pace Setters",
     ownerClanTag: "PACE",
     ownerClanColor: "#4CC9F0",
+    ownerClanMemberCount: 9,
     geometry: { type: "Polygon", coordinates: square(77.196, 28.606, 0.004) },
   }),
   mapTerritory({ id: "t-attack", name: "Canal Road", color: "#FF6B6B", geometry: { type: "Polygon", coordinates: square(77.201, 28.606, 0.004) } }),

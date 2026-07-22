@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { Territory } from "@/models/Territory";
-import { Clan } from "@/models/Clan";
+import { Clan, ClanMember } from "@/models/Clan";
 import { getTerritoryFameLeaderboard } from "@/lib/territoryEngine";
 import { sweepBattles } from "@/lib/battles";
 import "@/models/User";
@@ -38,6 +38,9 @@ export async function GET() {
   ];
   const clans = clanIds.length ? await Clan.find({ _id: { $in: clanIds } }).select("name tag color").lean() : [];
   const clanById = new Map(clans.map((c) => [String(c._id), c]));
+  const memberCountByClan = new Map(
+    await Promise.all(clanIds.map(async (id) => [id, await ClanMember.countDocuments({ clanId: id })] as const)),
+  );
 
   const result = territories.map((t: any) => {
     const ownerId = t.ownerId ? String(t.ownerId._id ?? t.ownerId) : null;
@@ -65,6 +68,7 @@ export async function GET() {
       ownerClanName: clan?.name ?? null,
       ownerClanTag: clan?.tag ?? null,
       ownerClanColor: clan?.color ?? null,
+      ownerClanMemberCount: clan ? memberCountByClan.get(String(clan._id)) ?? 0 : null,
       // Fog of war: the claim run's stats exist ONLY for the owner's own eyes.
       claimStats: isMine ? t.claimStats : undefined,
     };

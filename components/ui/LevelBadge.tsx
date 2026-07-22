@@ -45,13 +45,13 @@ export function LevelBadge({
       style={{
         width: px,
         height: px,
-        backgroundColor: "#0a0a0a",
+        backgroundColor: "#1A1A1A",
         border: `${tier.ringWidth}px solid ${ringColor}`,
-        boxShadow: tier.glow ? `0 0 ${tier.ringWidth * 2.5}px ${ringColor}88` : undefined,
+        boxShadow: tier.glow ? `0 0 ${tier.glowPx}px ${ringColor}` : undefined,
       }}
       title={title}
     >
-      <Icon width={px * 0.48} height={px * 0.48} color={ringColor} strokeWidth={2.5} />
+      <Icon width={px * 0.48} height={px * 0.48} color="#FFFFFF" strokeWidth={2.5} />
       <span
         className="absolute flex items-center justify-center rounded-full font-bold leading-none"
         style={{
