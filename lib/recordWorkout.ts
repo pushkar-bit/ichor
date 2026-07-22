@@ -3,6 +3,7 @@ import { evaluateBadges } from "./badges";
 import { computeUserWeeklyScore, type ScoreBreakdown } from "./scoring";
 import { addScore } from "./redis";
 import { dayKey, weekKey } from "./week";
+import { award, STREAK_7_POINTS, STREAK_30_POINTS } from "./points";
 
 type StatsEligibleUser = {
   _id: unknown;
@@ -61,6 +62,14 @@ export async function recordWorkoutStats(
 
     if (newStreak % 7 === 0) {
       me.streakFreezesAvailable = Math.min(MAX_STREAK_FREEZES, me.streakFreezesAvailable + 1);
+    }
+
+    // One-time streak milestones — keyed on the milestone itself (no date), so hitting 7 or
+    // 30 again after a later reset never re-pays.
+    if (newStreak === 7) {
+      await award(me._id, "STREAK_7", STREAK_7_POINTS, `streak:${String(me._id)}:7`);
+    } else if (newStreak === 30) {
+      await award(me._id, "STREAK_30", STREAK_30_POINTS, `streak:${String(me._id)}:30`);
     }
   }
   me.totalDistanceKm += workout.distanceKm;

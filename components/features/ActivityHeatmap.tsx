@@ -28,7 +28,7 @@ export function ActivityHeatmap({ data }: { data: Record<string, number> }) {
   for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
 
   function intensity(value: number) {
-    if (value === 0) return "rgba(255,255,255,0.06)";
+    if (value === 0) return "#2D2630";
     const ratio = Math.min(value / max, 1);
     const alpha = 0.25 + ratio * 0.75;
     return `rgba(174, 147, 244, ${alpha})`;

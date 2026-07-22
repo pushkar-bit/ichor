@@ -83,8 +83,12 @@ export function CoachWidget() {
               <CoachAvatarMark className="w-full h-full" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold">Coach Vikas Yadav</div>
-              <div className="text-[10px] text-momentum">AI Performance Coach · Online</div>
+              <div className="text-sm font-display italic font-bold tracking-wide" style={{ color: "#AE93F4" }}>
+                VIKAS YADAV
+              </div>
+              <div className="text-[10px] font-light" style={{ color: "#6B6570" }}>
+                Your Performance Coach · Online
+              </div>
             </div>
             <button
               onClick={() => setOpen(false)}

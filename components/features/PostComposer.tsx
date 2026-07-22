@@ -44,6 +44,7 @@ export function PostComposer() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pbMessage, setPbMessage] = useState<string | null>(null);
+  const [territoryMessage, setTerritoryMessage] = useState<string | null>(null);
   // Set when the posted run claimed land or unlocked attacks — shows the territory report
   // before navigating to the post.
   const [territoryPrompt, setTerritoryPrompt] = useState<{ workoutId: string; postId: string } | null>(null);
@@ -298,6 +299,10 @@ export function PostComposer() {
         setTerritoryPrompt({ workoutId: data.workoutId, postId: data.postId });
         return;
       }
+      if (tr?.belowClaimThreshold) {
+        setTerritoryMessage("Run at least 2km to claim territory.");
+        await new Promise((resolve) => setTimeout(resolve, 1700));
+      }
 
       router.push(`/post/${data.postId}`);
       router.refresh();
@@ -323,6 +328,15 @@ export function PostComposer() {
           <div className="flex items-center gap-2.5 bg-midnight-raised border border-[#D4AF37]/50 rounded-2xl px-4 py-3 shadow-2xl max-w-sm">
             <Trophy className="w-5 h-5 text-[#D4AF37] shrink-0" />
             <span className="text-sm font-semibold text-white">{pbMessage}</span>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {territoryMessage && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-x-4 top-6 z-[9999] flex justify-center pointer-events-none">
+          <div className="flex items-center gap-2.5 bg-midnight-raised border border-momentum/40 rounded-2xl px-4 py-3 shadow-2xl max-w-sm">
+            <span className="text-sm font-semibold text-white">{territoryMessage}</span>
           </div>
         </div>,
         document.body

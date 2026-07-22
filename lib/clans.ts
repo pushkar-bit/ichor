@@ -2,7 +2,7 @@ import { Clan, ClanMember } from "@/models/Clan";
 import { Territory } from "@/models/Territory";
 import "@/models/User"; // registers the User model before ClanMember/Territory populate() calls below
 import { computeAllWeeklyScores, computeUserWeeklyScore } from "./scoring";
-import { PER_KM_POINTS } from "./points";
+import { DISTANCE_BONUS_POINTS_PER_KM } from "./points";
 
 export async function getClanList() {
   const clans = await Clan.find({}).lean();
@@ -95,6 +95,6 @@ export async function getClanEmpire(clanId: string, viewerId?: string) {
     })),
     zonesHeld: territories.length,
     collectiveKm: Math.round(collectiveKm * 100) / 100,
-    collectivePoints: Math.round(collectiveKm * PER_KM_POINTS),
+    collectivePoints: Math.round(collectiveKm * DISTANCE_BONUS_POINTS_PER_KM),
   };
 }

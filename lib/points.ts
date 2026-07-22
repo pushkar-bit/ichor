@@ -1,8 +1,10 @@
 import { PointsLedger, type PointReason } from "@/models/PointsLedger";
 import { User } from "@/models/User";
 import { Workout } from "@/models/Workout";
+import { Territory } from "@/models/Territory";
 import { getPersonalBests, FIVE_K_BAND, TEN_K_BAND } from "./personalBests";
 import { isTerritoryEligibleRun } from "./territoryEngine";
+import { weekKey } from "./week";
 
 /**
  * The profile-points economy. Every change goes through award(): a PointsLedger row with a
@@ -24,24 +26,28 @@ const DISTANCE_THRESHOLDS: { km: number; reason: PointReason; points: number }[]
   { km: 5, reason: "THRESHOLD_5K", points: 25 },
 ];
 
-/** Faster pace, bigger award. Only runs ≥ PACE_MIN_DISTANCE_KM, once per day. */
-const PACE_BANDS: { maxPace: number; points: number }[] = [
-  { maxPace: 4.0, points: 100 },
-  { maxPace: 4.5, points: 75 },
-  { maxPace: 5.0, points: 50 },
-  { maxPace: 5.5, points: 30 },
-  { maxPace: 6.0, points: 15 },
-  { maxPace: 7.0, points: 8 },
-  { maxPace: Infinity, points: 3 },
+/** Faster pace, bigger award — sub-5:00/km, 5:00-6:00, 6:00-7:00. Slower than 7:00/km pays
+ * nothing. Only runs ≥ PACE_MIN_DISTANCE_KM, once per day. */
+const PACE_BANDS: { maxPace: number; reason: PointReason; points: number }[] = [
+  { maxPace: 5.0, reason: "PACE_BONUS_FAST", points: 50 },
+  { maxPace: 6.0, reason: "PACE_BONUS_MID", points: 30 },
+  { maxPace: 7.0, reason: "PACE_BONUS_SLOW", points: 10 },
 ];
 const PACE_MIN_DISTANCE_KM = 3;
 
 export const PB_5K_POINTS = 150;
 export const PB_10K_POINTS = 250;
 export const PB_LONGEST_POINTS = 100;
-export const DAILY_ACTIVITY_POINTS = 10;
-/** Points per km, on top of the distance/PB/pace rewards above — see points.md. */
-export const PER_KM_POINTS = 3;
+/** Flat, per qualifying run — see points.md. */
+export const BASE_ACTIVITY_POINTS = 10;
+/** Points per km — see points.md. */
+export const DISTANCE_BONUS_POINTS_PER_KM = 5;
+/** First qualifying run of the day only. */
+export const DAILY_FIRST_POST_POINTS = 20;
+export const STREAK_7_POINTS = 100;
+export const STREAK_30_POINTS = 500;
+export const DIET_CLEAN_POINTS = 50;
+export const DIET_NEUTRAL_POINTS = 25;
 export const TERRITORY_CLAIMED_POINTS = 200;
 /** Points per km credited to a territory you own, from ANY runner's overlap — the "landlord"
  * bonus. See lib/territoryEngine.ts's bumpFame call site. */
@@ -49,8 +55,27 @@ export const TERRITORY_VALUE_GROWTH_POINTS_PER_KM = 5;
 /** Fraction of the value forfeited to an attacker that becomes an extra points penalty for
  * the divided owner, on top of the existing REFUSAL_BETTER/WORSE deltas. See lib/battles.ts. */
 export const OWNERSHIP_DIVIDED_PENALTY_RATE = 0.05;
-export const RANK_UP_POINTS_PER_PLACE = 50;
-export const RANK_UP_MAX_POINTS_PER_SWEEP = 500;
+export const TERRITORY_HOLD_WEEKLY_POINTS = 50;
+/** Ranked by fameScore — the same "how alive is this land" metric behind the map's Most
+ * Famous Territories list. See checkAndAwardWeeklyTerritoryBonuses. */
+const TERRITORY_LEADERBOARD_BONUS: Record<1 | 2 | 3, { reason: PointReason; points: number }> = {
+  1: { reason: "TERRITORY_LEADERBOARD_1", points: 75 },
+  2: { reason: "TERRITORY_LEADERBOARD_2", points: 40 },
+  3: { reason: "TERRITORY_LEADERBOARD_3", points: 20 },
+};
+
+/** Rank-climb tiers, checked by climb size (places moved up), highest band ≤ climb wins. */
+const RANK_IMPROVEMENT_BANDS: { minPlaces: number; reason: PointReason; points: number }[] = [
+  { minPlaces: 16, reason: "RANK_IMPROVEMENT_LARGE", points: 50 },
+  { minPlaces: 6, reason: "RANK_IMPROVEMENT_MID", points: 25 },
+  { minPlaces: 1, reason: "RANK_IMPROVEMENT_SMALL", points: 10 },
+];
+/** One-time weekly bonus for reaching the top 3 overall ranks — see checkAndAwardRankImprovements. */
+const RANK_MILESTONE_POINTS: Record<1 | 2 | 3, { reason: PointReason; points: number }> = {
+  1: { reason: "RANK_1_WEEKLY", points: 200 },
+  2: { reason: "RANK_2_WEEKLY", points: 100 },
+  3: { reason: "RANK_3_WEEKLY", points: 50 },
+};
 
 /** At most this many runs per day can earn per-run points (anti-grind). */
 const DAILY_SCORING_RUN_CAP = 2;
@@ -142,12 +167,17 @@ export async function awardPointsForWorkout(
 
   const wk = String(workout._id);
 
-  // 0. Daily activity — a flat "you showed up today" bonus, once per day (the uniqueKey
-  //    embeds the day, so a second qualifying run the same day just no-ops).
+  // 0a. Base activity — flat, every qualifying run (still capped by DAILY_SCORING_RUN_CAP).
+  if (await award(userId, "BASE_ACTIVITY", BASE_ACTIVITY_POINTS, `wk:${wk}:BASE_ACTIVITY`, { workoutId: workout._id })) {
+    awards.push({ reason: "BASE_ACTIVITY", amount: BASE_ACTIVITY_POINTS });
+  }
+
+  // 0b. First post of the day — on top of base activity, once per day (the uniqueKey embeds
+  //     the day, so a second qualifying run the same day just no-ops).
   {
     const key = `daily:${String(userId)}:${dayKey(workout.workoutDate)}`;
-    if (await award(userId, "DAILY_ACTIVITY", DAILY_ACTIVITY_POINTS, key, { workoutId: workout._id })) {
-      awards.push({ reason: "DAILY_ACTIVITY", amount: DAILY_ACTIVITY_POINTS });
+    if (await award(userId, "DAILY_FIRST_POST", DAILY_FIRST_POST_POINTS, key, { workoutId: workout._id })) {
+      awards.push({ reason: "DAILY_FIRST_POST", amount: DAILY_FIRST_POST_POINTS });
     }
   }
 
@@ -193,22 +223,25 @@ export async function awardPointsForWorkout(
     }
   }
 
-  // 3. Pace band — once per day (the uniqueKey embeds the day, so the first eligible run
-  //    of the day takes it and later runs no-op).
+  // 3. Pace bonus — sub-5:00/km, 5:00-6:00, or 6:00-7:00; slower than 7:00/km pays nothing.
+  //    Once per day (the uniqueKey embeds the day, so the first eligible run of the day
+  //    takes it and later runs no-op).
   if (pace != null && workout.distanceKm >= PACE_MIN_DISTANCE_KM) {
-    const paceBand = PACE_BANDS.find((b) => pace < b.maxPace) ?? PACE_BANDS[PACE_BANDS.length - 1];
-    const key = `pace:${String(userId)}:${dayKey(workout.workoutDate)}`;
-    if (await award(userId, "PACE_BAND", paceBand.points, key, { workoutId: workout._id })) {
-      awards.push({ reason: "PACE_BAND", amount: paceBand.points });
+    const paceBand = PACE_BANDS.find((b) => pace < b.maxPace);
+    if (paceBand) {
+      const key = `pace:${String(userId)}:${dayKey(workout.workoutDate)}`;
+      if (await award(userId, paceBand.reason, paceBand.points, key, { workoutId: workout._id })) {
+        awards.push({ reason: paceBand.reason, amount: paceBand.points });
+      }
     }
   }
 
-  // 4. Per-km bonus — every kilometer of a qualifying run pays out, on top of the band/PB/
+  // 4. Distance bonus — every kilometer of a qualifying run pays out, on top of the band/PB/
   //    pace rewards above (still inside the same DAILY_SCORING_RUN_CAP gate this whole
   //    function opened with, so it can't be farmed with many tiny runs in one day).
-  const kmBonus = Math.round(workout.distanceKm * PER_KM_POINTS);
-  if (kmBonus > 0 && (await award(userId, "PER_KM_BONUS", kmBonus, `wk:${wk}:PER_KM_BONUS`, { workoutId: workout._id }))) {
-    awards.push({ reason: "PER_KM_BONUS", amount: kmBonus });
+  const kmBonus = Math.round(workout.distanceKm * DISTANCE_BONUS_POINTS_PER_KM);
+  if (kmBonus > 0 && (await award(userId, "DISTANCE_BONUS", kmBonus, `wk:${wk}:DISTANCE_BONUS`, { workoutId: workout._id }))) {
+    awards.push({ reason: "DISTANCE_BONUS", amount: kmBonus });
   }
 
   return awards;
@@ -216,6 +249,14 @@ export async function awardPointsForWorkout(
 
 /** Human labels for toasts/inbox — kept next to the rules so they move together. */
 export const POINT_REASON_LABELS: Record<PointReason, string> = {
+  BASE_ACTIVITY: "Logged a run",
+  DISTANCE_BONUS: "Distance bonus",
+  PACE_BONUS_FAST: "Pace bonus (sub-5:00/km)",
+  PACE_BONUS_MID: "Pace bonus (5:00-6:00/km)",
+  PACE_BONUS_SLOW: "Pace bonus (6:00-7:00/km)",
+  DAILY_FIRST_POST: "First run of the day",
+  STREAK_7: "7-day streak",
+  STREAK_30: "30-day streak",
   THRESHOLD_5K: "5K run",
   THRESHOLD_10K: "10K run",
   THRESHOLD_15K: "15K run",
@@ -225,27 +266,42 @@ export const POINT_REASON_LABELS: Record<PointReason, string> = {
   PB_5K: "New 5K personal best",
   PB_10K: "New 10K personal best",
   PB_LONGEST: "Longest run ever",
-  PACE_BAND: "Pace bonus",
-  DAILY_ACTIVITY: "Showed up today",
-  PER_KM_BONUS: "Distance bonus",
-  TERRITORY_CLAIMED: "New territory claimed",
+  DIET_CLEAN: "Clean diet log",
+  DIET_NEUTRAL: "Diet log",
+  TERRITORY_CREATED: "New territory claimed",
   TERRITORY_VALUE_GROWTH: "Territory grew",
+  TERRITORY_HOLD_WEEKLY: "Held territory this week",
+  TERRITORY_LEADERBOARD_1: "#1 on a territory's leaderboard",
+  TERRITORY_LEADERBOARD_2: "#2 on a territory's leaderboard",
+  TERRITORY_LEADERBOARD_3: "#3 on a territory's leaderboard",
+  ATTACK_WIN: "Attack won",
+  WAR_WIN: "War won",
+  DEFEND_WIN: "Defended successfully",
+  ATTACK_LOSS: "Attack failed",
+  TERRITORY_LOST: "Lost territory",
   REFUSAL_BETTER: "Territory split (stronger run)",
   REFUSAL_WORSE: "Territory split (weaker run)",
-  OWNERSHIP_DIVIDED: "Territory divided",
+  OWNERSHIP_DIVIDED_2: "Territory divided",
+  OWNERSHIP_DIVIDED_3: "Territory divided 3 ways",
   DUEL_DOUBLE_FORFEIT: "Duel no-show",
   ASYNC_DOUBLE_FORFEIT: "Challenge expired unanswered",
   BATTLE_WIN: "Battle won",
   BATTLE_STAT_PENALTY: "Weaker battle stats",
-  LEADERBOARD_RANK_UP: "Climbed the leaderboard",
+  RANK_IMPROVEMENT_SMALL: "Climbed the leaderboard",
+  RANK_IMPROVEMENT_MID: "Climbed the leaderboard",
+  RANK_IMPROVEMENT_LARGE: "Climbed the leaderboard",
+  RANK_1_WEEKLY: "#1 on the weekly leaderboard",
+  RANK_2_WEEKLY: "#2 on the weekly leaderboard",
+  RANK_3_WEEKLY: "#3 on the weekly leaderboard",
 };
 
 /**
  * Rank-improvement bonus: compares each user's current position on the all-time Points
  * leaderboard against their last-seen position (User.lastKnownRank) and pays out for any
- * improvement, then updates the snapshot. Never penalizes a drop — only climbing pays.
- * Not wired to a scheduler yet; call from a cron route or manually, same pattern as
- * lib/battles.ts's sweepBattles and lib/strava.ts's repairMissingStravaPosts.
+ * improvement (tiered by how many places climbed), plus a one-time-per-week milestone bonus
+ * for reaching the top 3 overall. Never penalizes a drop — only climbing pays. Then updates
+ * the snapshot. Not wired to a scheduler yet; call from a cron route or manually, same
+ * pattern as lib/battles.ts's sweepBattles and lib/strava.ts's repairMissingStravaPosts.
  */
 export async function checkAndAwardRankImprovements(limit = 200): Promise<number> {
   const ranked = await User.find({ points: { $gt: 0 } })
@@ -261,15 +317,56 @@ export async function checkAndAwardRankImprovements(limit = 200): Promise<number
 
     if (user.lastKnownRank != null && currentRank < user.lastKnownRank) {
       const placesClimbed = user.lastKnownRank - currentRank;
-      const bonus = Math.min(placesClimbed * RANK_UP_POINTS_PER_PLACE, RANK_UP_MAX_POINTS_PER_SWEEP);
-      // Once per day, not per sweep run — a sweep retried (or scheduled hourly) the same day
-      // must not double-award the same climb. A later, further climb the same day still pays
-      // (the key includes currentRank, so a new personal-best position gets its own row).
-      const key = `rank:${String(user._id)}:${dayKey(new Date())}:${currentRank}`;
-      if (await award(user._id, "LEADERBOARD_RANK_UP", bonus, key)) awarded++;
+      const band = RANK_IMPROVEMENT_BANDS.find((b) => placesClimbed >= b.minPlaces);
+      if (band) {
+        // Once per day, not per sweep run — a sweep retried (or scheduled hourly) the same
+        // day must not double-award the same climb. A later, further climb the same day
+        // still pays (the key includes currentRank, so a new PB position gets its own row).
+        const key = `rank:${String(user._id)}:${dayKey(new Date())}:${currentRank}`;
+        if (await award(user._id, band.reason, band.points, key)) awarded++;
+      }
+    }
+
+    if (currentRank <= 3) {
+      const milestone = RANK_MILESTONE_POINTS[currentRank as 1 | 2 | 3];
+      // Once per week per rank — reaching #1 and holding it doesn't re-pay every sweep.
+      const key = `rank-milestone:${String(user._id)}:${weekKey()}:${currentRank}`;
+      if (await award(user._id, milestone.reason, milestone.points, key)) awarded++;
     }
 
     await User.updateOne({ _id: user._id }, { lastKnownRank: currentRank });
+  }
+
+  return awarded;
+}
+
+/**
+ * Weekly territory sweep: pays every current territory owner a hold bonus, plus a bigger
+ * bonus to the owners of the top-3 territories on the map's fame leaderboard (the same
+ * fameScore ranking behind getTerritoryFameLeaderboard — "how alive is this land" is the
+ * only real per-territory ranking this data model has; there's no per-runner-per-territory
+ * leaderboard to rank, so this doesn't fabricate one). Idempotent per territory per week —
+ * not wired to a scheduler yet, same pattern as checkAndAwardRankImprovements.
+ */
+export async function checkAndAwardWeeklyTerritoryBonuses(): Promise<number> {
+  const week = weekKey();
+  const territories = await Territory.find({}).select("_id ownerId fameScore").sort({ fameScore: -1 }).lean();
+
+  let awarded = 0;
+  for (let i = 0; i < territories.length; i++) {
+    const t = territories[i] as { _id: unknown; ownerId: unknown };
+    if (!t.ownerId) continue;
+
+    const holdKey = `territory-hold:${String(t._id)}:${week}`;
+    if (await award(t.ownerId, "TERRITORY_HOLD_WEEKLY", TERRITORY_HOLD_WEEKLY_POINTS, holdKey, { territoryId: t._id })) {
+      awarded++;
+    }
+
+    if (i < 3) {
+      const bonus = TERRITORY_LEADERBOARD_BONUS[(i + 1) as 1 | 2 | 3];
+      const rankKey = `territory-rank:${String(t._id)}:${week}:${i + 1}`;
+      if (await award(t.ownerId, bonus.reason, bonus.points, rankKey, { territoryId: t._id })) awarded++;
+    }
   }
 
   return awarded;

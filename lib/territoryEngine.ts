@@ -139,6 +139,8 @@ export type ClaimedTerritorySummary = {
 export type TerritoryRunResult = {
   claimed: ClaimedTerritorySummary | null;
   opportunities: AttackOpportunity[];
+  /** True when this was a GPS-verified run that only missed territory play by distance. */
+  belowClaimThreshold?: boolean;
 };
 
 type StoredTerritory = {
@@ -170,7 +172,8 @@ export async function processRunForTerritory(
   { notifyOpportunities = false }: { notifyOpportunities?: boolean } = {},
 ): Promise<TerritoryRunResult> {
   const empty: TerritoryRunResult = { claimed: null, opportunities: [] };
-  if (!isTerritoryEligibleRun(workout) || workout.distanceKm < MIN_CLAIM_RUN_KM) return empty;
+  if (!isTerritoryEligibleRun(workout)) return empty;
+  if (workout.distanceKm < MIN_CLAIM_RUN_KM) return { ...empty, belowClaimThreshold: true };
 
   const route = workout.route!.coordinates;
   const built = buildTerritoryPolygon(route);
@@ -284,7 +287,7 @@ export async function processRunForTerritory(
 
     claimed = { territoryId: String(doc._id), name, areaSqM: remainder.areaSqM, valuePoints };
 
-    await award(user._id, "TERRITORY_CLAIMED", TERRITORY_CLAIMED_POINTS, `wk:${workout._id}:TERRITORY_CLAIMED`, {
+    await award(user._id, "TERRITORY_CREATED", TERRITORY_CLAIMED_POINTS, `wk:${workout._id}:TERRITORY_CREATED`, {
       territoryId: doc._id,
       workoutId: workout._id,
     });

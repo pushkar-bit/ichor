@@ -48,7 +48,14 @@ const REFUSAL_WORSE_LOSS = -75;
 const DUEL_DOUBLE_FORFEIT_LOSS = -50;
 const ASYNC_FORFEIT_ATTACKER_LOSS = -50;
 const ASYNC_FORFEIT_DEFENDER_LOSS = -25;
-const BATTLE_WIN_POINTS = 100;
+/** Async-challenge win, attacker's side. See points.md. */
+const ATTACK_WIN_POINTS = 200;
+/** Scheduled-duel win, either side. See points.md. */
+const WAR_WIN_POINTS = 300;
+/** Async-challenge win, defender's side (successfully repelling the attack). See points.md. */
+const DEFEND_WIN_POINTS = 150;
+/** The defender's penalty for losing a territory outright (as opposed to a partial split). */
+const TERRITORY_LOST_PENALTY = -25;
 const STAT_PENALTY_LOSS = -25;
 
 const SHIELD_HOURS = 72;
@@ -388,7 +395,10 @@ export async function resolveRefusal(
         // attacker — a bigger split costs more, not just a flat fee. See points.md.
         const dividedPenalty = -Math.round(attackerValue * OWNERSHIP_DIVIDED_PENALTY_RATE);
         if (dividedPenalty < 0) {
-          await award(battle.defenderId, "OWNERSHIP_DIVIDED", dividedPenalty, `battle:${battle._id}:OWNERSHIP_DIVIDED`, {
+          // Only a 2-way split (defender keeps a piece, attacker takes the rest) is possible
+          // under the current split mechanic — there's no 3+-owner territory model yet, so
+          // OWNERSHIP_DIVIDED_3 is defined for a future multi-owner feature but never fires.
+          await award(battle.defenderId, "OWNERSHIP_DIVIDED_2", dividedPenalty, `battle:${battle._id}:OWNERSHIP_DIVIDED`, {
             battleId: battle._id,
             territoryId: territory._id,
           });
@@ -523,10 +533,19 @@ export async function resolveAsync(battleId: unknown): Promise<boolean> {
       await territory.save();
       await seizeAttackersNewClaim(battle, battle.defenderId);
     }
-    await award(winnerId, "BATTLE_WIN", BATTLE_WIN_POINTS, `battle:${battle._id}:WIN`, {
-      battleId: battle._id,
-      territoryId: battle.territoryId,
-    });
+    await award(
+      winnerId,
+      attackerWins ? "ATTACK_WIN" : "DEFEND_WIN",
+      attackerWins ? ATTACK_WIN_POINTS : DEFEND_WIN_POINTS,
+      `battle:${battle._id}:WIN`,
+      { battleId: battle._id, territoryId: battle.territoryId },
+    );
+    if (attackerWins) {
+      await award(loserId, "TERRITORY_LOST", TERRITORY_LOST_PENALTY, `battle:${battle._id}:TERRITORY_LOST`, {
+        battleId: battle._id,
+        territoryId: battle.territoryId,
+      });
+    }
     await recordWinLoss(winnerId, loserId);
   } else if (battle.attackerEntry || battle.defenderEntry) {
     const attackerWins = Boolean(battle.attackerEntry);
@@ -542,10 +561,19 @@ export async function resolveAsync(battleId: unknown): Promise<boolean> {
       await territory.save();
       await seizeAttackersNewClaim(battle, battle.defenderId);
     }
-    await award(winnerId, "BATTLE_WIN", BATTLE_WIN_POINTS, `battle:${battle._id}:WIN`, {
-      battleId: battle._id,
-      territoryId: battle.territoryId,
-    });
+    await award(
+      winnerId,
+      attackerWins ? "ATTACK_WIN" : "DEFEND_WIN",
+      attackerWins ? ATTACK_WIN_POINTS : DEFEND_WIN_POINTS,
+      `battle:${battle._id}:WIN`,
+      { battleId: battle._id, territoryId: battle.territoryId },
+    );
+    if (attackerWins) {
+      await award(loserId, "TERRITORY_LOST", TERRITORY_LOST_PENALTY, `battle:${battle._id}:TERRITORY_LOST`, {
+        battleId: battle._id,
+        territoryId: battle.territoryId,
+      });
+    }
     await recordWinLoss(winnerId, loserId);
   } else {
     // Nobody ran: no transfer, both bleed points (the attacker more — they started it).
@@ -606,10 +634,16 @@ export async function resolveDuel(battleId: unknown): Promise<boolean> {
       await territory.save();
       await seizeAttackersNewClaim(battle, battle.defenderId);
     }
-    await award(winnerId, "BATTLE_WIN", BATTLE_WIN_POINTS, `battle:${battle._id}:WIN`, {
+    await award(winnerId, "WAR_WIN", WAR_WIN_POINTS, `battle:${battle._id}:WIN`, {
       battleId: battle._id,
       territoryId: battle.territoryId,
     });
+    if (attackerWins) {
+      await award(loserId, "TERRITORY_LOST", TERRITORY_LOST_PENALTY, `battle:${battle._id}:TERRITORY_LOST`, {
+        battleId: battle._id,
+        territoryId: battle.territoryId,
+      });
+    }
     await recordWinLoss(winnerId, loserId);
 
     // The duel's extra twist: the ORIGINAL runs (attack run vs claim run) are compared on
@@ -637,10 +671,16 @@ export async function resolveDuel(battleId: unknown): Promise<boolean> {
       await territory.save();
       await seizeAttackersNewClaim(battle, battle.defenderId);
     }
-    await award(winnerId, "BATTLE_WIN", BATTLE_WIN_POINTS, `battle:${battle._id}:WIN`, {
+    await award(winnerId, "WAR_WIN", WAR_WIN_POINTS, `battle:${battle._id}:WIN`, {
       battleId: battle._id,
       territoryId: battle.territoryId,
     });
+    if (attackerWins) {
+      await award(loserId, "TERRITORY_LOST", TERRITORY_LOST_PENALTY, `battle:${battle._id}:TERRITORY_LOST`, {
+        battleId: battle._id,
+        territoryId: battle.territoryId,
+      });
+    }
     await recordWinLoss(winnerId, loserId);
   } else {
     battle.resolution = "DOUBLE_FORFEIT";
