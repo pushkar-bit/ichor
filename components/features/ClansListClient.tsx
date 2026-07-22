@@ -15,6 +15,7 @@ type ClanRow = {
   memberCount: number;
   score: number;
   zonesHeld?: number;
+  totalKm?: number;
 };
 
 export function ClansListClient({ myClanId, initialClans }: { myClanId: string | null; initialClans?: ClanRow[] }) {
@@ -45,7 +46,7 @@ export function ClansListClient({ myClanId, initialClans }: { myClanId: string |
       <div className="flex items-center justify-between mb-5">
         <h1 className="font-display italic font-bold text-3xl">Clans</h1>
         {myClanId ? (
-          <Link href={`/clans/${myClanId}`} className="text-sm font-semibold bg-white/10 px-3.5 py-2 rounded-full">
+          <Link href="/empire" className="text-sm font-semibold bg-white/10 px-3.5 py-2 rounded-full">
             My Clan
           </Link>
         ) : (
@@ -96,10 +97,11 @@ export function ClansListClient({ myClanId, initialClans }: { myClanId: string |
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-sm truncate">{clan.name}</span>
                   <span className="text-[10px] font-bold text-white/40 bg-white/5 px-1.5 py-0.5 rounded">{clan.tag}</span>
-                  {clan.zonesHeld !== undefined && (
+                  {clan.zonesHeld !== undefined && clan.totalKm !== undefined && (
                     <LevelBadge
-                      tier={clanLevel({ zonesHeld: clan.zonesHeld, memberCount: clan.memberCount })}
-                      kind="clan"
+                      tier={clanLevel({ totalKm: clan.totalKm, territoriesHeld: clan.zonesHeld })}
+                      isOwnedByClan
+                      clanColor={clan.color}
                       size={20}
                     />
                   )}

@@ -95,6 +95,18 @@ body {
   animation: shimmer 1.6s infinite linear;
 }
 
+/* Level-10-tier badges (LevelBadge, territory/clan) — a subtle pulse for the top tier only. */
+@keyframes ichor-badge-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+.ichor-badge-pulse {
+  animation: ichor-badge-pulse 2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ichor-badge-pulse { animation: none; }
+}
+
 /* Territories-only map — dark tactical grid standing in for street tiles. */
 .territory-grid-bg {
   background-color: var(--ichor-midnight);

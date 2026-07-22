@@ -1,8 +1,13 @@
 import { Clan, ClanMember } from "@/models/Clan";
 import { Territory } from "@/models/Territory";
+import { FameCredit } from "@/models/FameCredit";
+import { Workout } from "@/models/Workout";
+import { Post } from "@/models/Post";
+import { DietCard } from "@/models/DietCard";
 import "@/models/User"; // registers the User model before ClanMember/Territory populate() calls below
 import { computeAllWeeklyScores, computeUserWeeklyScore } from "./scoring";
 import { DISTANCE_BONUS_POINTS_PER_KM } from "./points";
+import { startOfWeek, endOfWeek } from "./week";
 
 export async function getClanList() {
   const clans = await Clan.find({}).lean();
@@ -17,9 +22,11 @@ export async function getClanList() {
         .reduce((s, r) => s + r.score.finalScore, 0);
       // Territory has no clanId field — a clan's land is the union of its members' owned
       // territories, joined through ownerId.
-      const zonesHeld = memberIds.length
-        ? await Territory.countDocuments({ ownerId: { $in: memberIds } })
-        : 0;
+      const memberTerritories = memberIds.length
+        ? await Territory.find({ ownerId: { $in: memberIds } }).select("totalDistanceKm").lean()
+        : [];
+      const zonesHeld = memberTerritories.length;
+      const totalKm = memberTerritories.reduce((s: number, t: any) => s + (t.totalDistanceKm ?? 0), 0);
       return {
         id: String(clan._id),
         name: clan.name,
@@ -28,6 +35,7 @@ export async function getClanList() {
         memberCount: members.length,
         score: combined + zonesHeld * 200,
         zonesHeld,
+        totalKm: Math.round(totalKm * 100) / 100,
       };
     }),
   );
@@ -46,26 +54,73 @@ export async function getClanEmpire(clanId: string, viewerId?: string) {
   if (!clan) return null;
 
   const members = await ClanMember.find({ clanId }).populate("userId").sort({ role: 1, joinedAt: 1 }).lean();
+  const memberIds = members.map((m: any) => String(m.userId._id));
+
+  const territories = memberIds.length
+    ? await Territory.find({ ownerId: { $in: memberIds } })
+        .select("name color geometry centroid bbox areaSqM valuePoints fameScore totalVisits totalDistanceKm shieldUntil createdAt ownerId")
+        .populate("ownerId", "name avatarUrl")
+        .lean()
+    : [];
+  const territoryIds = territories.map((t: any) => t._id);
+
+  const weekStart = startOfWeek(new Date());
+  const weekEnd = endOfWeek(new Date());
+
+  // Km run ON THE CLAN'S LAND this week, per member — joined through FameCredit (the same
+  // idempotency ledger that gates territory fame/value-growth credit), not just "any run."
+  const weekCredits = territoryIds.length
+    ? await FameCredit.find({ territoryId: { $in: territoryIds }, createdAt: { $gte: weekStart, $lt: weekEnd } })
+        .select("workoutId userId")
+        .lean()
+    : [];
+  const workoutIds = [...new Set(weekCredits.map((c: any) => String(c.workoutId)))];
+  const workoutKm = new Map(
+    (workoutIds.length ? await Workout.find({ _id: { $in: workoutIds } }).select("distanceKm").lean() : []).map(
+      (w: any) => [String(w._id), w.distanceKm as number],
+    ),
+  );
+  const weeklyKmByMember = new Map<string, number>();
+  for (const c of weekCredits as any[]) {
+    const uid = String(c.userId);
+    const km = workoutKm.get(String(c.workoutId)) ?? 0;
+    weeklyKmByMember.set(uid, (weeklyKmByMember.get(uid) ?? 0) + km);
+  }
+
+  // Who's logged a CLEAN diet card this week, for the diet-pact card's check/gray avatars.
+  const weekPosts = memberIds.length
+    ? await Post.find({ userId: { $in: memberIds }, createdAt: { $gte: weekStart, $lt: weekEnd } }).select("_id userId").lean()
+    : [];
+  const postOwner = new Map(weekPosts.map((p: any) => [String(p._id), String(p.userId)]));
+  const weekPostIds = weekPosts.map((p: any) => p._id);
+  const cleanCards = weekPostIds.length
+    ? await DietCard.find({ postId: { $in: weekPostIds }, classification: "CLEAN" }).select("postId").lean()
+    : [];
+  const cleanThisWeek = new Set(cleanCards.map((c: any) => postOwner.get(String(c.postId))).filter(Boolean));
+
+  const territoriesOwnedByMember = new Map<string, number>();
+  for (const t of territories as any[]) {
+    const oid = t.ownerId ? String(t.ownerId._id ?? t.ownerId) : null;
+    if (oid) territoriesOwnedByMember.set(oid, (territoriesOwnedByMember.get(oid) ?? 0) + 1);
+  }
+
   const memberRows = await Promise.all(
     members.map(async (m: any) => {
-      const score = await computeUserWeeklyScore(String(m.userId._id));
+      const uid = String(m.userId._id);
+      const score = await computeUserWeeklyScore(uid);
       return {
-        userId: String(m.userId._id),
+        userId: uid,
         name: m.userId.name as string,
         avatarUrl: m.userId.avatarUrl as string | null,
         role: m.role as string,
         weeklyScore: score.finalScore,
+        weeklyKmOnClanLand: Math.round((weeklyKmByMember.get(uid) ?? 0) * 100) / 100,
+        territoriesOwned: territoriesOwnedByMember.get(uid) ?? 0,
+        dietCleanThisWeek: cleanThisWeek.has(uid),
       };
     }),
   );
-
-  const memberIds = members.map((m: any) => String(m.userId._id));
-  const territories = memberIds.length
-    ? await Territory.find({ ownerId: { $in: memberIds } })
-        .select("name color geometry centroid bbox areaSqM valuePoints fameScore totalDistanceKm shieldUntil createdAt ownerId")
-        .populate("ownerId", "name avatarUrl")
-        .lean()
-    : [];
+  memberRows.sort((a, b) => b.weeklyKmOnClanLand - a.weeklyKmOnClanLand);
 
   const collectiveKm = territories.reduce((s: number, t: any) => s + (t.totalDistanceKm ?? 0), 0);
 
@@ -74,6 +129,8 @@ export async function getClanEmpire(clanId: string, viewerId?: string) {
     name: (clan as any).name as string,
     tag: (clan as any).tag as string,
     color: (clan as any).color as string,
+    dietPactDescription: (clan as any).dietPactDescription as string,
+    battlesWon: (clan as any).battlesWon as number,
     members: memberRows,
     territories: territories.map((t: any) => ({
       id: String(t._id),
@@ -85,6 +142,7 @@ export async function getClanEmpire(clanId: string, viewerId?: string) {
       areaSqM: t.areaSqM,
       valuePoints: t.valuePoints,
       fameScore: t.fameScore,
+      totalVisits: t.totalVisits ?? 0,
       totalDistanceKm: t.totalDistanceKm,
       shieldUntil: t.shieldUntil,
       createdAt: t.createdAt,
@@ -92,6 +150,11 @@ export async function getClanEmpire(clanId: string, viewerId?: string) {
       ownerName: t.ownerId?.name ?? null,
       ownerAvatarUrl: t.ownerId?.avatarUrl ?? null,
       isMine: viewerId ? String(t.ownerId?._id ?? t.ownerId) === viewerId : false,
+      // Every territory here already belongs to a member of THIS clan.
+      ownerClanId: String((clan as any)._id),
+      ownerClanName: (clan as any).name as string,
+      ownerClanTag: (clan as any).tag as string,
+      ownerClanColor: (clan as any).color as string,
     })),
     zonesHeld: territories.length,
     collectiveKm: Math.round(collectiveKm * 100) / 100,

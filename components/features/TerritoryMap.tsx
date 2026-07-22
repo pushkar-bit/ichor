@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { X, Crown, Flame, EyeOff, Footprints, Map, Grid3x3, Shield, ShieldAlert, Swords, Timer, Hourglass, Info, HelpCircle } from "lucide-react";
+import { X, Crown, Flame, EyeOff, Footprints, Map, Grid3x3, Shield, ShieldAlert, Swords, Timer, Hourglass, Info, HelpCircle, Users } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { LevelBadge } from "@/components/ui/LevelBadge";
 import { territoryLevel } from "@/lib/leveling";
@@ -18,6 +18,10 @@ const TerritoryOnlyMap = dynamic(
   () => import("./TerritoryOnlyMap").then((mod) => mod.TerritoryOnlyMap),
   { ssr: false, loading: () => <div className="w-full h-full skeleton" /> },
 );
+const ClanMap = dynamic(() => import("./ClanMap").then((mod) => mod.ClanMap), {
+  ssr: false,
+  loading: () => <div className="w-full h-full skeleton" />,
+});
 
 type PolygonGeometry =
   | { type: "Polygon"; coordinates: [number, number][][] }
@@ -33,6 +37,7 @@ export type MapTerritory = {
   areaSqM: number;
   valuePoints: number;
   fameScore: number;
+  totalVisits: number;
   totalDistanceKm: number;
   shieldUntil: string | null;
   createdAt: string;
@@ -40,6 +45,10 @@ export type MapTerritory = {
   ownerName: string | null;
   ownerAvatarUrl: string | null;
   isMine: boolean;
+  ownerClanId: string | null;
+  ownerClanName: string | null;
+  ownerClanTag: string | null;
+  ownerClanColor: string | null;
   claimStats?: {
     distanceKm: number;
     avgPaceMinPerKm: number | null;
@@ -75,7 +84,7 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
   const [responding, setResponding] = useState<BattleListItem | null>(null);
   const [revealing, setRevealing] = useState<BattleListItem | null>(null);
   const [showRules, setShowRules] = useState(false);
-  const [view, setView] = useState<"street" | "territories">("street");
+  const [view, setView] = useState<"street" | "territories" | "clan">("street");
 
   const myLand = territories.filter((t) => t.isMine);
   const myLandValue = myLand.reduce((s, t) => s + t.valuePoints, 0);
@@ -176,7 +185,15 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
               view === "territories" ? "bg-momentum text-midnight" : "text-white/50"
             }`}
           >
-            <Grid3x3 className="w-3.5 h-3.5" /> Territories
+            <Grid3x3 className="w-3.5 h-3.5" /> Territory
+          </button>
+          <button
+            onClick={() => setView("clan")}
+            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${
+              view === "clan" ? "bg-momentum text-midnight" : "text-white/50"
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" /> Clan
           </button>
         </div>
       )}
@@ -194,8 +211,10 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
         <div className="relative w-full aspect-square rounded-2xl border border-border-ichor bg-midnight-raised overflow-hidden">
           {view === "street" ? (
             <LeafletTerritoryMap territories={territories} onTerritoryClick={setSelected} underAttackIds={underAttackIds} />
-          ) : (
+          ) : view === "territories" ? (
             <TerritoryOnlyMap territories={territories} onTerritoryClick={setSelected} underAttackIds={underAttackIds} />
+          ) : (
+            <ClanMap territories={territories} onTerritoryClick={setSelected} />
           )}
         </div>
       )}
@@ -304,7 +323,7 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
           >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <LevelBadge tier={territoryLevel(selected)} size={26} />
+                <LevelBadge tier={territoryLevel(selected)} name={selected.name} isOwnedByUser={selected.isMine} size={26} />
                 <h2 className="font-semibold text-lg">{selected.name}</h2>
               </div>
               <button onClick={() => setSelected(null)}>

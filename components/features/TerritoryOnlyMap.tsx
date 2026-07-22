@@ -20,7 +20,7 @@ export function TerritoryOnlyMap({
   territories: MapTerritory[];
   onTerritoryClick: (territory: MapTerritory) => void;
   underAttackIds?: Set<string>;
-  colorFor?: (territory: MapTerritory) => string;
+  colorFor?: (territory: MapTerritory) => string | null | undefined;
 }) {
   let bounds: LatLngBoundsExpression | null = null;
   if (territories.length > 0) {

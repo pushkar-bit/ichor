@@ -1,45 +1,67 @@
-import { Flame, Shield } from "lucide-react";
-import type { LevelTier } from "@/lib/leveling";
+import { Swords, Shield, Flame, Crown, Sparkles } from "lucide-react";
+import type { LevelTier, BadgeIcon } from "@/lib/leveling";
+
+const ICONS: Record<BadgeIcon, typeof Swords> = {
+  swords: Swords,
+  shield: Shield,
+  flame: Flame,
+  crown: Crown,
+  burst: Sparkles,
+};
 
 /**
- * Original ICHOR "leveling up" badge for territories/clans on the map and in lists — a dark
- * ringed disc colored by tier with a numeral chip, not any Clash-of-Clans-style artwork.
+ * Original ICHOR "leveling up" badge for territories/clans — a dark ringed disc, sized and
+ * colored by tier, with a numeral chip. Not any Clash-of-Clans-style artwork: original SVG
+ * glyphs (lucide-react) on flat ICHOR brand colors, no borrowed base-building iconography.
  */
 export function LevelBadge({
   tier,
-  kind = "territory",
-  size = 28,
+  name,
+  isOwnedByUser = false,
+  isOwnedByClan = false,
+  clanColor,
+  size,
 }: {
   tier: LevelTier;
-  kind?: "territory" | "clan";
+  /** Territory or clan name, shown in the hover tooltip. */
+  name?: string;
+  /** Your own territory always rings lavender, regardless of level. */
+  isOwnedByUser?: boolean;
+  /** A clan-owned territory rings the clan's color instead of the tier color. */
+  isOwnedByClan?: boolean;
+  clanColor?: string;
+  /** Override the tier's own size (e.g. for a compact list row). */
   size?: number;
 }) {
-  const Icon = kind === "clan" ? Shield : Flame;
-  const chip = Math.max(Math.round(size * 0.48), 13);
+  const Icon = ICONS[tier.icon];
+  const px = size ?? tier.size;
+  const ringColor = isOwnedByUser ? "#AE93F4" : isOwnedByClan && clanColor ? clanColor : tier.ringColor;
+  const chip = Math.max(Math.round(px * 0.42), 13);
+  const title = name ? `${name} · ${tier.name} · Level ${tier.level}` : `${tier.name} · Level ${tier.level}`;
 
   return (
     <div
-      className="relative flex items-center justify-center rounded-full shrink-0"
+      className={`relative flex items-center justify-center rounded-full shrink-0 ${tier.pulse ? "ichor-badge-pulse" : ""}`}
       style={{
-        width: size,
-        height: size,
+        width: px,
+        height: px,
         backgroundColor: "#0a0a0a",
-        border: `2px solid ${tier.color}`,
-        boxShadow: `0 0 8px ${tier.color}55`,
+        border: `${tier.ringWidth}px solid ${ringColor}`,
+        boxShadow: tier.glow ? `0 0 ${tier.ringWidth * 2.5}px ${ringColor}88` : undefined,
       }}
-      title={`${tier.label} · Level ${tier.level}`}
+      title={title}
     >
-      <Icon width={size * 0.5} height={size * 0.5} color={tier.color} strokeWidth={2.5} />
+      <Icon width={px * 0.48} height={px * 0.48} color={ringColor} strokeWidth={2.5} />
       <span
         className="absolute flex items-center justify-center rounded-full font-bold leading-none"
         style={{
           width: chip,
           height: chip,
-          bottom: -chip * 0.25,
-          right: -chip * 0.25,
-          backgroundColor: tier.color,
+          bottom: -chip * 0.22,
+          right: -chip * 0.22,
+          backgroundColor: ringColor,
           color: "#0a0a0a",
-          fontSize: chip * 0.62,
+          fontSize: chip * 0.6,
           border: "1.5px solid #0a0a0a",
         }}
       >

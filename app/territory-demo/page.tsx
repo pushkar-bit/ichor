@@ -22,6 +22,7 @@ const TerritoryOnlyMap = dynamic(
   () => import("@/components/features/TerritoryOnlyMap").then((m) => m.TerritoryOnlyMap),
   { ssr: false },
 );
+const ClanMap = dynamic(() => import("@/components/features/ClanMap").then((m) => m.ClanMap), { ssr: false });
 const LeafletTerritoryMap = dynamic(
   () => import("@/components/features/LeafletTerritoryMap").then((m) => m.LeafletTerritoryMap),
   { ssr: false, loading: () => <div className="w-full h-full skeleton" /> },
@@ -64,6 +65,7 @@ function mapTerritory(over: Partial<MapTerritory> & Pick<MapTerritory, "id" | "n
     areaSqM: 180000,
     valuePoints: 1000,
     fameScore: 42,
+    totalVisits: 6,
     totalDistanceKm: 12.4,
     shieldUntil: null,
     createdAt: inHours(-100),
@@ -71,14 +73,48 @@ function mapTerritory(over: Partial<MapTerritory> & Pick<MapTerritory, "id" | "n
     ownerName: "Rival",
     ownerAvatarUrl: null,
     isMine: false,
+    ownerClanId: null,
+    ownerClanName: null,
+    ownerClanTag: null,
+    ownerClanColor: null,
     ...over,
   };
 }
 
 const DEMO_TERRITORIES: MapTerritory[] = [
-  mapTerritory({ id: "t-mine", name: "Your Ridge Loop", color: "#D7F24C", isMine: true, ownerName: "You", geometry: { type: "Polygon", coordinates: square(77.196, 28.611, 0.004) } }),
-  mapTerritory({ id: "t-rival", name: "Nehru Park", color: "#4CC9F0", geometry: { type: "Polygon", coordinates: square(77.201, 28.611, 0.004) } }),
-  mapTerritory({ id: "t-shield", name: "Lodhi Stretch", color: "#F72585", shieldUntil: inHours(20), geometry: { type: "Polygon", coordinates: square(77.196, 28.606, 0.004) } }),
+  mapTerritory({
+    id: "t-mine",
+    name: "Your Ridge Loop",
+    color: "#D7F24C",
+    isMine: true,
+    ownerName: "You",
+    ownerClanId: "c-iron",
+    ownerClanName: "Iron Lungs",
+    ownerClanTag: "IRON",
+    ownerClanColor: "#D7F24C",
+    geometry: { type: "Polygon", coordinates: square(77.196, 28.611, 0.004) },
+  }),
+  mapTerritory({
+    id: "t-rival",
+    name: "Nehru Park",
+    color: "#4CC9F0",
+    ownerClanId: "c-pace",
+    ownerClanName: "Pace Setters",
+    ownerClanTag: "PACE",
+    ownerClanColor: "#4CC9F0",
+    geometry: { type: "Polygon", coordinates: square(77.201, 28.611, 0.004) },
+  }),
+  mapTerritory({
+    id: "t-shield",
+    name: "Lodhi Stretch",
+    color: "#F72585",
+    shieldUntil: inHours(20),
+    ownerClanId: "c-pace",
+    ownerClanName: "Pace Setters",
+    ownerClanTag: "PACE",
+    ownerClanColor: "#4CC9F0",
+    geometry: { type: "Polygon", coordinates: square(77.196, 28.606, 0.004) },
+  }),
   mapTerritory({ id: "t-attack", name: "Canal Road", color: "#FF6B6B", geometry: { type: "Polygon", coordinates: square(77.201, 28.606, 0.004) } }),
 ];
 const UNDER_ATTACK = new Set(["t-attack"]);
@@ -156,6 +192,12 @@ export default function TerritoryDemoPage() {
       <h2 className="text-sm font-semibold text-white/60 mb-2">1b · Territories-only view</h2>
       <div className="relative w-full aspect-square max-w-md rounded-2xl border border-border-ichor bg-midnight-raised overflow-hidden mb-8">
         <TerritoryOnlyMap territories={DEMO_TERRITORIES} onTerritoryClick={() => {}} underAttackIds={UNDER_ATTACK} />
+      </div>
+
+      {/* 1c — Clan territories view */}
+      <h2 className="text-sm font-semibold text-white/60 mb-2">1c · Clan territories view</h2>
+      <div className="relative w-full aspect-square max-w-md rounded-2xl border border-border-ichor bg-midnight-raised overflow-hidden mb-8">
+        <ClanMap territories={DEMO_TERRITORIES} onTerritoryClick={() => {}} />
       </div>
 
       {/* 2 — Live countdowns */}
