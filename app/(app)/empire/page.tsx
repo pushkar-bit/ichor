@@ -16,7 +16,7 @@ function NoClanState() {
         Build your empire. Bring your crew together — every territory your members hold becomes one collective
         empire, mapped as a single landmass, earning points together for every kilometer run on it.
       </p>
-      <CreateClanForm redirectTo={() => "/empire"} />
+      <CreateClanForm redirectTo="/empire" />
     </div>
   );
 }
