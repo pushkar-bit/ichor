@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   X, Crown, Flame, EyeOff, Footprints, Map, Grid3x3, Shield, ShieldAlert, Swords, Timer, Hourglass, Info,
-  HelpCircle, Crosshair, TrendingDown, Zap,
+  HelpCircle, Crosshair, TrendingDown, Zap, Users,
 } from "lucide-react";
 import { DistrictPanel } from "./DistrictPanel";
 import { Avatar } from "@/components/ui/Avatar";
@@ -22,6 +22,10 @@ const TerritoryOnlyMap = dynamic(
   () => import("./TerritoryOnlyMap").then((mod) => mod.TerritoryOnlyMap),
   { ssr: false, loading: () => <div className="w-full h-full skeleton" /> },
 );
+const ClanMap = dynamic(() => import("./ClanMap").then((mod) => mod.ClanMap), {
+  ssr: false,
+  loading: () => <div className="w-full h-full skeleton" />,
+});
 
 type PolygonGeometry =
   | { type: "Polygon"; coordinates: [number, number][][] }
@@ -37,6 +41,7 @@ export type MapTerritory = {
   areaSqM: number;
   valuePoints: number;
   fameScore: number;
+  totalVisits: number;
   totalDistanceKm: number;
   shieldUntil: string | null;
   createdAt: string;
@@ -50,6 +55,11 @@ export type MapTerritory = {
   ownerName: string | null;
   ownerAvatarUrl: string | null;
   isMine: boolean;
+  ownerClanId: string | null;
+  ownerClanName: string | null;
+  ownerClanTag: string | null;
+  ownerClanColor: string | null;
+  ownerClanMemberCount: number | null;
   claimStats?: {
     distanceKm: number;
     avgPaceMinPerKm: number | null;
@@ -85,7 +95,6 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
   const [responding, setResponding] = useState<BattleListItem | null>(null);
   const [revealing, setRevealing] = useState<BattleListItem | null>(null);
   const [showRules, setShowRules] = useState(false);
-  const [view, setView] = useState<"street" | "territories">("street");
   const [objective, setObjective] = useState<{ id: string; label: string; kind: string } | null>(null);
   const [settingObjective, setSettingObjective] = useState(false);
 
@@ -234,27 +243,6 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
         </div>
       )}
 
-      {territories.length > 0 && !loading && (
-        <div className="inline-flex rounded-full border border-border-ichor p-0.5 bg-midnight-raised mb-3">
-          <button
-            onClick={() => setView("street")}
-            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${
-              view === "street" ? "bg-momentum text-midnight" : "text-white/50"
-            }`}
-          >
-            <Map className="w-3.5 h-3.5" /> Street
-          </button>
-          <button
-            onClick={() => setView("territories")}
-            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${
-              view === "territories" ? "bg-momentum text-midnight" : "text-white/50"
-            }`}
-          >
-            <Grid3x3 className="w-3.5 h-3.5" /> Territories
-          </button>
-        </div>
-      )}
-
       {loading ? (
         <div className="aspect-square w-full rounded-2xl skeleton" />
       ) : territories.length === 0 ? (
@@ -265,13 +253,35 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
           </p>
         </div>
       ) : (
-        <div className="relative w-full aspect-square rounded-2xl border border-border-ichor bg-midnight-raised overflow-hidden">
-          {view === "street" ? (
+        <>
+          <div className="flex items-center gap-1.5 mb-2">
+            <Map className="w-3.5 h-3.5 text-white/40" />
+            <h2 className="font-semibold text-sm text-white/60">Street map</h2>
+          </div>
+          <div className="relative w-full aspect-square rounded-2xl border border-border-ichor bg-midnight-raised overflow-hidden">
             <LeafletTerritoryMap territories={territories} onTerritoryClick={setSelected} underAttackIds={underAttackIds} />
-          ) : (
+          </div>
+
+          <div className="flex items-center gap-1.5 mt-6 mb-2">
+            <Grid3x3 className="w-3.5 h-3.5 text-white/40" />
+            <h2 className="font-semibold text-sm text-white/60">Territory map</h2>
+          </div>
+          <p className="text-xs text-white/40 mb-2">
+            Just the territories — every zone shown as its level badge, no street clutter.
+          </p>
+          <div className="relative w-full aspect-square rounded-2xl border border-border-ichor bg-midnight-raised overflow-hidden">
             <TerritoryOnlyMap territories={territories} onTerritoryClick={setSelected} underAttackIds={underAttackIds} />
-          )}
-        </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 mt-6 mb-2">
+            <Users className="w-3.5 h-3.5 text-white/40" />
+            <h2 className="font-semibold text-sm text-white/60">Clan map</h2>
+          </div>
+          <p className="text-xs text-white/40 mb-2">Every territory colored by its owner&apos;s clan.</p>
+          <div className="relative w-full aspect-square rounded-2xl border border-border-ichor bg-midnight-raised overflow-hidden">
+            <ClanMap territories={territories} onTerritoryClick={setSelected} />
+          </div>
+        </>
       )}
 
       {territories.length > 0 && (
@@ -388,7 +398,7 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
           >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <LevelBadge tier={territoryLevel(selected)} size={26} />
+                <LevelBadge tier={territoryLevel(selected)} name={selected.name} isOwnedByUser={selected.isMine} size={26} />
                 <h2 className="font-semibold text-lg">{selected.name}</h2>
               </div>
               <button onClick={() => setSelected(null)}>

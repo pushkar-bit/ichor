@@ -10,7 +10,7 @@ import { findActiveGroupRunForUser, attachRunToGroupRun } from "@/lib/groupRun";
 import { recordWorkoutStats } from "@/lib/recordWorkout";
 import { getPersonalBests } from "@/lib/personalBests";
 import type { TerritoryRunResult } from "@/lib/territoryEngine";
-import type { PointsAward } from "@/lib/points";
+import { award, DIET_CLEAN_POINTS, DIET_NEUTRAL_POINTS, type PointsAward } from "@/lib/points";
 
 export async function POST(req: NextRequest) {
   await connectDB();
@@ -110,6 +110,15 @@ export async function POST(req: NextRequest) {
             });
             me.integrityPoints += result.integrityBonus;
             await me.save();
+            if (result.classification === "CLEAN") {
+              await award(me._id, "DIET_CLEAN", DIET_CLEAN_POINTS, `wk:${workout._id}:DIET_CLEAN`, {
+                workoutId: workout._id,
+              });
+            } else if (result.classification === "NEUTRAL") {
+              await award(me._id, "DIET_NEUTRAL", DIET_NEUTRAL_POINTS, `wk:${workout._id}:DIET_NEUTRAL`, {
+                workoutId: workout._id,
+              });
+            }
             return card;
           })()
         : Promise.resolve(null),

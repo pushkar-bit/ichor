@@ -2,6 +2,14 @@ import { Schema, model, models } from "mongoose";
 
 export const POINT_REASONS = [
   // Per-run awards (lib/points.ts)
+  "BASE_ACTIVITY",
+  "DISTANCE_BONUS",
+  "PACE_BONUS_FAST",
+  "PACE_BONUS_MID",
+  "PACE_BONUS_SLOW",
+  "DAILY_FIRST_POST",
+  "STREAK_7",
+  "STREAK_30",
   "THRESHOLD_5K",
   "THRESHOLD_10K",
   "THRESHOLD_15K",
@@ -11,11 +19,11 @@ export const POINT_REASONS = [
   "PB_5K",
   "PB_10K",
   "PB_LONGEST",
-  "PACE_BAND",
-  "DAILY_ACTIVITY",
-  "PER_KM_BONUS",
+  // Diet card awards (app/api/posts/route.ts)
+  "DIET_CLEAN",
+  "DIET_NEUTRAL",
   // Territory deltas (lib/territoryEngine.ts)
-  "TERRITORY_CLAIMED",
+  "TERRITORY_CREATED",
   "TERRITORY_VALUE_GROWTH",
   // Upkeep deltas (lib/territoryUpkeep.ts)
   "TERRITORY_DECAY", // negative: land you stopped running lost value
@@ -25,16 +33,31 @@ export const POINT_REASONS = [
   "RAID_REPELLED",
   // Land war (lib/landWar.ts)
   "LAND_WAR_BONUS",
+  "TERRITORY_HOLD_WEEKLY",
+  "TERRITORY_LEADERBOARD_1",
+  "TERRITORY_LEADERBOARD_2",
+  "TERRITORY_LEADERBOARD_3",
   // Battle deltas (lib/battles.ts)
+  "ATTACK_WIN",
+  "WAR_WIN",
+  "DEFEND_WIN",
+  "ATTACK_LOSS",
+  "TERRITORY_LOST",
   "REFUSAL_BETTER",
   "REFUSAL_WORSE",
-  "OWNERSHIP_DIVIDED",
+  "OWNERSHIP_DIVIDED_2",
+  "OWNERSHIP_DIVIDED_3",
   "DUEL_DOUBLE_FORFEIT",
   "ASYNC_DOUBLE_FORFEIT",
   "BATTLE_WIN",
   "BATTLE_STAT_PENALTY",
-  // Leaderboard deltas (lib/points.ts sweep)
-  "LEADERBOARD_RANK_UP",
+  // Leaderboard deltas (lib/points.ts sweeps)
+  "RANK_IMPROVEMENT_SMALL",
+  "RANK_IMPROVEMENT_MID",
+  "RANK_IMPROVEMENT_LARGE",
+  "RANK_1_WEEKLY",
+  "RANK_2_WEEKLY",
+  "RANK_3_WEEKLY",
 ] as const;
 
 export type PointReason = (typeof POINT_REASONS)[number];

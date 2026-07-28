@@ -714,7 +714,7 @@ TAB 1 — Screenshot:
   Text: "Drop your Strava, RunKeeper, or Garmin screenshot" in Inter Light.
   On file drop/click: show preview thumbnail + progress bar.
   POST to /api/workouts/ocr (FormData).
-  Loading state: spinner with "Dhruv is reading your workout..." in Inter Light #FDA2DE.
+  Loading state: spinner with "Vikas Yadav is reading your workout..." in Inter Light #FDA2DE.
   On success: show editable form (fields from extracted, all editable):
     Activity Type (Select), Distance (km), Duration (h:mm:ss), Avg Pace, Calories, Date.
   Screenshot thumbnail shown below form: "📷 Saved as proof."
@@ -873,7 +873,7 @@ Sections (dark cards, lavender section borders):
 5. DIET HONESTY CARD (collapsible — open by default with pulsing "Try this!" indicator on first visit):
    Header: "🍽 Fuel Log — earn Integrity Points"
    Textarea: "What did you eat today? Describe honestly."
-   "Analyze with Dhruv" button → POST /api/coach/diet-analyze (loading: "Dhruv is thinking...")
+   "Analyze with Vikas Yadav" button → POST /api/coach/diet-analyze (loading: "Vikas Yadav is thinking...")
    On result: show DietHonestyCard component with classification, calorie balance bar, tip.
    User can "Use this" (attaches to post) or "Skip".
 
@@ -906,7 +906,7 @@ DietHonestyCard (components/features/DietHonestyCard.tsx):
   Left: badge pill (CLEAN=green, CHEAT=#FDA2DE, NEUTRAL=gray) + emoji + label.
   Center: calorie balance bar — left side pink (in), right side lavender (out), center = balance line.
   Text: "−320 kcal deficit 🔥" (green) or "+180 kcal surplus 🧁" (amber).
-  Right: Dhruv's tip in Inter Light italic, 12px.
+  Right: Vikas Yadav's tip in Inter Light italic, 12px.
 ```
 
 ---
@@ -1380,7 +1380,7 @@ Clan chat: Socket.io ephemeral messages, rendered as simple bubble chat, not per
 ## PROMPT 09 — Gemini AI Features
 
 ```
-Implement all four Gemini AI features: screenshot OCR, diet analyzer, AI coach Dhruv, training plan.
+Implement all four Gemini AI features: screenshot OCR, diet analyzer, AI coach Vikas Yadav, training plan.
 Rate-limit all /api/coach/* at 10 req/min per user (free tier: 15 RPM total, protect quota).
 All Gemini prompts are final-quality — no placeholders.
 
@@ -1469,7 +1469,7 @@ POST /api/coach/chat:
   2. Fetch: currentStreak, weeklyScore, territoriesCount, battlesWon, battlesLost, college
   3. Build system prompt (inject all values):
   
-  "You are Dhruv, the AI performance coach for ICHOR — a campus social fitness battleground
+  "You are Vikas Yadav, the AI performance coach for ICHOR — a campus social fitness battleground
   where college athletes compete for territory, leaderboard dominance, and glory.
   You are intense, data-driven, and motivating. You speak like a performance coach, not a
   wellness app. Keep responses mobile-optimized: maximum 3 short paragraphs. No markdown
@@ -1498,12 +1498,12 @@ apps/web/app/(app)/coach/page.tsx:
 Two-panel layout on desktop (sidebar: history + chips | main: chat).
 Single column on mobile (chips as horizontal scroll above input).
 
-Dhruv header: abstract lavender SVG geometry shape (not human face), "DHRUV" in Neighbour font.
+Vikas Yadav header: abstract lavender SVG geometry shape (not human face), "DHRUV" in Neighbour font.
 
 Chat UI:
   Messages in useState (not persisted — session only). Send full history with each call.
   User messages: right-aligned, rounded-[16px_16px_4px_16px], #AE93F4 bg, dark text, Inter Bold.
-  Dhruv messages: left-aligned, rounded-[16px_16px_16px_4px], #1A1619 bg, white text, Inter 300.
+  Vikas Yadav messages: left-aligned, rounded-[16px_16px_16px_4px], #1A1619 bg, white text, Inter 300.
   Typing indicator: 3 dots pulsing, #AE93F4, absolutely positioned below last message.
   Input: full-width dark input, send button #AE93F4 →, keyboard shortcut Enter to send.
 

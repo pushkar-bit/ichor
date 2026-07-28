@@ -8,7 +8,6 @@ import type { MapTerritory } from "./TerritoryMap";
 import { territoryLevel } from "@/lib/leveling";
 import { LevelBadge } from "@/components/ui/LevelBadge";
 
-export const LEVEL_BADGE_SIZE = 24;
 /** Permanent name labels only on land big enough to hold them without cluttering the map. */
 const PERMANENT_LABEL_MIN_SQM = 60_000;
 /** Fame score at which land is drawn at full intensity — a worn path should look worn. */
@@ -23,14 +22,22 @@ function fameIntensity(fameScore: number): number {
   return Math.min(1, Math.max(0, fameScore / FAME_SATURATION));
 }
 
-function levelBadgeIcon(territory: MapTerritory) {
+function levelBadgeIcon(territory: MapTerritory, ringColor?: string) {
   const tier = territoryLevel(territory);
-  const html = renderToStaticMarkup(<LevelBadge tier={tier} kind="territory" size={LEVEL_BADGE_SIZE} />);
+  const html = renderToStaticMarkup(
+    <LevelBadge
+      tier={tier}
+      name={territory.name}
+      isOwnedByUser={!ringColor && territory.isMine}
+      isOwnedByClan={Boolean(ringColor)}
+      clanColor={ringColor}
+    />,
+  );
   return divIcon({
     html,
     className: "", // strip Leaflet's default white-square divIcon styling
-    iconSize: [LEVEL_BADGE_SIZE, LEVEL_BADGE_SIZE],
-    iconAnchor: [LEVEL_BADGE_SIZE / 2, LEVEL_BADGE_SIZE / 2],
+    iconSize: [tier.size, tier.size],
+    iconAnchor: [tier.size / 2, tier.size / 2],
   });
 }
 
@@ -51,9 +58,9 @@ export function toLeafletPositions(
 }
 
 /**
- * The territory polygons + name tooltips + level badges, shared by both the street-view map
- * (LeafletTerritoryMap, OSM tiles underneath) and the territories-only map (TerritoryOnlyMap,
- * dark tactical-grid background) so the two views never drift out of sync.
+ * The territory polygons + name tooltips + level badges, shared by every map view (street,
+ * territories-only, clan) so they never drift out of sync — only the color source and
+ * background differ per view.
  */
 export function TerritoryLayer({
   territories,
@@ -64,8 +71,9 @@ export function TerritoryLayer({
   territories: MapTerritory[];
   onTerritoryClick: (territory: MapTerritory) => void;
   underAttackIds?: Set<string>;
-  /** Override the polygon's fill/stroke color (e.g. to color by clan instead of by owner). */
-  colorFor?: (territory: MapTerritory) => string;
+  /** Override both the polygon fill/stroke AND the badge ring (e.g. color by clan instead
+   * of by owner/tier). Returning null/undefined falls back to the default for that territory. */
+  colorFor?: (territory: MapTerritory) => string | null | undefined;
 }) {
   return (
     <>
@@ -73,7 +81,10 @@ export function TerritoryLayer({
         const shielded = t.shieldUntil && new Date(t.shieldUntil) > new Date();
         const underAttack = underAttackIds?.has(t.id) ?? false;
         const fading = t.decayState === "FADING";
-        const fill = colorFor ? colorFor(t) : t.color;
+        // colorFor may opt a given territory out (e.g. the clan view has no color for land
+        // held by a non-member) — fall back to the territory's own color rather than passing
+        // an undefined fill through.
+        const fill = colorFor?.(t) ?? t.color;
         // Fame drives how solid the land looks; fading land is washed out and dashed on top,
         // so the map answers "where does everyone run?" and "what's slipping?" at a glance.
         const fame = fameIntensity(t.fameScore);
@@ -95,7 +106,7 @@ export function TerritoryLayer({
           >
             <Tooltip
               direction="top"
-              offset={[0, -LEVEL_BADGE_SIZE / 2]}
+              offset={[0, -territoryLevel(t).size / 2]}
               permanent={t.areaSqM >= PERMANENT_LABEL_MIN_SQM}
               opacity={0.95}
               className="territory-label"
@@ -109,7 +120,7 @@ export function TerritoryLayer({
         <Marker
           key={`level-${t.id}`}
           position={[t.centroid.lat, t.centroid.lng]}
-          icon={levelBadgeIcon(t)}
+          icon={levelBadgeIcon(t, colorFor?.(t) ?? undefined)}
           interactive={false}
         />
       ))}

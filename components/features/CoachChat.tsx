@@ -57,8 +57,12 @@ export function CoachChat() {
           <CoachAvatarMark className="w-full h-full" />
         </div>
         <div>
-          <h1 className="font-semibold">Coach Vikas Yadav</h1>
-          <p className="text-xs text-white/40">Your AI performance coach</p>
+          <h1 className="font-display italic font-bold tracking-wide" style={{ color: "#AE93F4" }}>
+            VIKAS YADAV
+          </h1>
+          <p className="text-xs font-light" style={{ color: "#6B6570" }}>
+            Your Performance Coach
+          </p>
         </div>
       </div>
 
