@@ -51,6 +51,15 @@ export const TERRITORY_VALUE_GROWTH_POINTS_PER_KM = 5;
 export const OWNERSHIP_DIVIDED_PENALTY_RATE = 0.05;
 export const RANK_UP_POINTS_PER_PLACE = 50;
 export const RANK_UP_MAX_POINTS_PER_SWEEP = 500;
+/** Upkeep: what a milestone stretch of unbroken ownership pays. See lib/territoryUpkeep.ts. */
+export const HOLD_STREAK_POINTS_PER_MILESTONE: Record<number, number> = {
+  7: 50,
+  30: 250,
+  100: 1000,
+};
+/** Raid outcomes — deliberately smaller stakes than a formal battle. See lib/raids.ts. */
+export const RAID_WIN_POINTS = 40;
+export const RAID_REPELLED_POINTS = 15;
 
 /** At most this many runs per day can earn per-run points (anti-grind). */
 const DAILY_SCORING_RUN_CAP = 2;
@@ -230,6 +239,11 @@ export const POINT_REASON_LABELS: Record<PointReason, string> = {
   PER_KM_BONUS: "Distance bonus",
   TERRITORY_CLAIMED: "New territory claimed",
   TERRITORY_VALUE_GROWTH: "Territory grew",
+  TERRITORY_DECAY: "Territory went quiet",
+  HOLD_STREAK_BONUS: "Held your ground",
+  RAID_WIN: "Raid succeeded",
+  RAID_REPELLED: "Raid repelled",
+  LAND_WAR_BONUS: "Land war",
   REFUSAL_BETTER: "Territory split (stronger run)",
   REFUSAL_WORSE: "Territory split (weaker run)",
   OWNERSHIP_DIVIDED: "Territory divided",

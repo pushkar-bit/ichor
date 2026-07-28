@@ -7,7 +7,13 @@ import { cn } from "@/lib/utils";
 
 const PRESET_COLORS = ["#AE93F4", "#FDA2DE", "#D7F24C", "#FF5E1A", "#8a72d9", "#f5f3f6", "#6b6568", "#231F20"];
 
-export function CreateClanForm({ redirectTo }: { redirectTo?: (clanId: string) => string } = {}) {
+/**
+ * `redirectTo` is a plain path, not a builder function: this component is a Client Component
+ * rendered from Server Components (/clans/create and /empire), and functions can't cross the
+ * RSC boundary — passing one throws "Functions cannot be passed directly to Client
+ * Components" and 500s the whole page. Omit it to land on the new clan's own page.
+ */
+export function CreateClanForm({ redirectTo }: { redirectTo?: string } = {}) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [tag, setTag] = useState("");
@@ -33,7 +39,7 @@ export function CreateClanForm({ redirectTo }: { redirectTo?: (clanId: string) =
         setError(data.error);
         return;
       }
-      router.push(redirectTo ? redirectTo(data.id) : `/clans/${data.id}`);
+      router.push(redirectTo ?? `/clans/${data.id}`);
       router.refresh();
     } finally {
       setSubmitting(false);

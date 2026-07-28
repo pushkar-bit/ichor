@@ -3,13 +3,13 @@ import { connectDB } from "@/lib/mongodb";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { User } from "@/models/User";
 import { Post } from "@/models/Post";
-import { Territory } from "@/models/Territory";
 import { Clan } from "@/models/Clan";
 import { Follow } from "@/models/Follow";
 import "@/models/Workout";
 import { dayKey } from "@/lib/week";
 import { getPersonalBests } from "@/lib/personalBests";
 import { computeUserWeeklyScore } from "@/lib/scoring";
+import { getProfileTerritory } from "@/lib/territorySummary";
 import { ProfileView } from "@/components/features/ProfileView";
 
 export default async function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {
@@ -22,8 +22,8 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   const user = await User.findOne({ username }).lean();
   if (!user) notFound();
 
-  const [zonesHeld, clan, posts, isFollowing, myWeeklyScore, theirWeeklyScore] = await Promise.all([
-    Territory.countDocuments({ ownerId: (user as any)._id }),
+  const [territory, clan, posts, isFollowing, myWeeklyScore, theirWeeklyScore] = await Promise.all([
+    getProfileTerritory(String((user as any)._id)),
     (user as any).clanId ? Clan.findById((user as any).clanId).lean() : null,
     // photoUrls sliced to just the first photo (the grid never shows more) and workoutId
     // trimmed to the fields actually used — the full documents include a large base64
@@ -75,7 +75,11 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       isOwnProfile={false}
       isFollowing={Boolean(isFollowing)}
       clan={clan}
-      zonesHeld={zonesHeld}
+      zonesHeld={territory.zonesHeld}
+      territoryShapes={territory.shapes}
+      territoryValuePoints={territory.valuePoints}
+      longestHoldDays={territory.longestHoldDays}
+      topDistrict={territory.topDistrict}
       posts={posts}
       heatmapData={heatmapData}
       personalBests={personalBests}

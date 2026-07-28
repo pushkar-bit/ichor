@@ -7,6 +7,9 @@ import type { ActivityCardData } from "./ActivityCard";
 import { CreatorFeedGroup } from "./CreatorFeedGroup";
 import { ForYouRail, Lead as TopInsight } from "./ForYouRail";
 import { StravaConnectNudge } from "./StravaConnectNudge";
+import { TerritoryStrip } from "./TerritoryStrip";
+import { NotificationsWidget } from "./NotificationsWidget";
+import type { TerritorySummary } from "@/lib/territorySummary";
 import { LeaderboardWidget, type LeaderboardWidgetRow } from "./LeaderboardWidget";
 import { FollowWidget } from "./FollowWidget";
 import type { FollowSuggestion } from "@/lib/followSuggestions";
@@ -29,6 +32,7 @@ type FeedClientProps = {
   initialLeaderboardData?: { rows: LeaderboardWidgetRow[]; me: string | null };
   initialSuggestions?: FollowSuggestion[];
   forYou?: ForYouCard[];
+  territory?: TerritorySummary | null;
   stravaConnected?: boolean;
 };
 
@@ -39,6 +43,7 @@ export function FeedClient({
   initialLeaderboardData,
   initialSuggestions,
   forYou = [],
+  territory = null,
   stravaConnected = false,
 }: FeedClientProps) {
   const [tab, setTab] = useState("all");
@@ -138,6 +143,10 @@ export function FeedClient({
             tab is active, unlike the per-tab dynamic insight banner below. */}
         <StravaConnectNudge connected={stravaConnected} />
 
+        {/* Unconditional, above everything, on every tab: the state of your ground. Nothing
+            else in the app guarantees territory is visible when the user opens it. */}
+        {territory && <TerritoryStrip summary={territory} />}
+
         <div className="flex items-center gap-1.5 mb-6 overflow-x-auto no-scrollbar">
           {TABS.map((t) => (
             <button
@@ -220,6 +229,10 @@ export function FeedClient({
       {/* Leaderboard rail — right-hand sticky rail on wide screens, stacked below the feed
           on narrow ones. Always rendered (never `hidden`) so it can't just fail to appear. */}
       <aside className="max-w-xl w-full mx-auto mt-8 lg:mt-32 lg:w-80 lg:max-w-none lg:shrink-0 lg:sticky lg:top-8">
+        {/* Notifications lead the rail: the last 3 are always visible here, no click
+            required — NotificationBell (top-right of this card) is still there for the full
+            history and "mark all read", but seeing what just happened shouldn't need it. */}
+        <NotificationsWidget />
         <LeaderboardWidget initialData={initialLeaderboardData} />
         <FollowWidget initialSuggestions={initialSuggestions} />
       </aside>

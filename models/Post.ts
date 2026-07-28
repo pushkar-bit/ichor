@@ -31,6 +31,56 @@ const PostSchema = new Schema(
     /** Flat bonus added on top (200 for a won attack, 300 for a won war). */
     battleBonusPoints: { type: Number, default: 0 },
     groupRunId: { type: Schema.Types.ObjectId, ref: "GroupRun", default: null },
+    /**
+     * What this run did to the map, snapshotted at ingest so the feed can render land without
+     * touching turf or the Territory collection per card. `claimed.geometry` is a display-only
+     * simplification (see simplifyForDisplay in lib/geo.ts) — never the source of truth for
+     * any gameplay math, which always re-reads the Territory doc.
+     *
+     * Fog of war is preserved: this records WHAT ground moved and WHOSE it was, never the
+     * claim run's stats behind rival land.
+     */
+    territorySnapshot: {
+      type: new Schema(
+        {
+          claimed: {
+            type: new Schema(
+              {
+                territoryId: { type: Schema.Types.ObjectId, ref: "Territory" },
+                name: String,
+                areaSqM: Number,
+                valuePoints: Number,
+                color: String,
+                geometry: Schema.Types.Mixed,
+                bbox: [Number],
+              },
+              { _id: false },
+            ),
+            default: null,
+          },
+          /** Rival (and own) land this run meaningfully crossed — the "you ran through X" line. */
+          crossed: {
+            type: [
+              new Schema(
+                {
+                  territoryId: { type: Schema.Types.ObjectId, ref: "Territory" },
+                  name: String,
+                  ownerId: { type: Schema.Types.ObjectId, ref: "User" },
+                  ownerName: String,
+                  coveragePct: Number,
+                  isRival: Boolean,
+                },
+                { _id: false },
+              ),
+            ],
+            default: [],
+          },
+          district: { type: String, default: null },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
   },
   { timestamps: true },
 );

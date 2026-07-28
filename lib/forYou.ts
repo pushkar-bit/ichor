@@ -3,7 +3,12 @@ import { Battle } from "@/models/Battle";
 import { CoachMessage } from "@/models/CoachMessage";
 import { ClanMember, Clan } from "@/models/Clan";
 import { Notification } from "@/models/Notification";
+import { Territory } from "@/models/Territory";
 import { getPersonalBests } from "./personalBests";
+import { decayStateFor, holdDays, quietDays, DORMANT_DAYS } from "./territoryUpkeep";
+import { getActiveObjective } from "./objectives";
+import { getTopDistrictForUser } from "./districts";
+import { getLandWarWindow } from "./landWar";
 
 /**
  * The "For You" intelligence layer that fronts the feed. Everything here is computed
@@ -52,6 +57,13 @@ export type ForYouCard = CardBase &
     | { kind: "skip_risk"; dayName: string; missRatePct: number }
     | { kind: "race_predictor"; predictions: { label: string; time: string }[]; basedOnKm: number }
     | { kind: "goal_projection"; targetKm: number; etaDate: string }
+    // Territory upkeep / local standing / staked intent — see lib/territoryUpkeep.ts,
+    // lib/districts.ts, lib/objectives.ts, lib/landWar.ts.
+    | { kind: "territory_fading"; territoryName: string; quietDays: number; daysUntilDormant: number; count: number }
+    | { kind: "hold_streak"; territoryName: string; days: number; nextMilestone: number | null }
+    | { kind: "objective"; label: string; objectiveKind: "CLAIM" | "RAID" | "DEFEND"; expiresAt: string }
+    | { kind: "district_standing"; district: string; sharePct: number; rank: number }
+    | { kind: "land_war"; isOpen: boolean; at: string }
   );
 
 type ViewerLike = {
@@ -139,7 +151,7 @@ export async function buildForYou(
 
   // One workout read covers heatmap / weekly / kudos / comeback / on-this-day / PBs.
   const since = new Date(now.getTime() - 370 * DAY_MS);
-  const [workouts, battles, coach, opportunities, cardsFromClan, percentileCard] = await Promise.all([
+  const [workouts, battles, coach, opportunities, cardsFromClan, percentileCard, territoryCards] = await Promise.all([
     Workout.find({ userId: viewer._id, workoutDate: { $gte: since } })
       .sort({ workoutDate: -1 })
       .select("activityType distanceKm avgPaceMinPerKm caloriesBurned workoutDate durationSeconds")
@@ -163,12 +175,14 @@ export async function buildForYou(
       .lean(),
     buildClanPulse(viewer, now),
     buildPercentileCard(viewerId, now),
+    buildTerritoryCards(viewerId, now),
   ]);
 
   const cards: (ForYouCard | null)[] = [];
 
   cards.push(...buildBattleCards(battles as any[], viewerId, now));
   cards.push(...buildOpportunityCards(opportunities as any[]));
+  cards.push(...territoryCards);
   cards.push(buildKudosCard(workouts, now));
   cards.push(buildStreakCard(viewer, workouts, now));
   cards.push(buildWeeklyCard(workouts, now));
@@ -261,6 +275,108 @@ function buildOpportunityCards(notes: any[]): (ForYouCard | null)[] {
     });
   }
   return out;
+}
+
+/**
+ * Everything about the viewer's own ground: what's fading, what they've held longest, the
+ * target they staked, where they stand locally, and whether a Land War is on.
+ *
+ * Priorities are set so loss beats gain — a fading territory outranks a hold-streak brag,
+ * because "you're about to lose something" reliably moves people and "you're doing well"
+ * mostly doesn't. Nothing here outranks a live battle needing an answer.
+ */
+async function buildTerritoryCards(viewerId: string, now: Date): Promise<ForYouCard[]> {
+  try {
+    const [owned, objective, topDistrict] = await Promise.all([
+      Territory.find({ ownerId: viewerId }).select("name lastActivityAt heldSince").lean() as unknown as Promise<
+        { _id: unknown; name: string; lastActivityAt: Date; heldSince: Date }[]
+      >,
+      getActiveObjective(viewerId),
+      getTopDistrictForUser(viewerId),
+    ]);
+
+    const out: ForYouCard[] = [];
+
+    // --- Fading land: the single most actionable territory signal there is. ---
+    const fading = owned
+      .filter((t) => decayStateFor(t.lastActivityAt, now) === "FADING")
+      .map((t) => ({ ...t, quiet: quietDays(t.lastActivityAt, now) }))
+      .sort((a, b) => b.quiet - a.quiet);
+    if (fading.length > 0) {
+      const worst = fading[0];
+      const daysLeft = Math.max(0, DORMANT_DAYS - worst.quiet);
+      out.push({
+        kind: "territory_fading",
+        id: id("fading", String(worst._id)),
+        // Climbs as the deadline closes — a month out it's ambient, a few days out it's urgent.
+        priority: daysLeft <= 5 ? 95 : daysLeft <= 14 ? 80 : 64,
+        territoryName: worst.name,
+        quietDays: worst.quiet,
+        daysUntilDormant: daysLeft,
+        count: fading.length,
+      });
+    }
+
+    // --- Hold streak: only once it's actually a streak worth naming. ---
+    const held = owned.map((t) => ({ ...t, days: holdDays(t.heldSince, now) })).sort((a, b) => b.days - a.days);
+    if (held.length > 0 && held[0].days >= 7) {
+      const best = held[0];
+      const nextMilestone = [30, 100].find((m) => m > best.days) ?? null;
+      out.push({
+        kind: "hold_streak",
+        id: id("hold", String(best._id)),
+        priority: best.days >= 30 ? 68 : 55,
+        territoryName: best.name,
+        days: best.days,
+        nextMilestone,
+      });
+    }
+
+    if (objective) {
+      out.push({
+        kind: "objective",
+        id: id("objective", objective.id),
+        // High: the user explicitly said this is what they're doing next. Reminding them is
+        // the whole point of letting them stake it.
+        priority: 87,
+        label: objective.label,
+        objectiveKind: objective.kind,
+        expiresAt: objective.expiresAt,
+      });
+    }
+
+    if (topDistrict) {
+      out.push({
+        kind: "district_standing",
+        id: id("district", topDistrict.district),
+        priority: topDistrict.rank === 1 ? 62 : 49,
+        district: topDistrict.district,
+        sharePct: topDistrict.sharePct,
+        rank: topDistrict.rank,
+      });
+    }
+
+    // --- Land War: live, or opening within the next couple of days. ---
+    const war = getLandWarWindow(now);
+    const hoursToOpen = war.nextStart ? (war.nextStart.getTime() - now.getTime()) / 3600e3 : Infinity;
+    if (war.isOpen) {
+      out.push({ kind: "land_war", id: id("war", "open"), priority: 76, isOpen: true, at: war.end.toISOString() });
+    } else if (hoursToOpen <= 48) {
+      out.push({
+        kind: "land_war",
+        id: id("war", "soon"),
+        priority: 45,
+        isOpen: false,
+        at: war.nextStart!.toISOString(),
+      });
+    }
+
+    return out;
+  } catch (err) {
+    // The rail is a briefing, not a source of truth — one failing builder must not blank it.
+    console.error("[forYou] territory cards failed:", (err as Error).message);
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------

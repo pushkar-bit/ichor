@@ -4,6 +4,7 @@ import { getFeedPosts } from "@/lib/feed";
 import { getLeaderboardRows } from "@/lib/leaderboard";
 import { getFollowSuggestions } from "@/lib/followSuggestions";
 import { buildForYou } from "@/lib/forYou";
+import { getTerritorySummary } from "@/lib/territorySummary";
 import { FeedClient } from "@/components/features/FeedClient";
 import type { ActivityCardData } from "@/components/features/ActivityCard";
 
@@ -12,10 +13,11 @@ export default async function FeedPage() {
   const me = await getOrCreateCurrentUser();
   if (!me) return null;
 
-  const [feed, leaderboard, suggestions] = await Promise.all([
+  const [feed, leaderboard, suggestions, territory] = await Promise.all([
     getFeedPosts(me, { filter: "all", cursor: null }),
     getLeaderboardRows("calories", "week", me),
     getFollowSuggestions(String(me._id), me.clanId, 15),
+    getTerritorySummary(String(me._id)),
   ]);
 
   // The For-You rail reuses the leaderboard we already fetched (for rank/rival cards) rather
@@ -33,6 +35,7 @@ export default async function FeedPage() {
       initialLeaderboardData={leaderboard ?? undefined}
       initialSuggestions={suggestions}
       forYou={forYou}
+      territory={territory}
       stravaConnected={Boolean(me.stravaAthleteId)}
     />
   );

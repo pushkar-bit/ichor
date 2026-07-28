@@ -364,6 +364,12 @@ export async function resolveRefusal(
           centroid: { type: "Point", coordinates: split.attackerPiece.centroid },
           areaSqM: split.attackerPiece.areaSqM,
           valuePoints: attackerValue,
+          peakValuePoints: attackerValue,
+          // The cut inherits its parent's place — it's the same ground, newly divided.
+          district: territory.district ?? null,
+          city: territory.city ?? null,
+          heldSince: new Date(),
+          lastActivityAt: new Date(),
           claimRunId: battle.attackRunId,
           claimStats: attackerData,
           parentTerritoryId: territory._id,
@@ -378,6 +384,10 @@ export async function resolveRefusal(
         territory.centroid = { type: "Point", coordinates: split.ownerPiece.centroid };
         territory.areaSqM = split.ownerPiece.areaSqM;
         territory.valuePoints = decayedTotal - attackerValue;
+        // The land is permanently smaller, so its ceiling drops with it — upkeep recovery
+        // must not refill a shrunken territory back to what the whole thing used to be worth.
+        territory.peakValuePoints = territory.valuePoints;
+        territory.lastActivityAt = new Date();
         territory.shieldUntil = shieldDate();
         await territory.save();
 
@@ -399,6 +409,10 @@ export async function resolveRefusal(
         territory.ownerId = battle.attackerId;
         territory.color = colorForUser(String(battle.attackerId));
         territory.valuePoints = decayedTotal;
+        territory.peakValuePoints = decayedTotal;
+        territory.heldSince = new Date();
+        territory.holdMilestoneDays = 0;
+        territory.lastActivityAt = new Date();
         territory.claimRunId = battle.attackRunId;
         territory.claimStats = attackerData;
         territory.shieldUntil = shieldDate();
@@ -448,6 +462,11 @@ export async function resolveRefusal(
 async function transferTerritory(territory: any, winnerId: unknown, winningRun: RunStats & { _id?: unknown }) {
   territory.ownerId = winnerId;
   territory.color = colorForUser(String(winnerId));
+  // A new holder starts a new hold streak, and taking land counts as activity on it — the
+  // upkeep sweep must not immediately fade ground that just changed hands.
+  territory.heldSince = new Date();
+  territory.holdMilestoneDays = 0;
+  territory.lastActivityAt = new Date();
   if (winningRun._id) {
     territory.claimRunId = winningRun._id;
     territory.claimStats = {
@@ -475,6 +494,9 @@ async function seizeAttackersNewClaim(battle: any, defenderId: unknown) {
 
   spoils.ownerId = defenderId;
   spoils.color = colorForUser(String(defenderId));
+  spoils.heldSince = new Date();
+  spoils.holdMilestoneDays = 0;
+  spoils.lastActivityAt = new Date();
   spoils.shieldUntil = shieldDate();
   await spoils.save();
 

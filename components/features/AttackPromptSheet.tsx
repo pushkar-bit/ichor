@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Swords, MapPin, Loader2, Timer, Footprints } from "lucide-react";
+import { X, Swords, MapPin, Loader2, Timer, Footprints, Zap } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 
 type TerritoryResult = {
@@ -14,6 +14,7 @@ type TerritoryResult = {
     ownerName: string | null;
     ownerAvatarUrl: string | null;
     coverage: number;
+    raidable: boolean;
   }[];
 };
 
@@ -26,6 +27,7 @@ export function AttackPromptSheet({ workoutId, onClose }: { workoutId: string; o
   const [loading, setLoading] = useState(true);
   const [metric, setMetric] = useState<"PACE" | "DISTANCE">("PACE");
   const [attacking, setAttacking] = useState<string | null>(null);
+  const [raiding, setRaiding] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,6 +58,38 @@ export function AttackPromptSheet({ workoutId, onClose }: { workoutId: string; o
       );
     } finally {
       setAttacking(null);
+    }
+  }
+
+  /**
+   * A raid resolves inside this request — no 48h wait, no scheduling. It takes only the strip
+   * the run covered, and only if the run out-paced the claim that made the land, which the
+   * raider can't see beforehand. See lib/raids.ts.
+   */
+  async function raid(territoryId: string) {
+    setRaiding(territoryId);
+    setError(null);
+    try {
+      const res = await fetch("/api/territories/raid", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId, territoryId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.suggestBattle ? `${data.error}` : data.error);
+        return;
+      }
+      setMessage(
+        data.result === "TAKEN"
+          ? `Raid landed — you carved ${Math.round(data.capturedAreaSqM / 1000)}k m² off ${data.territoryName}. +${data.pointsAwarded} points.`
+          : `Repelled. Your run didn't beat the pace that claimed ${data.territoryName} — no ground changed hands.`,
+      );
+      setResult((prev) =>
+        prev ? { ...prev, opportunities: prev.opportunities.filter((o) => o.territoryId !== territoryId) } : prev,
+      );
+    } finally {
+      setRaiding(null);
     }
   }
 
@@ -138,14 +172,36 @@ export function AttackPromptSheet({ workoutId, onClose }: { workoutId: string; o
                               </div>
                             </div>
                           </div>
-                          <button
-                            onClick={() => attack(o.territoryId)}
-                            disabled={attacking === o.territoryId}
-                            className="w-full inline-flex items-center justify-center gap-2 bg-ignite text-midnight text-sm font-semibold py-2 rounded-none disabled:opacity-50"
-                          >
-                            {attacking === o.territoryId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Swords className="w-4 h-4" />}
-                            Attack
-                          </button>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {/* Raid first: it's the faster, smaller-stakes option and the one
+                                most runs should reach for. */}
+                            <button
+                              onClick={() => raid(o.territoryId)}
+                              disabled={!o.raidable || raiding === o.territoryId || attacking === o.territoryId}
+                              title={
+                                o.raidable
+                                  ? "Settles now — takes only the strip you ran"
+                                  : "You covered too much of this land for a raid"
+                              }
+                              className="inline-flex items-center justify-center gap-1.5 bg-ignite text-midnight text-sm font-semibold py-2 rounded-none disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              {raiding === o.territoryId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                              Raid
+                            </button>
+                            <button
+                              onClick={() => attack(o.territoryId)}
+                              disabled={attacking === o.territoryId || raiding === o.territoryId}
+                              title="Formal battle — the owner gets 48h to answer"
+                              className="inline-flex items-center justify-center gap-1.5 border-2 border-border-ichor text-white/70 hover:text-white text-sm font-semibold py-2 rounded-none disabled:opacity-50"
+                            >
+                              {attacking === o.territoryId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Swords className="w-4 h-4" />}
+                              Attack
+                            </button>
+                          </div>
+                          <p className="mt-1.5 text-[11px] text-white/30 leading-snug">
+                            Raid settles now and takes the strip you ran. Attack takes the whole territory but the owner
+                            has 48h to answer.
+                          </p>
                         </div>
                       ))}
                     </div>

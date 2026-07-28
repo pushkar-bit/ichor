@@ -10,6 +10,9 @@
     "seed": "tsx --env-file=.env scripts/seed.ts",
     "strava:webhook": "tsx --env-file=.env scripts/stravaWebhook.ts",
     "backfill:territory": "tsx --env-file=.env scripts/backfillTerritoryFromStrava.ts",
+    "backfill:post-territory": "tsx --env-file=.env scripts/backfillPostTerritory.ts",
+    "backfill:districts": "tsx --env-file=.env scripts/backfillTerritoryDistricts.ts",
+    "migrate:upkeep": "tsx --env-file=.env scripts/migrateTerritoryUpkeep.ts",
     "repair:missing-posts": "tsx --env-file=.env scripts/repairMissingPosts.ts"
   },
   "dependencies": {

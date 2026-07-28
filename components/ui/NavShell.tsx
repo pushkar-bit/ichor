@@ -120,10 +120,10 @@ export function NavShell({
           {NAV_ITEMS.map((item) => renderNavItem(item))}
         </nav>
         <div className="mt-auto px-2 space-y-2 mb-4">
-          <div className="flex items-center gap-2 px-1">
-            <NotificationBell />
-            <span className="text-xs text-white/40">Notifications</span>
-          </div>
+          {/* No bell here anymore — on desktop, notifications live at the top of the feed's
+              right rail (NotificationsWidget), where the last 3 are always visible instead
+              of hidden behind a click. Mobile keeps its header bell below since that layout
+              has no equivalent rail. */}
           <Link href="/profile" className="flex items-center gap-2 rounded-none px-1 py-1 hover:bg-midnight-raised transition-colors">
             {user.avatarUrl && <Avatar src={user.avatarUrl} name={user.name} size={32} />}
             <div className="flex-1 min-w-0">

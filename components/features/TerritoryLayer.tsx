@@ -11,6 +11,17 @@ import { LevelBadge } from "@/components/ui/LevelBadge";
 export const LEVEL_BADGE_SIZE = 24;
 /** Permanent name labels only on land big enough to hold them without cluttering the map. */
 const PERMANENT_LABEL_MIN_SQM = 60_000;
+/** Fame score at which land is drawn at full intensity — a worn path should look worn. */
+const FAME_SATURATION = 400;
+
+/**
+ * Fame was previously computed carefully and then rendered as a digit in a side panel, which
+ * meant the map itself couldn't tell you which ground actually matters. Well-trodden land now
+ * reads brighter and heavier than land one person ran once.
+ */
+function fameIntensity(fameScore: number): number {
+  return Math.min(1, Math.max(0, fameScore / FAME_SATURATION));
+}
 
 function levelBadgeIcon(territory: MapTerritory) {
   const tier = territoryLevel(territory);
@@ -61,7 +72,12 @@ export function TerritoryLayer({
       {territories.map((t) => {
         const shielded = t.shieldUntil && new Date(t.shieldUntil) > new Date();
         const underAttack = underAttackIds?.has(t.id) ?? false;
+        const fading = t.decayState === "FADING";
         const fill = colorFor ? colorFor(t) : t.color;
+        // Fame drives how solid the land looks; fading land is washed out and dashed on top,
+        // so the map answers "where does everyone run?" and "what's slipping?" at a glance.
+        const fame = fameIntensity(t.fameScore);
+        const baseOpacity = (t.isMine ? 0.3 : 0.18) + fame * 0.3;
         return (
           <Polygon
             key={t.id}
@@ -69,10 +85,11 @@ export function TerritoryLayer({
             pathOptions={{
               // Under-attack land gets an ignite outline so contested ground reads at a glance.
               color: underAttack ? "#FF5E1A" : t.isMine ? "#FFFFFF" : fill,
-              weight: underAttack ? 4 : t.isMine ? 3 : 2,
+              weight: underAttack ? 4 : (t.isMine ? 2 : 1) + Math.round(fame * 2),
               fillColor: fill,
-              fillOpacity: t.isMine ? 0.45 : 0.3,
-              dashArray: underAttack ? "2 6" : shielded ? "6 4" : undefined,
+              fillOpacity: fading ? baseOpacity * 0.35 : baseOpacity,
+              opacity: fading ? 0.5 : 1,
+              dashArray: underAttack ? "2 6" : fading ? "3 5" : shielded ? "6 4" : undefined,
             }}
             eventHandlers={{ click: () => onTerritoryClick(t) }}
           >

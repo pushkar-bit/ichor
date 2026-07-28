@@ -5,6 +5,7 @@ import { Workout } from "@/models/Workout";
 import { Territory } from "@/models/Territory";
 import { Battle } from "@/models/Battle";
 import { isTerritoryEligibleRun, ATTACK_COVERAGE_THRESHOLD } from "@/lib/territoryEngine";
+import { RAID_MAX_COVERAGE } from "@/lib/raids";
 import { buildRunCorridor, coverageRatio, bboxesIntersect, type TerritoryGeometry, type Bbox } from "@/lib/geo";
 
 /**
@@ -58,6 +59,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       ownerName: t.ownerId?.name ?? null,
       ownerAvatarUrl: t.ownerId?.avatarUrl ?? null,
       coverage: Math.round(coverage * 100) / 100,
+      // A raid settles on the spot but only takes a strip — past RAID_MAX_COVERAGE the
+      // stakes are big enough that the owner deserves a say, so it's a battle only.
+      raidable: coverage <= RAID_MAX_COVERAGE,
     });
   }
 

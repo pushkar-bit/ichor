@@ -2,7 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { X, Crown, Flame, EyeOff, Footprints, Map, Grid3x3, Shield, ShieldAlert, Swords, Timer, Hourglass, Info, HelpCircle } from "lucide-react";
+import {
+  X, Crown, Flame, EyeOff, Footprints, Map, Grid3x3, Shield, ShieldAlert, Swords, Timer, Hourglass, Info,
+  HelpCircle, Crosshair, TrendingDown, Zap,
+} from "lucide-react";
+import { DistrictPanel } from "./DistrictPanel";
 import { Avatar } from "@/components/ui/Avatar";
 import { LevelBadge } from "@/components/ui/LevelBadge";
 import { territoryLevel } from "@/lib/leveling";
@@ -36,6 +40,12 @@ export type MapTerritory = {
   totalDistanceKm: number;
   shieldUntil: string | null;
   createdAt: string;
+  district?: string | null;
+  /** Upkeep state, derived server-side on every read — see lib/territoryUpkeep.ts. */
+  decayState?: "ACTIVE" | "FADING" | "DORMANT";
+  quietDays?: number;
+  holdDays?: number;
+  peakValuePoints?: number;
   ownerId: string | null;
   ownerName: string | null;
   ownerAvatarUrl: string | null;
@@ -76,6 +86,8 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
   const [revealing, setRevealing] = useState<BattleListItem | null>(null);
   const [showRules, setShowRules] = useState(false);
   const [view, setView] = useState<"street" | "territories">("street");
+  const [objective, setObjective] = useState<{ id: string; label: string; kind: string } | null>(null);
+  const [settingObjective, setSettingObjective] = useState(false);
 
   const myLand = territories.filter((t) => t.isMine);
   const myLandValue = myLand.reduce((s, t) => s + t.valuePoints, 0);
@@ -113,7 +125,11 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
   }, [battles]);
 
   async function refresh() {
-    const [terrRes, battlesRes] = await Promise.all([fetch("/api/territories"), fetch("/api/battles")]);
+    const [terrRes, battlesRes, objRes] = await Promise.all([
+      fetch("/api/territories"),
+      fetch("/api/battles"),
+      fetch("/api/territories/objective"),
+    ]);
     if (terrRes.ok) {
       const data = await terrRes.json();
       setTerritories(data.territories);
@@ -122,6 +138,36 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
     if (battlesRes.ok) {
       setBattles((await battlesRes.json()).battles);
     }
+    if (objRes.ok) {
+      setObjective((await objRes.json()).objective);
+    }
+  }
+
+  /** Stake (or restake) the land the runner is going after next. See lib/objectives.ts. */
+  async function stakeObjective(territory: MapTerritory) {
+    setSettingObjective(true);
+    try {
+      const res = await fetch("/api/territories/objective", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          territoryId: territory.id,
+          kind: territory.isMine ? "DEFEND" : "RAID",
+          label: territory.name,
+        }),
+      });
+      if (res.ok) {
+        setObjective((await res.json()).objective);
+        setSelected(null);
+      }
+    } finally {
+      setSettingObjective(false);
+    }
+  }
+
+  async function clearObjective() {
+    await fetch("/api/territories/objective", { method: "DELETE" });
+    setObjective(null);
   }
 
   useEffect(() => {
@@ -159,6 +205,34 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
           )}
         </div>
       </div>
+
+      {/* The runner's staked target — the "before" that automatic claiming never had. */}
+      {objective && (
+        <div className="mb-3 flex items-center gap-2.5 border-2 border-momentum/40 bg-momentum/10 px-3.5 py-2.5">
+          <Crosshair className="w-4 h-4 text-momentum shrink-0" />
+          <div className="flex-1 min-w-0 text-sm">
+            <span className="text-white/50">
+              {objective.kind === "DEFEND" ? "Defending" : objective.kind === "CLAIM" ? "Claiming" : "Going after"}{" "}
+            </span>
+            <span className="font-semibold truncate">{objective.label}</span>
+          </div>
+          <button onClick={clearObjective} className="shrink-0 text-xs text-white/40 hover:text-white/70">
+            Clear
+          </button>
+        </div>
+      )}
+
+      {myLand.some((t) => t.decayState === "FADING") && (
+        <div className="mb-3 flex items-start gap-2.5 border-2 border-[#F4A261]/40 bg-[#F4A261]/10 px-3.5 py-2.5">
+          <TrendingDown className="w-4 h-4 text-[#F4A261] shrink-0 mt-0.5" />
+          <p className="text-xs text-white/70">
+            <span className="font-semibold text-white">
+              {myLand.filter((t) => t.decayState === "FADING").length} of your territories
+            </span>{" "}
+            haven&apos;t been run in over a week and are losing value. One run through each resets the clock.
+          </p>
+        </div>
+      )}
 
       {territories.length > 0 && !loading && (
         <div className="inline-flex rounded-full border border-border-ichor p-0.5 bg-midnight-raised mb-3">
@@ -214,11 +288,18 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
           <span className="inline-flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-sm border-2 border-dotted border-ignite inline-block" /> Under attack
           </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm border border-dashed border-white/25 bg-white/[0.04] inline-block" /> Fading
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm bg-white/60 border border-white inline-block" /> Famous (brighter = more run)
+          </span>
         </div>
       )}
 
       <p className="mt-2 text-xs text-white/40">
-        Run somewhere nobody owns to claim it. Cover 6%+ of someone else&apos;s territory in a single run to unlock an attack.
+        Run somewhere nobody owns to claim it. Cover 6%+ of someone else&apos;s land in a single run to raid it on the
+        spot — or open a full attack. Land nobody runs fades and eventually returns to the map.
       </p>
 
       {battles.filter((b) => b.status === "RESOLVED" && b.revealedStats).length > 0 && (
@@ -261,6 +342,9 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
           </div>
         </div>
       )}
+
+      {/* Local standings + the weekend Land War — the scopes an ordinary runner can win. */}
+      <DistrictPanel currentUserId={currentUserId} />
 
       {famous.length > 0 && (
         <div className="mt-8">
@@ -320,7 +404,13 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
                 </div>
                 <div className="text-xs text-white/50">
                   Claimed {timeAgo(selected.createdAt)} · {formatArea(selected.areaSqM)}
+                  {selected.district ? ` · ${selected.district}` : ""}
                 </div>
+                {(selected.holdDays ?? 0) >= 7 && (
+                  <div className="text-xs text-lime mt-0.5 inline-flex items-center gap-1">
+                    <Flame className="w-3 h-3" /> Held {selected.holdDays} days unbroken
+                  </div>
+                )}
               </div>
             </div>
 
@@ -340,6 +430,17 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
                 <div className="text-sm font-bold">{selected.totalDistanceKm.toFixed(1)} km</div>
               </div>
             </div>
+
+            {selected.decayState === "FADING" && (
+              <div className="flex items-start gap-2 text-xs text-[#F4A261] bg-[#F4A261]/10 border border-[#F4A261]/25 rounded-xl p-3 mb-3">
+                <TrendingDown className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  Quiet for {selected.quietDays} days — it&apos;s down from {selected.peakValuePoints} pts and returns
+                  to unclaimed ground if it stays untouched.{" "}
+                  {selected.isMine ? "Run it to bring it back." : "Beat the owner to it."}
+                </span>
+              </div>
+            )}
 
             {underAttackIds.has(selected.id) && (
               <div className="flex items-center gap-2 text-xs text-ignite bg-ignite/10 border border-ignite/25 rounded-xl p-3 mb-3">
@@ -369,10 +470,25 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
                 <EyeOff className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
                   Run stats hidden — fog of war. Nobody knows what run earned this land. Cover 6%+ of it in a single
-                  run to unlock an attack.
+                  run to unlock a raid or a full attack.
                 </span>
               </div>
             ) : null}
+
+            {/* Calling your shot. Grants no advantage — it just means the next run has a
+                stated stake instead of a surprise. */}
+            <button
+              onClick={() => stakeObjective(selected)}
+              disabled={settingObjective || objective?.label === selected.name}
+              className="w-full mt-3 inline-flex items-center justify-center gap-2 border-2 border-border-ichor py-2.5 text-sm font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-40"
+            >
+              <Crosshair className="w-4 h-4" />
+              {objective?.label === selected.name
+                ? "This is your objective"
+                : selected.isMine
+                  ? "Make defending this my objective"
+                  : "Make this my next objective"}
+            </button>
           </div>
         </div>
       )}
@@ -486,20 +602,28 @@ export function TerritoryMap({ currentUserId }: { currentUserId: string }) {
                 <p><b className="text-white">Run to claim.</b> Any GPS-verified run over 2km turns the unclaimed ground it covers into your territory — automatically, the moment it syncs.</p>
               </div>
               <div className="flex gap-3">
+                <TrendingDown className="w-5 h-5 text-[#F4A261] shrink-0 mt-0.5" />
+                <p><b className="text-white">Land is held, not owned.</b> Ground nobody runs for a week starts losing value, and after about a month of silence it goes back to the map for anyone to take. Running it again — yours or anyone&apos;s — refills it. Hold the same ground 7, 30 or 100 days and you&apos;re paid for it.</p>
+              </div>
+              <div className="flex gap-3">
+                <Zap className="w-5 h-5 text-ignite shrink-0 mt-0.5" />
+                <p><b className="text-white">Raid to take a strip.</b> Cover 6%+ of someone&apos;s land in a fresh run and you can raid it on the spot. Out-pace the run that claimed it and you carve off exactly the ground you covered — settled immediately, no waiting. Miss, and you take nothing and they&apos;re paid for the repel.</p>
+              </div>
+              <div className="flex gap-3">
                 <Swords className="w-5 h-5 text-ignite shrink-0 mt-0.5" />
-                <p><b className="text-white">Cover 6% to attack.</b> Run at least as far as the territory&apos;s own claim distance (capped at 3km) and cover 6%+ of its land in a single run, and you can challenge its owner — on pace or on distance.</p>
+                <p><b className="text-white">Attack for the whole thing.</b> A full attack puts the entire territory in play, and the owner gets 48h to answer: accept an open challenge, schedule a live duel, or refuse and let the runs decide. Winner takes the land, +100 points and a 72h shield.</p>
               </div>
               <div className="flex gap-3">
                 <EyeOff className="w-5 h-5 text-white/50 shrink-0 mt-0.5" />
-                <p><b className="text-white">Fog of war.</b> Neither side sees the other&apos;s run until the battle resolves. You attack, and defend, blind.</p>
+                <p><b className="text-white">Fog of war.</b> Neither side sees the other&apos;s run until it resolves. You attack, raid, and defend blind.</p>
               </div>
               <div className="flex gap-3">
-                <Shield className="w-5 h-5 text-momentum shrink-0 mt-0.5" />
-                <p><b className="text-white">Defenders choose.</b> Accept an open challenge (72h) or schedule a live duel — best run wins the whole territory, +100 points, and a 72h shield. Refuse, and it&apos;s decided on the spot: only a run that beats your claim carves off land; a weaker one takes nothing.</p>
+                <Map className="w-5 h-5 text-momentum shrink-0 mt-0.5" />
+                <p><b className="text-white">Districts and Land Wars.</b> Your ground rolls up into the district it&apos;s in, so there&apos;s a local board you can actually lead. Every weekend, kilometres through a rival clan&apos;s land pay your own empire extra.</p>
               </div>
               <div className="flex gap-3">
                 <Flame className="w-5 h-5 text-ignite shrink-0 mt-0.5" />
-                <p><b className="text-white">Fame is separate.</b> Every run through a piece of land — anyone&apos;s — makes it more famous, whoever owns it. Famous ground climbs the leaderboard below.</p>
+                <p><b className="text-white">Fame is separate.</b> Every run through a piece of land — anyone&apos;s — makes it more famous, whoever owns it. Well-run ground draws brighter on the map and climbs the board below.</p>
               </div>
             </div>
             <button

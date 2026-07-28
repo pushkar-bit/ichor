@@ -77,10 +77,15 @@ export default function OnboardingPage() {
           <div className="w-14 h-14 rounded-2xl bg-[#FC4C02]/15 flex items-center justify-center mx-auto mb-4">
             <Link2 className="w-7 h-7 text-[#FC4C02]" />
           </div>
-          <h1 className="font-display italic font-bold text-2xl mb-2">Connect Strava?</h1>
-          <p className="text-sm text-white/60 mb-6">
-            Link Strava and every run you log there syncs to ICHOR automatically — no manual posting.
+          {/* This is the last step before the feed, and territory is the thing worth arriving
+              with. It also happens to be the hard gate: only GPS-verified runs can claim land
+              (see isTerritoryEligibleRun), so a runner who skips this can't play the map. */}
+          <h1 className="font-display italic font-bold text-2xl mb-2">Your runs draw the map.</h1>
+          <p className="text-sm text-white/60 mb-2">
+            Connect Strava and every run syncs here automatically — and the ground it covers becomes your territory,
+            on a real map, held against everyone else running the same streets.
           </p>
+          <p className="text-xs text-white/35 mb-6">Runs logged without GPS still count for points — they just can&apos;t take land.</p>
           <a
             href="/api/integrations/strava/connect?returnTo=/feed"
             className="w-full flex items-center justify-center gap-2 bg-[#FC4C02] text-white font-bold py-3.5 rounded-full mb-3"

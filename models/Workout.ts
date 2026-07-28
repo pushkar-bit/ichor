@@ -35,9 +35,18 @@ const WorkoutSchema = new Schema(
     // from the Post existing: a Post can exist while this is still null (that's exactly the
     // failure mode the sweep exists to catch).
     gameplayProcessedAt: { type: Date, default: null },
+    /**
+     * Territories this run has already been used to raid (lib/raids.ts). Written before the
+     * raid resolves, so a repelled raid still consumes the attempt — otherwise the same run
+     * could probe the same land until the pace comparison happened to land in its favour.
+     */
+    raidedTerritoryIds: [{ type: Schema.Types.ObjectId, ref: "Territory" }],
   },
   { timestamps: true },
 );
+
+// Raid cooldown lookup: "was this land raided in the last day?"
+WorkoutSchema.index({ raidedTerritoryIds: 1, createdAt: -1 });
 
 WorkoutSchema.index({ userId: 1, workoutDate: -1 }); // user history queries
 WorkoutSchema.index({ activityType: 1 }); // activity-type aggregation

@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { resizeToDataUrl } from "@/lib/image";
 import { uploadToCloudinary } from "@/lib/cloudinaryClient";
 import { AttackPromptSheet } from "./AttackPromptSheet";
+import { ClaimRevealSheet, type ClaimReveal } from "./ClaimRevealSheet";
 
 export function PostComposer() {
   const router = useRouter();
@@ -47,6 +48,11 @@ export function PostComposer() {
   // Set when the posted run claimed land or unlocked attacks — shows the territory report
   // before navigating to the post.
   const [territoryPrompt, setTerritoryPrompt] = useState<{ workoutId: string; postId: string } | null>(null);
+  // The claim reveal runs FIRST when a run took new ground — celebration before logistics.
+  // Dismissing it falls through to the attack prompt if there were also opportunities.
+  const [claimReveal, setClaimReveal] = useState<ClaimReveal | null>(null);
+  // Where to go once every post-run sheet has been dismissed.
+  const [pendingPostId, setPendingPostId] = useState<string | null>(null);
 
   async function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []).slice(0, 5 - photos.length);
@@ -292,10 +298,16 @@ export function PostComposer() {
       }
 
       // If the run touched the territory game, show the report (claims + attack options)
-      // before leaving; navigation happens when the sheet closes.
+      // before leaving; navigation happens when the last sheet closes.
       const tr = data.territoryResult;
       if (tr && (tr.claimed || (tr.opportunities?.length ?? 0) > 0)) {
-        setTerritoryPrompt({ workoutId: data.workoutId, postId: data.postId });
+        const hasOpportunities = (tr.opportunities?.length ?? 0) > 0;
+        if (tr.claimed?.geometry) setClaimReveal(tr.claimed);
+        // Only queue the attack prompt if there's actually something to attack — otherwise a
+        // pure claim would show the reveal and then an empty opportunities sheet.
+        if (hasOpportunities) setTerritoryPrompt({ workoutId: data.workoutId, postId: data.postId });
+        else if (tr.claimed?.geometry) setPendingPostId(data.postId);
+        else setTerritoryPrompt({ workoutId: data.workoutId, postId: data.postId });
         return;
       }
 
@@ -308,7 +320,22 @@ export function PostComposer() {
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6 pb-24 relative">
-      {territoryPrompt && (
+      {/* Celebration first: the reveal sits on top of the attack prompt, and dismissing it
+          hands off to whatever is queued behind it. */}
+      {claimReveal && (
+        <ClaimRevealSheet
+          claim={claimReveal}
+          onClose={() => {
+            setClaimReveal(null);
+            if (!territoryPrompt && pendingPostId) {
+              router.push(`/post/${pendingPostId}`);
+              router.refresh();
+            }
+          }}
+        />
+      )}
+
+      {territoryPrompt && !claimReveal && (
         <AttackPromptSheet
           workoutId={territoryPrompt.workoutId}
           onClose={() => {

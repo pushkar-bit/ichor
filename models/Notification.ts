@@ -10,6 +10,26 @@ export const NOTIFICATION_TYPES = [
   "BATTLE_RESOLVED",
   "DUEL_SCHEDULED",
   "POINTS_AWARDED",
+  // Upkeep (lib/territoryUpkeep.ts)
+  "TERRITORY_FADING", // nobody's run your land in a while — it's losing value
+  "TERRITORY_DORMANT", // it went neutral; anyone can claim it now
+  "HOLD_STREAK", // you've held this land N days
+  // Raids (lib/raids.ts) — the low-ceremony attack
+  "RAID_LOST", // someone out-ran your claim and carved off a strip
+  "RAID_WON",
+  // Objectives (lib/objectives.ts)
+  "OBJECTIVE_COMPLETE",
+  // Land war (lib/landWar.ts)
+  "LAND_WAR_OPEN",
+  "LAND_WAR_RESULT",
+  // Social — the everyday reasons to open the app, which the inbox previously ignored
+  // entirely (it only ever carried territory events).
+  "FOLLOW",
+  "POST_REACTION",
+  "POST_COMMENT",
+  "COMMENT_REPLY",
+  "CLAN_JOIN",
+  "GROUP_RUN_JOIN",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -25,12 +45,31 @@ const NotificationSchema = new Schema(
       battleId: { type: Schema.Types.ObjectId, ref: "Battle", default: null },
       territoryId: { type: Schema.Types.ObjectId, ref: "Territory", default: null },
       workoutId: { type: Schema.Types.ObjectId, ref: "Workout", default: null },
+      postId: { type: Schema.Types.ObjectId, ref: "Post", default: null },
+      commentId: { type: Schema.Types.ObjectId, ref: "Comment", default: null },
+      clanId: { type: Schema.Types.ObjectId, ref: "Clan", default: null },
+      groupRunId: { type: Schema.Types.ObjectId, ref: "GroupRun", default: null },
+      /** Who caused this. Populated on read so the inbox can link to their profile. */
+      actorId: { type: Schema.Types.ObjectId, ref: "User", default: null },
     },
+    /**
+     * Optional idempotency guard, same pattern as PointsLedger.uniqueKey. Social events are
+     * toggleable — unreact and react again, unfollow and refollow — and without this each
+     * toggle would ring the other person's bell. Callers that can spam build a key; the ones
+     * that fire once (a battle resolving) leave it unset.
+     */
+    dedupeKey: { type: String, default: null },
     readAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
 
 NotificationSchema.index({ userId: 1, readAt: 1, createdAt: -1 });
+// Partial (not sparse) so the many rows with an explicit null dedupeKey don't collide —
+// same footgun documented on Workout.externalId and User.username.
+NotificationSchema.index(
+  { dedupeKey: 1 },
+  { unique: true, partialFilterExpression: { dedupeKey: { $type: "string" } } },
+);
 
 export const Notification = models.Notification || model("Notification", NotificationSchema);

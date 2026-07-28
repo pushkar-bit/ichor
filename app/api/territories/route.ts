@@ -4,6 +4,7 @@ import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { Territory } from "@/models/Territory";
 import { getTerritoryFameLeaderboard } from "@/lib/territoryEngine";
 import { sweepBattles } from "@/lib/battles";
+import { decayStateFor, holdDays, quietDays } from "@/lib/territoryUpkeep";
 import "@/models/User";
 
 /**
@@ -24,6 +25,7 @@ export async function GET() {
     getTerritoryFameLeaderboard(),
   ]);
 
+  const now = new Date();
   const result = territories.map((t: any) => {
     const ownerId = t.ownerId ? String(t.ownerId._id ?? t.ownerId) : null;
     const isMine = myId !== null && ownerId === myId;
@@ -40,6 +42,13 @@ export async function GET() {
       totalDistanceKm: t.totalDistanceKm ?? 0,
       shieldUntil: t.shieldUntil,
       createdAt: t.createdAt,
+      district: t.district ?? null,
+      // Upkeep is derived on read (never stored) so the map is honest about fading land even
+      // if the daily sweep hasn't run yet — see lib/territoryUpkeep.ts.
+      decayState: decayStateFor(t.lastActivityAt, now),
+      quietDays: quietDays(t.lastActivityAt, now),
+      holdDays: holdDays(t.heldSince, now),
+      peakValuePoints: t.peakValuePoints ?? t.valuePoints,
       ownerId,
       ownerName: t.ownerId?.name ?? null,
       ownerAvatarUrl: t.ownerId?.avatarUrl ?? null,

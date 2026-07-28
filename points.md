@@ -45,11 +45,39 @@ your land's value, not just your own.
 |---|---|---|
 | `TERRITORY_CLAIMED` | +200 flat | Your run claimed brand-new, previously unclaimed ground. |
 | `TERRITORY_VALUE_GROWTH` | +5 × credited km | **Paid to the territory's owner**, not the runner, whenever ANY run (including the owner's own) meaningfully crosses their land (≥6% coverage — see below) and credits it distance. This is the "landlord" bonus: your land is worth more to you the more it gets run through, whether that traffic is you defending your own turf or someone else's attack attempt failing to take it. |
+| `TERRITORY_DECAY` | −(value lost ÷ 10) | **Upkeep.** Land nobody has run in over 7 days loses 3% of its peak value per further quiet day (floored at 25% of peak), and the owner pays a tenth of the drop. Charged at most once per territory per day. See `lib/territoryUpkeep.ts`. |
+| `HOLD_STREAK_BONUS` | +50 / +250 / +1000 | Holding the *same* ground unbroken for 7 / 30 / 100 days. Paid once each per hold — any transfer, split or raid resets `heldSince` and the milestone counter. |
 
 **Why this also covers "territory goes down then automatically goes up"**: `TERRITORY_VALUE_GROWTH`
 fires on every value increase, for whatever reason — recovering after a battle loss, growing
 past a previous peak, anything. There's no separate "recovery" rule because none is needed:
 any time the value climbs, the owner is paid for that climb.
+
+**Decay and recovery are one loop.** `TERRITORY_DECAY` drains a quiet territory's
+`valuePoints` down from its `peakValuePoints`; every credited km through it restores 20
+points of value (`KM_TO_VALUE_RECOVERY` in `lib/territoryEngine.ts`), capped at that same
+peak. So neglect costs you and running your ground pays you back, but nobody can inflate a
+territory past what it actually earned. A split or a raid lowers the peak along with the
+land, so a shrunken territory can't refill to what the whole thing used to be worth.
+
+## 2b. Raid rewards
+
+Raids (`lib/raids.ts`) are the instant, small-stakes alternative to a formal battle: they
+resolve in the same request and can only ever take the strip the run covered.
+
+| Reason | Amount | Basis |
+|---|---|---|
+| `RAID_WIN` | +40 | Your raid out-paced the run that claimed the land, so you carved off the ground you covered. The territory also loses 10% of its value in the division. |
+| `RAID_REPELLED` | +15 | **Paid to the owner** when a raid on their land fails the pace comparison. Defending passively still pays. |
+
+Deliberately far below `BATTLE_WIN` (+100): a raid is meant to be frequent and cheap, not a
+faster route to the same reward.
+
+## 2c. Land War
+
+| Reason | Amount | Basis |
+|---|---|---|
+| `LAND_WAR_BONUS` | +8 × credited km | During the weekend window (Sat 00:00 – Mon 00:00 UTC, the tail of the ICHOR week), a credited km through land held by a member of a **different clan** pays the runner on top of everything else. Both sides must be in a clan. Clan standings are summed from these ledger rows — there's no separate scoreboard to drift. See `lib/landWar.ts`. |
 
 ## 3. Battle rewards and penalties
 
@@ -97,6 +125,21 @@ top of — listed here so the whole picture is in one place.
      area (`ATTACK_COVERAGE_THRESHOLD` = `FAME_MIN_COVERAGE` in `lib/territoryEngine.ts`) —
      the same bar as the fame/value-growth coverage requirement, so "enough to matter for
      fame" and "enough to threaten ownership" are the same threshold.
+- **Raiding a territory**: same 6% floor as an attack, but capped at the top end —
+  a run covering more than **35%** of the target (`RAID_MAX_COVERAGE` in `lib/raids.ts`)
+  is too big to settle without the owner's involvement and must go through a full attack.
+  A raid compares the raider's pace against the territory's claim-run pace, blind, and
+  resolves immediately: win and you take exactly the strip your corridor covered (the
+  territory keeps 90% of its value, divided by area); lose and nothing moves. Either way the
+  land gets a 24h shield and can't be raided again for a day.
 - **Fame/value-growth coverage**: any run crossing **at least 6%** of an existing territory
   credits it — a distinct-runner count, a visit, and (per section 2 above) points to the
   owner. Below 6%, a run that merely clips a corner doesn't count for anything.
+- **Upkeep**: a territory untouched for **7 days** starts fading; after **35 quiet days** it
+  is deleted and the ground returns to unclaimed. Any credited run resets the clock
+  (`lastActivityAt`). Territories in an active battle are never faded or removed. Constants
+  live in `lib/territoryUpkeep.ts`.
+- **Districts**: each territory records the district it was claimed in (from the same
+  reverse-geocode call that names it), and `lib/districts.ts` ranks holders by share of the
+  *claimed* ground in that district — not of its real-world area, which no runner could
+  ever meaningfully cover.

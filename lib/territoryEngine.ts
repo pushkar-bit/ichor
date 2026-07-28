@@ -5,12 +5,14 @@ import { FameCredit } from "@/models/FameCredit";
 import { reverseGeocode } from "./geocoding";
 import { notify } from "./notifications";
 import { award, TERRITORY_CLAIMED_POINTS, TERRITORY_VALUE_GROWTH_POINTS_PER_KM } from "./points";
+import { awardLandWarCredit } from "./landWar";
 import {
   buildTerritoryPolygon,
   buildRunCorridor,
   subtractTerritories,
   coverageRatio,
   bboxesIntersect,
+  simplifyForDisplay,
   MAX_CLAIM_AREA_SQM,
   type Bbox,
   type TerritoryGeometry,
@@ -36,6 +38,12 @@ const MAX_PACE_MIN_PER_KM = 12; // slower = walking with a run label
 export const NEW_TERRITORY_VALUE = 1000;
 /** Each credited km bumps fame as much as roughly one new distinct runner would. */
 const KM_TO_FAME_POINTS = 10;
+/**
+ * Value a credited km restores to decayed land, capped at the territory's own peak. This is
+ * the recovery half of the upkeep loop in lib/territoryUpkeep.ts: neglect drains value, and
+ * running the ground again refills it — but never past what the land had already earned.
+ */
+const KM_TO_VALUE_RECOVERY = 20;
 
 /** Deterministic per-user territory color: 12 distinguishable hues on the dark map. */
 const OWNER_COLORS = [
@@ -96,7 +104,15 @@ export function isTerritoryEligibleRun(workout: WorkoutLike): boolean {
  * you passed near.
  */
 export function bumpFame(
-  territory: { distinctRunnerIds: unknown[]; totalVisits: number; fameScore: number; totalDistanceKm: number },
+  territory: {
+    distinctRunnerIds: unknown[];
+    totalVisits: number;
+    fameScore: number;
+    totalDistanceKm: number;
+    valuePoints?: number;
+    peakValuePoints?: number;
+    lastActivityAt?: Date;
+  },
   userId: string,
   run?: { distanceKm: number; coverage: number },
 ) {
@@ -107,18 +123,38 @@ export function bumpFame(
   if (run) {
     const creditedKm = run.distanceKm * Math.min(1, run.coverage);
     territory.totalDistanceKm = Math.round((territory.totalDistanceKm + creditedKm) * 100) / 100;
+
+    // Recovery: traffic refills value that upkeep decay drained, up to the land's own peak.
+    // A territory at full value is unaffected — this only ever undoes decay.
+    if (territory.valuePoints != null) {
+      const peak = territory.peakValuePoints ?? territory.valuePoints;
+      territory.valuePoints = Math.min(peak, territory.valuePoints + Math.round(creditedKm * KM_TO_VALUE_RECOVERY));
+    }
   }
+
+  // Any credited run resets the upkeep clock — this land is demonstrably still in use.
+  territory.lastActivityAt = new Date();
 
   territory.fameScore =
     territory.distinctRunnerIds.length * 10 + territory.totalVisits + Math.round(territory.totalDistanceKm * KM_TO_FAME_POINTS);
 }
 
-async function nameForTerritory(centroidLngLat: [number, number], ownerName: string, ownerId: string): Promise<string> {
+/**
+ * Names a fresh claim and locates it. One reverse-geocode call answers both questions, so
+ * the district/city that district standings aggregate on (lib/districts.ts) is captured at
+ * claim time rather than re-resolved per read.
+ */
+async function placeForTerritory(
+  centroidLngLat: [number, number],
+  ownerName: string,
+  ownerId: string,
+): Promise<{ name: string; district: string | null; city: string | null }> {
   const geo = await reverseGeocode(centroidLngLat[1], centroidLngLat[0]);
   const place = geo?.road ?? geo?.district ?? geo?.city ?? null;
-  if (place) return place;
+  const district = geo?.district ?? geo?.city ?? null;
+  if (place) return { name: place, district, city: geo?.city ?? null };
   const count = await Territory.countDocuments({ ownerId });
-  return `${ownerName}'s Run #${count + 1}`;
+  return { name: `${ownerName}'s Run #${count + 1}`, district, city: geo?.city ?? null };
 }
 
 export type AttackOpportunity = {
@@ -134,11 +170,29 @@ export type ClaimedTerritorySummary = {
   name: string;
   areaSqM: number;
   valuePoints: number;
+  color: string;
+  district: string | null;
+  /** Display-simplified shape for the feed card / claim reveal — never gameplay input. */
+  geometry: TerritoryGeometry;
+  bbox: Bbox;
+};
+
+/** Land this run meaningfully crossed, whoever owns it — the feed card's "you ran through" line. */
+export type CrossedTerritory = {
+  territoryId: string;
+  name: string;
+  ownerId: string | null;
+  ownerName: string | null;
+  coveragePct: number;
+  isRival: boolean;
 };
 
 export type TerritoryRunResult = {
   claimed: ClaimedTerritorySummary | null;
   opportunities: AttackOpportunity[];
+  crossed: CrossedTerritory[];
+  /** Where this run played out, for the district line on the post card. */
+  district: string | null;
 };
 
 type StoredTerritory = {
@@ -148,10 +202,14 @@ type StoredTerritory = {
   geometry: TerritoryGeometry;
   bbox: Bbox;
   shieldUntil: Date | null;
+  district: string | null;
   distinctRunnerIds: unknown[];
   totalVisits: number;
   totalDistanceKm: number;
   fameScore: number;
+  valuePoints: number;
+  peakValuePoints: number;
+  lastActivityAt: Date;
   save: () => Promise<unknown>;
 };
 
@@ -169,7 +227,7 @@ export async function processRunForTerritory(
   workout: WorkoutLike,
   { notifyOpportunities = false }: { notifyOpportunities?: boolean } = {},
 ): Promise<TerritoryRunResult> {
-  const empty: TerritoryRunResult = { claimed: null, opportunities: [] };
+  const empty: TerritoryRunResult = { claimed: null, opportunities: [], crossed: [], district: null };
   if (!isTerritoryEligibleRun(workout) || workout.distanceKm < MIN_CLAIM_RUN_KM) return empty;
 
   const route = workout.route!.coordinates;
@@ -191,7 +249,9 @@ export async function processRunForTerritory(
   const overlapping = candidates.filter((t) => bboxesIntersect(t.bbox, built.bbox));
 
   const opportunities: AttackOpportunity[] = [];
+  const crossed: CrossedTerritory[] = [];
   const overlappedGeometries: TerritoryGeometry[] = [];
+  let runDistrict: string | null = null;
 
   for (const territory of overlapping) {
     const coverage = coverageRatio(corridor.geometry, territory.geometry);
@@ -205,6 +265,19 @@ export async function processRunForTerritory(
     // territory: the FameCredit insert is the idempotency gate (re-sync / backfill replays
     // hit the unique index and no-op instead of double-counting visits or distance).
     if (coverage >= FAME_MIN_COVERAGE) {
+      // Everything the run genuinely crossed goes on the post card, rival or not — this is
+      // the "you ran through Priya's Canal Road" line that makes land a social object.
+      const crossedOwnerId = territory.ownerId ? String(territory.ownerId._id ?? territory.ownerId) : null;
+      crossed.push({
+        territoryId: String(territory._id),
+        name: territory.name,
+        ownerId: crossedOwnerId,
+        ownerName: territory.ownerId?.name ?? null,
+        coveragePct: Math.round(coverage * 100),
+        isRival: Boolean(crossedOwnerId) && crossedOwnerId !== userId,
+      });
+      runDistrict = runDistrict ?? territory.district ?? null;
+
       let firstCredit = false;
       try {
         await FameCredit.create({ territoryId: territory._id, workoutId: workout._id, userId: user._id });
@@ -221,14 +294,24 @@ export async function processRunForTerritory(
         // counts). Same credited-km formula bumpFame just applied. See points.md.
         if (territory.ownerId) {
           const creditedKm = workout.distanceKm * Math.min(1, coverage);
+          const ownerId = (territory.ownerId as { _id?: unknown })._id ?? territory.ownerId;
           const growthPoints = Math.round(creditedKm * TERRITORY_VALUE_GROWTH_POINTS_PER_KM);
           if (growthPoints > 0) {
-            const ownerId = (territory.ownerId as { _id?: unknown })._id ?? territory.ownerId;
             await award(ownerId, "TERRITORY_VALUE_GROWTH", growthPoints, `territory:${territory._id}:wk:${workout._id}:growth`, {
               territoryId: territory._id,
               workoutId: workout._id,
             });
           }
+          // ...and during a Land War weekend, crossing a RIVAL CLAN's ground also pays the
+          // runner's own empire. A no-op outside the window or within one clan — see
+          // lib/landWar.ts for the whole gate.
+          await awardLandWarCredit({
+            runnerId: user._id,
+            ownerId,
+            territoryId: territory._id,
+            workoutId: workout._id,
+            creditedKm,
+          });
         }
       }
     }
@@ -255,21 +338,28 @@ export async function processRunForTerritory(
 
   if (remainder) {
     const ownerName = user.name ?? "Athlete";
-    const name = await nameForTerritory(remainder.centroid, ownerName, userId);
+    const place = await placeForTerritory(remainder.centroid, ownerName, userId);
+    const color = colorForUser(userId);
     // An over-cap ultra keeps its land but the value is clamped pro-rata to the cap.
     const valuePoints = built.exceededAreaCap
       ? Math.round(NEW_TERRITORY_VALUE * (MAX_CLAIM_AREA_SQM / remainder.areaSqM))
       : NEW_TERRITORY_VALUE;
 
+    const now = new Date();
     const doc = await Territory.create({
-      name,
+      name: place.name,
       ownerId: user._id,
-      color: colorForUser(userId),
+      color,
       geometry: remainder.geometry,
       bbox: remainder.bbox,
       centroid: { type: "Point", coordinates: remainder.centroid },
       areaSqM: remainder.areaSqM,
       valuePoints,
+      peakValuePoints: valuePoints,
+      district: place.district,
+      city: place.city,
+      heldSince: now,
+      lastActivityAt: now,
       claimRunId: workout._id,
       claimStats: {
         distanceKm: workout.distanceKm,
@@ -282,7 +372,17 @@ export async function processRunForTerritory(
       fameScore: 11,
     });
 
-    claimed = { territoryId: String(doc._id), name, areaSqM: remainder.areaSqM, valuePoints };
+    runDistrict = place.district ?? runDistrict;
+    claimed = {
+      territoryId: String(doc._id),
+      name: place.name,
+      areaSqM: remainder.areaSqM,
+      valuePoints,
+      color,
+      district: place.district,
+      geometry: simplifyForDisplay(remainder.geometry),
+      bbox: remainder.bbox,
+    };
 
     await award(user._id, "TERRITORY_CLAIMED", TERRITORY_CLAIMED_POINTS, `wk:${workout._id}:TERRITORY_CLAIMED`, {
       territoryId: doc._id,
@@ -310,7 +410,7 @@ export async function processRunForTerritory(
     }
   }
 
-  return { claimed, opportunities };
+  return { claimed, opportunities, crossed, district: runDistrict };
 }
 
 export async function getTerritoryFameLeaderboard(limit = 20) {

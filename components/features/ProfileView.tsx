@@ -12,6 +12,7 @@ import { FollowButton } from "@/components/features/FollowButton";
 import { StravaConnectButton } from "@/components/features/StravaConnectButton";
 import { HeadToHeadCard } from "@/components/features/HeadToHeadCard";
 import { WeeklyRecapCard } from "@/components/features/WeeklyRecapCard";
+import { TerritoryCollage, type TerritoryShape } from "@/components/features/TerritoryMiniMap";
 import type { WeeklyRecap } from "@/lib/weeklyRecap";
 
 type ProfileUser = {
@@ -40,6 +41,10 @@ export function ProfileView({
   isFollowing = false,
   clan,
   zonesHeld,
+  territoryShapes = [],
+  territoryValuePoints = 0,
+  longestHoldDays = 0,
+  topDistrict = null,
   posts,
   heatmapData,
   personalBests,
@@ -53,6 +58,10 @@ export function ProfileView({
   isFollowing?: boolean;
   clan: any | null;
   zonesHeld: number;
+  territoryShapes?: TerritoryShape[];
+  territoryValuePoints?: number;
+  longestHoldDays?: number;
+  topDistrict?: { district: string; sharePct: number; rank: number } | null;
   posts: any[];
   heatmapData: Record<string, number>;
   personalBests: { best5kPaceMinPerKm: number | null; highestDistanceKm: number | null };
@@ -157,6 +166,43 @@ export function ProfileView({
         <StatChip label="Workouts" value={user.totalWorkouts} />
         <StatChip label="Territories" value={zonesHeld} icon={<MapPin className="w-3.5 h-3.5" />} />
       </div>
+
+      {/* Your ground. A "Territories: 7" stat chip is a number; this is the actual shape of
+          what someone has run and holds — the closest thing this app has to a portrait, and
+          the part people screenshot. */}
+      {territoryShapes.length > 0 && (
+        <div>
+          <div className="flex items-baseline justify-between mb-2">
+            <h2 className="font-semibold text-sm text-white/60 flex items-center gap-1.5">
+              <MapPin className="w-4 h-4" /> {isOwnProfile ? "Your ground" : "Their ground"}
+            </h2>
+            <Link href="/map" className="text-xs font-semibold text-momentum">
+              Open the map
+            </Link>
+          </div>
+          <div className="border-2 border-border-ichor bg-midnight-raised overflow-hidden">
+            <TerritoryCollage shapes={territoryShapes} className="w-full h-auto block" />
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t-2 border-border-ichor px-4 py-3 text-xs text-white/50">
+              <span>
+                <span className="font-bold text-white">{zonesHeld}</span> held
+              </span>
+              <span>
+                <span className="font-bold text-white">{territoryValuePoints.toLocaleString()}</span> pts of land
+              </span>
+              {longestHoldDays > 0 && (
+                <span>
+                  <span className="font-bold text-white">{longestHoldDays}d</span> longest hold
+                </span>
+              )}
+              {topDistrict && (
+                <span>
+                  <span className="font-bold text-white">{topDistrict.sharePct}%</span> of {topDistrict.district}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Battle record */}
       <div>

@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   Swords, ShieldAlert, Trophy, Crosshair, Flame, TrendingUp, CalendarDays,
   Flag, Sparkles, History, Users, Target, MessageCircle, X, ChevronRight,
-  Percent, Sunrise, AlertTriangle, Gauge, CalendarClock,
+  Percent, Sunrise, AlertTriangle, Gauge, CalendarClock, TrendingDown, ShieldCheck, Map,
 } from "lucide-react";
 import type { ForYouCard } from "@/lib/forYou";
 import { Countdown } from "./Countdown";
@@ -80,8 +80,58 @@ function describe(card: ForYouCard): Presentation {
         accent: "text-ignite",
         icon: <Crosshair className="w-5 h-5" />, eyebrow: "Attack opportunity",
         title: `You covered ${card.coveragePct}% of ${card.territoryName}`,
-        body: "Enough to launch an attack from the map.",
+        body: "Enough to raid it outright, or open a full attack. Raids settle on the spot.",
         href: `/map`, cta: "Open the map",
+      };
+    case "territory_fading":
+      return {
+        accent: "text-ignite",
+        icon: <TrendingDown className="w-5 h-5" />,
+        eyebrow: card.count > 1 ? `${card.count} territories fading` : "Land is fading",
+        title: `${card.territoryName} hasn't been run in ${card.quietDays} days`,
+        body:
+          card.daysUntilDormant <= 0
+            ? "It's about to return to unclaimed ground. One run through it takes it back."
+            : `It goes back to unclaimed in ${card.daysUntilDormant} days. A single run through it resets the clock and refills its value.`,
+        href: "/map", cta: "See what's fading",
+      };
+    case "hold_streak":
+      return {
+        accent: "text-lime",
+        icon: <ShieldCheck className="w-5 h-5" />, eyebrow: "Holding strong",
+        title: `${card.days} days holding ${card.territoryName}`,
+        body: card.nextMilestone
+          ? `Nobody has taken it off you. ${card.nextMilestone - card.days} more days to the ${card.nextMilestone}-day mark.`
+          : "Nobody has taken it off you.",
+        href: "/map", cta: "View your ground",
+      };
+    case "objective": {
+      const verb = { CLAIM: "Claim", RAID: "Take", DEFEND: "Defend" }[card.objectiveKind];
+      return {
+        accent: "text-momentum",
+        icon: <Crosshair className="w-5 h-5" />, eyebrow: "Your objective",
+        title: `${verb} ${card.label}`,
+        body: <>You called this shot — <Countdown to={card.expiresAt} suffix=" left" expiredText="it's lapsed" /> to run it down.</>,
+        href: "/post/create", cta: "Go run it",
+      };
+    }
+    case "district_standing":
+      return {
+        accent: card.rank === 1 ? "text-lime" : "text-momentum",
+        icon: <Map className="w-5 h-5" />, eyebrow: card.rank === 1 ? `Top of ${card.district}` : card.district,
+        title: `You hold ${card.sharePct}% of ${card.district}`,
+        body: card.rank === 1 ? "Nobody in this district holds more. Keep it that way." : `You're #${card.rank} here.`,
+        href: "/map", cta: "See the district",
+      };
+    case "land_war":
+      return {
+        accent: card.isOpen ? "text-lime" : "text-white/70",
+        icon: <Swords className="w-5 h-5" />, eyebrow: "Land War",
+        title: card.isOpen ? "Land War is live" : "Land War opens soon",
+        body: card.isOpen
+          ? <>Every km through a rival clan&apos;s ground pays your empire double. <Countdown to={card.at} suffix=" left" expiredText="closing now" />.</>
+          : <>Opens in <Countdown to={card.at} prefix="" suffix="" expiredText="now" /> — plan a route through someone else&apos;s turf.</>,
+        href: "/map", cta: card.isOpen ? "Find rival ground" : "Scout the map",
       };
     case "post_run_kudos":
       return {
@@ -296,12 +346,17 @@ function groupOf(kind: ForYouCard["kind"]): ForYouGroup {
     case "todays_mission":
     case "comeback":
     case "coach_tip":
+    case "territory_fading":
+    case "objective":
       return "act";
     case "leaderboard_move":
     case "rival":
     case "percentile":
     case "clan_pulse":
     case "battle_resolved":
+    case "district_standing":
+    case "land_war":
+    case "hold_streak":
       return "compete";
     default:
       return "progress";
