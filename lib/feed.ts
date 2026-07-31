@@ -143,6 +143,7 @@ export async function getFeedPosts(
         viewerId,
       ),
       personalization,
+      isOwnPost: authorId === viewerId,
     };
   });
 

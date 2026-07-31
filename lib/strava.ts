@@ -343,7 +343,7 @@ async function finishIngest(
     groupRunId: activeGroupRun ? activeGroupRun._id : null,
   });
 
-  let territoryResult: TerritoryRunResult = { claimed: null, opportunities: [] };
+  let territoryResult: TerritoryRunResult = { claimed: null, opportunities: [], crossed: [], district: null };
   let pointsAwarded: PointsAward[] = [];
   try {
     // Attacking is always a choice, so opportunities become inbox notifications here —

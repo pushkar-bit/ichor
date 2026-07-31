@@ -5,6 +5,7 @@ import { Territory } from "@/models/Territory";
 import { Clan, ClanMember } from "@/models/Clan";
 import { getTerritoryFameLeaderboard } from "@/lib/territoryEngine";
 import { sweepBattles } from "@/lib/battles";
+import { decayStateFor, holdDays, quietDays } from "@/lib/territoryUpkeep";
 import "@/models/User";
 
 /**
@@ -24,6 +25,8 @@ export async function GET() {
     Territory.find({}).populate("ownerId", "name avatarUrl clanId").sort({ createdAt: 1 }).lean(),
     getTerritoryFameLeaderboard(),
   ]);
+
+  const now = new Date();
 
   // Owners' clanId is a raw ObjectId (populate() doesn't chain through a second ref without
   // a nested populate on the User model itself) — resolve the distinct set in one query and
@@ -60,6 +63,13 @@ export async function GET() {
       totalDistanceKm: t.totalDistanceKm ?? 0,
       shieldUntil: t.shieldUntil,
       createdAt: t.createdAt,
+      district: t.district ?? null,
+      // Upkeep is derived on read (never stored) so the map is honest about fading land even
+      // if the daily sweep hasn't run yet — see lib/territoryUpkeep.ts.
+      decayState: decayStateFor(t.lastActivityAt, now),
+      quietDays: quietDays(t.lastActivityAt, now),
+      holdDays: holdDays(t.heldSince, now),
+      peakValuePoints: t.peakValuePoints ?? t.valuePoints,
       ownerId,
       ownerName: t.ownerId?.name ?? null,
       ownerAvatarUrl: t.ownerId?.avatarUrl ?? null,

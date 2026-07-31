@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { connectDB } from "@/lib/mongodb";
 import { Post } from "@/models/Post";
+import { notify } from "@/lib/notifications";
 import { NextRequest } from "next/server";
+
+type ReactionType = "HYPE" | "RESPECT" | "CHALLENGE";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -46,6 +49,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     await post.save();
+
+    // Only on the way in, and only once ever per (reactor, post, type) — the dedupeKey means
+    // toggling a reaction off and on again can't re-ring the author's bell.
+    if (!hasReacted) {
+      const label = { HYPE: "hyped", RESPECT: "respected", CHALLENGE: "challenged" }[type as ReactionType];
+      await notify(
+        post.userId,
+        "POST_REACTION",
+        `${me.name ?? "Someone"} ${label} your run`,
+        "",
+        { postId: post._id, actorId: me._id },
+        { dedupeKey: `react:${String(me._id)}:${String(post._id)}:${type}` },
+      );
+    }
+
     return NextResponse.json({
       success: true,
       hasReacted: !hasReacted,

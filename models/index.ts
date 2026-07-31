@@ -5,6 +5,7 @@ export { DietCard } from "./DietCard";
 export { FlameRating } from "./FlameRating";
 export { Comment } from "./Comment";
 export { Territory } from "./Territory";
+export { Objective } from "./Objective";
 export { Battle } from "./Battle";
 export { Notification } from "./Notification";
 export { PointsLedger } from "./PointsLedger";

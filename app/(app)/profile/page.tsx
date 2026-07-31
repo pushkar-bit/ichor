@@ -1,12 +1,12 @@
 import { connectDB } from "@/lib/mongodb";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { Post } from "@/models/Post";
-import { Territory } from "@/models/Territory";
 import { Clan } from "@/models/Clan";
 import "@/models/Workout";
 import { dayKey } from "@/lib/week";
 import { getPersonalBests } from "@/lib/personalBests";
 import { getWeeklyRecap } from "@/lib/weeklyRecap";
+import { getProfileTerritory } from "@/lib/territorySummary";
 import { ProfileView } from "@/components/features/ProfileView";
 
 export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ strava?: string }> }) {
@@ -15,8 +15,8 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
   if (!me) return null;
   const { strava } = await searchParams;
 
-  const [zonesHeld, clan, posts, weeklyRecap] = await Promise.all([
-    Territory.countDocuments({ ownerId: me._id }),
+  const [territory, clan, posts, weeklyRecap] = await Promise.all([
+    getProfileTerritory(String(me._id)),
     me.clanId ? Clan.findById(me.clanId).lean() : null,
     // photoUrls sliced to just the first photo (the grid never shows more) and workoutId
     // trimmed to the fields actually used — the full documents include a large base64
@@ -45,7 +45,11 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
       user={me}
       isOwnProfile
       clan={clan}
-      zonesHeld={zonesHeld}
+      zonesHeld={territory.zonesHeld}
+      territoryShapes={territory.shapes}
+      territoryValuePoints={territory.valuePoints}
+      longestHoldDays={territory.longestHoldDays}
+      topDistrict={territory.topDistrict}
       posts={posts}
       heatmapData={heatmapData}
       personalBests={personalBests}

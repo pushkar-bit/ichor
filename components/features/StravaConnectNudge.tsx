@@ -41,8 +41,12 @@ export function StravaConnectNudge({ connected }: { connected: boolean }) {
         <Link2 className="w-4 h-4 text-[#FC4C02]" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold">Auto-sync your runs</p>
-        <p className="text-xs text-white/50">Connect Strava and every run posts here automatically.</p>
+        {/* Territory needs a GPS-verified run (see isTerritoryEligibleRun) — without Strava
+            a runner literally cannot play the map, so this leads with the land, not the sync. */}
+        <p className="text-sm font-semibold">Start claiming ground</p>
+        <p className="text-xs text-white/50">
+          Connect Strava and every GPS run posts here — and turns the land it covers into your territory.
+        </p>
       </div>
       <a
         href="/api/integrations/strava/connect"

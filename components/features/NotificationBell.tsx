@@ -1,27 +1,39 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Bell, X, Swords, MapPin, Trophy, Loader2 } from "lucide-react";
+import { Bell, X, Swords, MapPin, Trophy, Loader2, UserPlus, MessageSquare, Flame, Users } from "lucide-react";
+import { Avatar } from "@/components/ui/Avatar";
 import { timeAgo } from "@/lib/utils";
 
-type InboxNotification = {
+export type InboxNotification = {
   id: string;
   type: string;
   title: string;
   body: string;
-  data: { battleId: string | null; territoryId: string | null; workoutId: string | null };
+  /** Where tapping this item should go — resolved server-side (see /api/notifications). */
+  href: string;
+  /** Set on social items so the row can lead with a face instead of a generic icon. */
+  actor: { id: string; name: string; avatarUrl: string } | null;
   readAt: string | null;
   createdAt: string;
 };
 
-const POLL_MS = 60_000;
+export const NOTIFICATIONS_POLL_MS = 60_000;
+const POLL_MS = NOTIFICATIONS_POLL_MS;
 
-function iconFor(type: string) {
+/** Shared with NotificationsWidget (the right-rail preview) so both surfaces agree on iconography. */
+export function iconFor(type: string) {
+  if (type === "FOLLOW") return <UserPlus className="w-4 h-4 text-momentum shrink-0" />;
+  if (type === "POST_COMMENT" || type === "COMMENT_REPLY") return <MessageSquare className="w-4 h-4 text-momentum shrink-0" />;
+  if (type === "POST_REACTION") return <Flame className="w-4 h-4 text-ignite shrink-0" />;
+  if (type === "CLAN_JOIN" || type === "GROUP_RUN_JOIN") return <Users className="w-4 h-4 text-lime shrink-0" />;
+  if (type === "RAID_LOST" || type === "RAID_WON") return <Swords className="w-4 h-4 text-ignite shrink-0" />;
   if (type.startsWith("ATTACK") || type.startsWith("BATTLE") || type.startsWith("DUEL") || type === "OPPONENT_SUBMITTED") {
     return <Swords className="w-4 h-4 text-ignite shrink-0" />;
   }
-  if (type.startsWith("TERRITORY")) return <MapPin className="w-4 h-4 text-momentum shrink-0" />;
+  if (type.startsWith("TERRITORY") || type.startsWith("LAND_WAR")) return <MapPin className="w-4 h-4 text-momentum shrink-0" />;
   return <Trophy className="w-4 h-4 text-lime shrink-0" />;
 }
 
@@ -78,8 +90,7 @@ export function NotificationBell() {
       setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x)));
     }
     setOpen(false);
-    // Everything territory/battle-shaped lives on the map page.
-    router.push("/map");
+    router.push(n.href);
   }
 
   return (
@@ -97,8 +108,17 @@ export function NotificationBell() {
         )}
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-start sm:justify-end bg-black/60" onClick={() => setOpen(false)}>
+      {/*
+        Portalled to <body> on purpose. The bell renders inside NavShell's sidebar (desktop)
+        and its sticky header (mobile) — and `position: sticky` ALWAYS creates a stacking
+        context, whatever its z-index. A `fixed` child of one of those is therefore trapped
+        inside it and painted in DOM order against the page's other stacking contexts, which
+        is why the leaderboard rail (its own `lg:sticky` context, later in the DOM) was
+        drawing on top of this panel no matter how high its z-index went. Escaping to <body>
+        is the only fix that doesn't depend on out-guessing every sibling's z-index.
+      */}
+      {open && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[2500] flex items-end sm:items-start sm:justify-end bg-black/60" onClick={() => setOpen(false)}>
           <div
             className="w-full sm:max-w-sm sm:mt-16 sm:mr-6 bg-midnight-raised border-2 border-border-ichor rounded-t-3xl sm:rounded-none sm:shadow-[6px_6px_0_var(--ichor-border)] max-h-[75vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
@@ -133,7 +153,16 @@ export function NotificationBell() {
                       n.readAt ? "opacity-60" : ""
                     }`}
                   >
-                    {iconFor(n.type)}
+                    {n.actor ? (
+                      <span className="relative shrink-0">
+                        <Avatar src={n.actor.avatarUrl} name={n.actor.name} size={28} />
+                        <span className="absolute -bottom-1 -right-1 bg-midnight-raised rounded-full p-[3px]">
+                          {iconFor(n.type)}
+                        </span>
+                      </span>
+                    ) : (
+                      iconFor(n.type)
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium leading-snug">{n.title}</div>
                       {n.body && <div className="text-xs text-white/50 mt-0.5 leading-snug">{n.body}</div>}
@@ -145,7 +174,8 @@ export function NotificationBell() {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

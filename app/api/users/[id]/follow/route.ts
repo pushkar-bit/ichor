@@ -3,6 +3,8 @@ import { connectDB } from "@/lib/mongodb";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { Follow } from "@/models/Follow";
 import { User } from "@/models/User";
+import { notify } from "@/lib/notifications";
+import { dayKey } from "@/lib/week";
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   await connectDB();
@@ -33,5 +35,17 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     User.updateOne({ _id: me._id }, { $inc: { followingCount: 1 } }),
     User.updateOne({ _id: targetId }, { $inc: { followerCount: 1 } }),
   ]);
+
+  // Day-bucketed dedupe: unfollow/refollow can't be used to spam someone's bell, but a
+  // genuine re-follow weeks later still gets through.
+  await notify(
+    targetId,
+    "FOLLOW",
+    `${me.name ?? "Someone"} followed you`,
+    "Tap to see their profile — follow back to get their runs in your feed.",
+    { actorId: me._id },
+    { dedupeKey: `follow:${String(me._id)}:${targetId}:${dayKey(new Date())}` },
+  );
+
   return NextResponse.json({ following: true });
 }

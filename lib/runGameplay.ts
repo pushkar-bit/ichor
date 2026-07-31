@@ -1,8 +1,10 @@
 import { Workout } from "@/models/Workout";
-import { processRunForTerritory } from "./territoryEngine";
+import { Post } from "@/models/Post";
+import { processRunForTerritory, type TerritoryRunResult } from "./territoryEngine";
 import { attachQualifyingRunsToBattles } from "./battles";
 import { awardPointsForWorkout } from "./points";
 import { findActiveGroupRunForUser, attachRunToGroupRun } from "./groupRun";
+import { resolveObjectiveForRun } from "./objectives";
 
 type GameplayUser = { _id: unknown; name?: string };
 type GameplayWorkout = {
@@ -49,6 +51,46 @@ export async function runGameplayPipeline(
     await attachRunToGroupRun(String(activeGroupRun._id), String(user._id), String(workout._id));
   }
 
+  // Did this run deliver the ground the runner said they were going for?
+  const objectiveCompleted = await resolveObjectiveForRun(String(user._id), workout._id, territoryResult);
+
+  // Freeze what this run did to the map onto its Post, so the feed can render land without a
+  // turf calculation or a Territory read per card. Both ingest paths create the Post before
+  // calling this, and Post.workoutId is unique, so keying off the workout is unambiguous.
+  await writeTerritorySnapshot(workout._id, territoryResult);
+
   await Workout.updateOne({ _id: workout._id }, { gameplayProcessedAt: new Date() });
-  return { territoryResult, pointsAwarded };
+  return { territoryResult, pointsAwarded, objectiveCompleted };
+}
+
+/**
+ * Best-effort: a missing snapshot costs a feed card its map, which is a visual regression,
+ * not a correctness one — it must never take down an ingest that otherwise succeeded.
+ */
+async function writeTerritorySnapshot(workoutId: unknown, result: TerritoryRunResult) {
+  if (!result.claimed && result.crossed.length === 0) return;
+  try {
+    await Post.updateOne(
+      { workoutId },
+      {
+        territorySnapshot: {
+          claimed: result.claimed
+            ? {
+                territoryId: result.claimed.territoryId,
+                name: result.claimed.name,
+                areaSqM: result.claimed.areaSqM,
+                valuePoints: result.claimed.valuePoints,
+                color: result.claimed.color,
+                geometry: result.claimed.geometry,
+                bbox: result.claimed.bbox,
+              }
+            : null,
+          crossed: result.crossed,
+          district: result.district,
+        },
+      },
+    );
+  } catch (err) {
+    console.error(`[gameplay] territory snapshot write failed for workout ${workoutId}:`, (err as Error).message);
+  }
 }

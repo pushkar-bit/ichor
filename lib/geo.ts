@@ -43,6 +43,8 @@ const SLIVER_SQM = 5_000;
 export const MIN_CLAIM_AREA_SQM = 15_000;
 /** Douglas-Peucker tolerance in degrees, ~5m — kills GPS jitter without changing shape. */
 const SIMPLIFY_TOLERANCE_DEG = 0.00005;
+/** Much coarser (~20m) tolerance for thumbnails — see simplifyForDisplay. */
+const DISPLAY_SIMPLIFY_TOLERANCE_DEG = 0.0002;
 
 /** [minLng, minLat, maxLng, maxLat] */
 export type Bbox = [number, number, number, number];
@@ -207,6 +209,29 @@ export function buildRunCorridor(route: Position[]): BuiltTerritory | null {
     centroid: c,
     exceededAreaCap: false,
   };
+}
+
+/**
+ * A coarse copy of a territory's shape for embedding in a feed card or a share image. Every
+ * post in the feed carries one of these (models/Post.ts's territorySnapshot), so the full
+ * GPS-fidelity polygon — hundreds of vertices — would bloat both the document and the JSON
+ * payload for a shape that renders 120px wide. Display only: gameplay math never reads it.
+ *
+ * Falls back to the input geometry if simplification fails or over-simplifies into nothing,
+ * since a heavier thumbnail beats a missing one.
+ */
+export function simplifyForDisplay(geometry: TerritoryGeometry): TerritoryGeometry {
+  try {
+    const simplified = simplify(asFeature(geometry), {
+      tolerance: DISPLAY_SIMPLIFY_TOLERANCE_DEG,
+      highQuality: false,
+      mutate: false,
+    }) as PolyFeature;
+    const truncated = truncate(simplified, { precision: 5, mutate: false }) as PolyFeature;
+    return polygonsOf(truncated).length > 0 ? truncated.geometry : geometry;
+  } catch {
+    return geometry;
+  }
 }
 
 export function bboxesIntersect(a: Bbox, b: Bbox): boolean {

@@ -55,6 +55,15 @@ export const TERRITORY_VALUE_GROWTH_POINTS_PER_KM = 5;
 /** Fraction of the value forfeited to an attacker that becomes an extra points penalty for
  * the divided owner, on top of the existing REFUSAL_BETTER/WORSE deltas. See lib/battles.ts. */
 export const OWNERSHIP_DIVIDED_PENALTY_RATE = 0.05;
+/** Upkeep: what a milestone stretch of unbroken ownership pays. See lib/territoryUpkeep.ts. */
+export const HOLD_STREAK_POINTS_PER_MILESTONE: Record<number, number> = {
+  7: 50,
+  30: 250,
+  100: 1000,
+};
+/** Raid outcomes — deliberately smaller stakes than a formal battle. See lib/raids.ts. */
+export const RAID_WIN_POINTS = 40;
+export const RAID_REPELLED_POINTS = 15;
 export const TERRITORY_HOLD_WEEKLY_POINTS = 50;
 /** Ranked by fameScore — the same "how alive is this land" metric behind the map's Most
  * Famous Territories list. See checkAndAwardWeeklyTerritoryBonuses. */
@@ -270,6 +279,11 @@ export const POINT_REASON_LABELS: Record<PointReason, string> = {
   DIET_NEUTRAL: "Diet log",
   TERRITORY_CREATED: "New territory claimed",
   TERRITORY_VALUE_GROWTH: "Territory grew",
+  TERRITORY_DECAY: "Territory went quiet",
+  HOLD_STREAK_BONUS: "Held your ground",
+  RAID_WIN: "Raid succeeded",
+  RAID_REPELLED: "Raid repelled",
+  LAND_WAR_BONUS: "Land war",
   TERRITORY_HOLD_WEEKLY: "Held territory this week",
   TERRITORY_LEADERBOARD_1: "#1 on a territory's leaderboard",
   TERRITORY_LEADERBOARD_2: "#2 on a territory's leaderboard",

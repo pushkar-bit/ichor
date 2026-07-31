@@ -8,6 +8,7 @@ import { RunVisualizer } from "./RunVisualizer";
 import { PostImageCarousel } from "./PostImageCarousel";
 import { ReactionBar } from "./ReactionBar";
 import { ReactionSummary } from "./ReactionSummary";
+import { TerritoryRibbon, type PostTerritorySnapshot } from "./TerritoryRibbon";
 import { timeAgo, formatPace, formatDuration } from "@/lib/utils";
 
 import { motion } from "framer-motion";
@@ -39,6 +40,10 @@ export type ActivityCardData = {
   linkToDetail?: boolean;
   reactionSummary?: { featuredName: string; featuredAvatarUrl: string; totalCount: number } | null;
   personalization?: import("@/lib/postPersonalization").PostPersonalization | null;
+  /** What this run did to the map — frozen at ingest, rendered by TerritoryRibbon. */
+  territorySnapshot?: PostTerritorySnapshot | null;
+  /** Whether the viewer is the author, so the ribbon can say "you" instead of a name. */
+  isOwnPost?: boolean;
 };
 
 const ACTIVITY_ICON = { RUN: Footprints, WALK: Footprints, CYCLE: Bike };
@@ -298,6 +303,16 @@ export function ActivityCard({ post, maxDistance }: { post: ActivityCardData; ma
           </motion.div>
         </div>
       </div>
+
+      {/* The map consequence of this run, below the stats — the reason a run post is about
+          ground and not just numbers. Renders nothing when the run touched no land. */}
+      {post.territorySnapshot && (
+        <TerritoryRibbon
+          snapshot={post.territorySnapshot}
+          isOwnPost={post.isOwnPost ?? false}
+          authorName={post.author.name}
+        />
+      )}
     </motion.article>
   );
 }

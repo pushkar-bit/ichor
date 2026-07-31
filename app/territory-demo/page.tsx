@@ -9,13 +9,18 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Crown, Flame, ShieldAlert, Swords, Footprints, EyeOff, Shield, Info, HelpCircle, X, Hourglass, Timer } from "lucide-react";
+import { Crown, Flame, Swords, Footprints, EyeOff, Shield, Info, HelpCircle, X, Hourglass, Timer } from "lucide-react";
 import {
   BattleRespondSheet,
   BattleRevealCard,
   type BattleListItem,
 } from "@/components/features/BattleSheets";
 import { Countdown } from "@/components/features/Countdown";
+import { ClaimRevealSheet, type ClaimReveal } from "@/components/features/ClaimRevealSheet";
+import { TerritoryRibbon, type PostTerritorySnapshot } from "@/components/features/TerritoryRibbon";
+import { TerritoryStrip } from "@/components/features/TerritoryStrip";
+import { TerritoryCollage, type TerritoryShape } from "@/components/features/TerritoryMiniMap";
+import type { TerritorySummary } from "@/lib/territorySummary";
 import type { MapTerritory } from "@/components/features/TerritoryMap";
 
 const TerritoryOnlyMap = dynamic(
@@ -163,17 +168,98 @@ const forfeitBattle = resolved({
   revealGeometry: null,
 });
 
-export default function TerritoryDemoPage() {
-  const [overlay, setOverlay] = useState<null | "respond" | "win" | "split" | "repel" | "forfeit" | "rules">(null);
+// ---- fixtures for the surfaces that front territory (strip / ribbon / reveal / collage) ----
 
-  const DemoBtn = ({ id, children }: { id: NonNullable<typeof overlay>; children: React.ReactNode }) => (
+/** A rough, run-shaped blob so the SVG renderers get something with real character. */
+function blob(lng: number, lat: number, size: number): [number, number][][] {
+  return [[
+    [lng, lat],
+    [lng + size * 0.9, lat + size * 0.15],
+    [lng + size, lat + size * 0.7],
+    [lng + size * 0.45, lat + size],
+    [lng + size * 0.1, lat + size * 0.55],
+    [lng, lat],
+  ]];
+}
+const CLAIM_RINGS = blob(77.21, 28.61, 0.004);
+const CLAIM_BBOX: [number, number, number, number] = [77.21, 28.61, 77.214, 28.614];
+
+const DEMO_CLAIM: ClaimReveal = {
+  territoryId: "t-demo",
+  name: "Canal Road",
+  areaSqM: 138_400,
+  valuePoints: 1000,
+  color: "#D7F24C",
+  district: "Koramangala",
+  geometry: { type: "Polygon", coordinates: CLAIM_RINGS },
+  bbox: CLAIM_BBOX,
+};
+
+const RIBBON_CLAIM: PostTerritorySnapshot = {
+  claimed: {
+    territoryId: "t-demo",
+    name: "Canal Road",
+    areaSqM: 138_400,
+    valuePoints: 1000,
+    color: "#D7F24C",
+    geometry: { type: "Polygon", coordinates: CLAIM_RINGS },
+    bbox: CLAIM_BBOX,
+  },
+  crossed: [],
+  district: "Koramangala",
+};
+
+const RIBBON_RIVALS: PostTerritorySnapshot = {
+  claimed: null,
+  crossed: [
+    { territoryId: "t-1", name: "Canal Road", ownerId: "u1", ownerName: "Priya", coveragePct: 42, isRival: true },
+    { territoryId: "t-2", name: "Mill Lane", ownerId: "u2", ownerName: "Arjun", coveragePct: 11, isRival: true },
+    { territoryId: "t-3", name: "Own Loop", ownerId: ME, ownerName: "You", coveragePct: 80, isRival: false },
+  ],
+  district: "Koramangala",
+};
+
+const STRIP_BASE: TerritorySummary = {
+  held: 0, valuePoints: 0, fading: 0, needsResponse: 0, activeBattles: 0, longestHoldDays: 0,
+  topDistrict: null, objective: null,
+  landWar: { isOpen: false, opensAt: inHours(60), endsAt: inHours(108) },
+};
+const STRIP_EMPTY: TerritorySummary = STRIP_BASE;
+const STRIP_HEALTHY: TerritorySummary = {
+  ...STRIP_BASE,
+  held: 7, valuePoints: 5400, longestHoldDays: 34,
+  topDistrict: { district: "Koramangala", sharePct: 22, rank: 1 },
+};
+const STRIP_UNDER_PRESSURE: TerritorySummary = {
+  ...STRIP_HEALTHY,
+  fading: 2, needsResponse: 1, activeBattles: 3,
+  objective: { id: "o1", kind: "RAID", label: "Canal Road", territoryId: "t-1", expiresAt: inHours(40) },
+  landWar: { isOpen: true, opensAt: null, endsAt: inHours(30) },
+};
+
+const COLLAGE_SHAPES: TerritoryShape[] = [
+  { id: "c1", geometry: { type: "Polygon", coordinates: blob(77.21, 28.61, 0.004) }, bbox: [77.21, 28.61, 77.214, 28.614], color: "#D7F24C" },
+  { id: "c2", geometry: { type: "Polygon", coordinates: blob(77.218, 28.606, 0.003) }, bbox: [77.218, 28.606, 77.221, 28.609], color: "#AE93F4" },
+  { id: "c3", geometry: { type: "Polygon", coordinates: blob(77.205, 28.617, 0.0035) }, bbox: [77.205, 28.617, 77.2085, 28.6205], color: "#4CC9F0", fading: true },
+];
+
+type Overlay = "respond" | "win" | "split" | "repel" | "forfeit" | "rules" | "claim";
+
+/** Declared at module scope, not inside the page: a component re-created on every render
+ * remounts (and so resets) its subtree each time. */
+function DemoBtn({ id, onSelect, children }: { id: Overlay; onSelect: (id: Overlay) => void; children: React.ReactNode }) {
+  return (
     <button
-      onClick={() => setOverlay(id)}
+      onClick={() => onSelect(id)}
       className="inline-flex items-center gap-2 bg-white/10 border-2 border-border-ichor text-sm font-semibold px-3.5 py-2 rounded-none hover:bg-white/15"
     >
       {children}
     </button>
   );
+}
+
+export default function TerritoryDemoPage() {
+  const [overlay, setOverlay] = useState<Overlay | null>(null);
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 text-white">
@@ -216,12 +302,32 @@ export default function TerritoryDemoPage() {
       {/* 3 — Interactive sheets */}
       <h2 className="text-sm font-semibold text-white/60 mb-2">3 · Sheets &amp; cards — click to open</h2>
       <div className="flex flex-wrap gap-2.5 mb-10">
-        <DemoBtn id="respond"><Swords className="w-4 h-4 text-ignite" /> Respond (preview + duel scheduler)</DemoBtn>
-        <DemoBtn id="win"><Crown className="w-4 h-4 text-lime" /> Reveal: Victory</DemoBtn>
-        <DemoBtn id="split"><Swords className="w-4 h-4 text-momentum" /> Reveal: Split</DemoBtn>
-        <DemoBtn id="repel"><Shield className="w-4 h-4 text-ignite" /> Reveal: Repelled</DemoBtn>
-        <DemoBtn id="forfeit"><EyeOff className="w-4 h-4 text-white/50" /> Reveal: Forfeit</DemoBtn>
-        <DemoBtn id="rules"><HelpCircle className="w-4 h-4 text-momentum" /> Rules onboarding</DemoBtn>
+        <DemoBtn id="respond" onSelect={setOverlay}><Swords className="w-4 h-4 text-ignite" /> Respond (preview + duel scheduler)</DemoBtn>
+        <DemoBtn id="win" onSelect={setOverlay}><Crown className="w-4 h-4 text-lime" /> Reveal: Victory</DemoBtn>
+        <DemoBtn id="split" onSelect={setOverlay}><Swords className="w-4 h-4 text-momentum" /> Reveal: Split</DemoBtn>
+        <DemoBtn id="repel" onSelect={setOverlay}><Shield className="w-4 h-4 text-ignite" /> Reveal: Repelled</DemoBtn>
+        <DemoBtn id="forfeit" onSelect={setOverlay}><EyeOff className="w-4 h-4 text-white/50" /> Reveal: Forfeit</DemoBtn>
+        <DemoBtn id="rules" onSelect={setOverlay}><HelpCircle className="w-4 h-4 text-momentum" /> Rules onboarding</DemoBtn>
+        <DemoBtn id="claim" onSelect={setOverlay}><Crown className="w-4 h-4 text-lime" /> Claim reveal (confetti)</DemoBtn>
+      </div>
+
+      {/* 4 — The surfaces that put territory in front of the user */}
+      <h2 className="text-sm font-semibold text-white/60 mb-2">4 · Feed strip (every state)</h2>
+      <div className="space-y-1 mb-8">
+        <TerritoryStrip summary={STRIP_EMPTY} />
+        <TerritoryStrip summary={STRIP_HEALTHY} />
+        <TerritoryStrip summary={STRIP_UNDER_PRESSURE} />
+      </div>
+
+      <h2 className="text-sm font-semibold text-white/60 mb-2">5 · Post-card land ribbon</h2>
+      <div className="border-2 border-border-ichor bg-midnight-raised mb-8">
+        <TerritoryRibbon snapshot={RIBBON_CLAIM} isOwnPost authorName="You" />
+        <TerritoryRibbon snapshot={RIBBON_RIVALS} isOwnPost={false} authorName="Priya" />
+      </div>
+
+      <h2 className="text-sm font-semibold text-white/60 mb-2">6 · Profile collage (fading land dashed)</h2>
+      <div className="border-2 border-border-ichor bg-midnight-raised mb-10">
+        <TerritoryCollage shapes={COLLAGE_SHAPES} className="w-full h-auto block" />
       </div>
 
       {overlay === "respond" && <BattleRespondSheet battle={pendingBattle} currentUserId={ME} onClose={() => setOverlay(null)} onResponded={() => setOverlay(null)} />}
@@ -229,6 +335,7 @@ export default function TerritoryDemoPage() {
       {overlay === "split" && <BattleRevealCard battle={splitBattle} currentUserId={ME} onClose={() => setOverlay(null)} />}
       {overlay === "repel" && <BattleRevealCard battle={repelledBattle} currentUserId={ME} onClose={() => setOverlay(null)} />}
       {overlay === "forfeit" && <BattleRevealCard battle={forfeitBattle} currentUserId={ME} onClose={() => setOverlay(null)} />}
+      {overlay === "claim" && <ClaimRevealSheet claim={DEMO_CLAIM} onClose={() => setOverlay(null)} />}
 
       {overlay === "rules" && (
         <div className="fixed inset-0 z-[2000] flex items-end sm:items-center justify-center bg-black/60" onClick={() => setOverlay(null)}>

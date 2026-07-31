@@ -20,6 +20,7 @@ import { DietPill } from "@/components/features/ActivityCard";
 import { PostImageCarousel } from "@/components/features/PostImageCarousel";
 import { EditCaption } from "@/components/features/EditCaption";
 import { DeletePostButton } from "@/components/features/DeletePostButton";
+import { TerritoryRibbon } from "@/components/features/TerritoryRibbon";
 import { timeAgo, formatPace, formatDuration } from "@/lib/utils";
 
 export default async function PostDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -105,6 +106,16 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
           <StatChip label="Duration" value={formatDuration(post.workout.durationSeconds)} />
           <StatChip label="Calories" value={post.workout.caloriesBurned} />
         </div>
+
+        {/* Same land ribbon the feed card carries — a post's detail view should never say
+            less about the map than its own preview did. */}
+        {post.territorySnapshot && (
+          <TerritoryRibbon
+            snapshot={post.territorySnapshot}
+            isOwnPost={me ? String(me._id) === post.author.id : false}
+            authorName={post.author.name}
+          />
+        )}
 
         <div className="p-4 space-y-3">
           {post.zoneName && (

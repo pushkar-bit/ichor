@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
   // stranded every Strava-synced run behind it.
   const hasDiet = Boolean(dietDescription && dietDescription.trim().length > 0);
   let dietCard = null;
-  let territoryResult: TerritoryRunResult = { claimed: null, opportunities: [] };
+  let territoryResult: TerritoryRunResult = { claimed: null, opportunities: [], crossed: [], district: null };
   let pointsAwarded: PointsAward[] = [];
   try {
     [dietCard, { territoryResult, pointsAwarded }] = await Promise.all([

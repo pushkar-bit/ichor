@@ -25,6 +25,14 @@ export const POINT_REASONS = [
   // Territory deltas (lib/territoryEngine.ts)
   "TERRITORY_CREATED",
   "TERRITORY_VALUE_GROWTH",
+  // Upkeep deltas (lib/territoryUpkeep.ts)
+  "TERRITORY_DECAY", // negative: land you stopped running lost value
+  "HOLD_STREAK_BONUS", // positive: held the same ground for a milestone stretch
+  // Raid deltas (lib/raids.ts)
+  "RAID_WIN",
+  "RAID_REPELLED",
+  // Land war (lib/landWar.ts)
+  "LAND_WAR_BONUS",
   "TERRITORY_HOLD_WEEKLY",
   "TERRITORY_LEADERBOARD_1",
   "TERRITORY_LEADERBOARD_2",

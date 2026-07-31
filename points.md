@@ -59,16 +59,49 @@ description, classified by `classifyDiet()` (Gemini). This is **in addition to**
 
 ## 3. Territory rewards
 
-Territories are run-shaped land (see the territory-formation rules below).
+Territories are run-shaped land (see the territory-formation rules below). Two of the rules
+here are the direct answer to *"for more distance covered on that territory, the territory's
+value goes up, and the owner gets more points"* — including when someone **else's** run adds
+to your land's value, not just your own. The other two (`TERRITORY_DECAY` / `HOLD_STREAK_BONUS`)
+are upkeep: land is held, not owned outright, so the same "keep running it" incentive has a
+downside for neglect and a bonus for an unbroken hold.
 
 | Reason | Amount | Basis |
 |---|---|---|
 | `TERRITORY_CREATED` | +200 flat | Your run claimed brand-new, previously unclaimed ground. |
 | `TERRITORY_VALUE_GROWTH` | +5 × credited km | **Paid to the territory's owner**, not the runner, whenever ANY run (including the owner's own) meaningfully crosses their land (≥6% coverage) and credits it distance — the "landlord" bonus. There's no separate "recovery after a dip" rule: this fires on every value increase for whatever reason, so climbing back after a battle loss is paid the same as first-time growth. |
+| `TERRITORY_DECAY` | −(value lost ÷ 10) | **Upkeep.** Land nobody has run in over 7 days loses 3% of its peak value per further quiet day (floored at 25% of peak), and the owner pays a tenth of the drop. Charged at most once per territory per day. See `lib/territoryUpkeep.ts`. |
+| `HOLD_STREAK_BONUS` | +50 / +250 / +1000 | Holding the *same* ground unbroken for 7 / 30 / 100 days. Paid once each per hold — any transfer, split or raid resets `heldSince` and the milestone counter. |
 | `TERRITORY_HOLD_WEEKLY` | +50 per territory | Paid to every territory's current owner on the weekly sweep (`checkAndAwardWeeklyTerritoryBonuses`, `POST /api/cron/weekly-territory-bonus`). |
 | `TERRITORY_LEADERBOARD_1` / `_2` / `_3` | 75 / 40 / 20 | The same weekly sweep also ranks all territories by `fameScore` (the map's "Most Famous Territories" list) and pays the owners of the top 3. There's no per-runner-per-territory leaderboard in this data model — fame is the only real, existing "how alive is this land" ranking, so that's what this is built on rather than a fabricated one. |
 
-## 4. Battle rewards and penalties
+**Decay and recovery are one loop.** `TERRITORY_DECAY` drains a quiet territory's
+`valuePoints` down from its `peakValuePoints`; every credited km through it restores 20
+points of value (`KM_TO_VALUE_RECOVERY` in `lib/territoryEngine.ts`), capped at that same
+peak. So neglect costs you and running your ground pays you back, but nobody can inflate a
+territory past what it actually earned. A split or a raid lowers the peak along with the
+land, so a shrunken territory can't refill to what the whole thing used to be worth.
+
+## 4. Raid rewards
+
+Raids (`lib/raids.ts`) are the instant, small-stakes alternative to a formal battle: they
+resolve in the same request and can only ever take the strip the run covered.
+
+| Reason | Amount | Basis |
+|---|---|---|
+| `RAID_WIN` | +40 | Your raid out-paced the run that claimed the land, so you carved off the ground you covered. The territory also loses 10% of its value in the division. |
+| `RAID_REPELLED` | +15 | **Paid to the owner** when a raid on their land fails the pace comparison. Defending passively still pays. |
+
+Deliberately far below the battle win rewards in section 6 — a raid is meant to be frequent
+and cheap, not a faster route to the same reward.
+
+## 5. Land War
+
+| Reason | Amount | Basis |
+|---|---|---|
+| `LAND_WAR_BONUS` | +8 × credited km | During the weekend window (Sat 00:00 – Mon 00:00 UTC, the tail of the ICHOR week), a credited km through land held by a member of a **different clan** pays the runner on top of everything else. Both sides must be in a clan. Clan standings are summed from these ledger rows — there's no separate scoreboard to drift. See `lib/landWar.ts`. |
+
+## 6. Battle rewards and penalties
 
 Battles happen when an attacker's run covers enough of someone else's territory and the
 defender doesn't just repel them outright. Win/loss reasons differ by battle type:
@@ -90,7 +123,7 @@ duels** always use `WAR_WIN` for whichever side wins.
 | `DUEL_DOUBLE_FORFEIT` | -50 (attacker) | Neither side showed up to a scheduled duel — the attacker pays more, since they started it. |
 | `ASYNC_DOUBLE_FORFEIT` | -50 / -25 | Neither side submitted a run to an open challenge before the deadline. |
 
-## 5. Leaderboard rewards
+## 7. Leaderboard rewards
 
 | Reason | Amount | Basis |
 |---|---|---|
@@ -104,7 +137,7 @@ comparing each user's current position against `User.lastKnownRank`. Never penal
 only climbing (or holding top-3) pays. Neither sweep is wired to a scheduler yet — call
 manually or from a future cron, same pattern as the other `/api/cron/*` routes.
 
-## 6. Clan points
+## 8. Clan points
 
 A clan's collective standing is **computed on read**, not ledger-tracked — `PointsLedger`
 rows always belong to a `User`, and a clan isn't a ledger-eligible actor in this schema, so
@@ -138,7 +171,24 @@ top of — listed here so the whole picture is in one place.
      A 2km territory only needs a 2km attack run; a 2.5km territory needs 2.5km; anything
      3km or larger only ever needs 3km.
   2. **Overlap**: your run's corridor must cover at least **6%** of the target territory's
-     area (`ATTACK_COVERAGE_THRESHOLD` in `lib/territoryEngine.ts`).
+     area (`ATTACK_COVERAGE_THRESHOLD` = `FAME_MIN_COVERAGE` in `lib/territoryEngine.ts`) —
+     the same bar as the fame/value-growth coverage requirement, so "enough to matter for
+     fame" and "enough to threaten ownership" are the same threshold.
+- **Raiding a territory**: same 6% floor as an attack, but capped at the top end —
+  a run covering more than **35%** of the target (`RAID_MAX_COVERAGE` in `lib/raids.ts`)
+  is too big to settle without the owner's involvement and must go through a full attack.
+  A raid compares the raider's pace against the territory's claim-run pace, blind, and
+  resolves immediately: win and you take exactly the strip your corridor covered (the
+  territory keeps 90% of its value, divided by area); lose and nothing moves. Either way the
+  land gets a 24h shield and can't be raided again for a day.
 - **Fame/value-growth coverage**: any run crossing **at least 6%** of an existing territory
   credits it — a distinct-runner count, a visit, and (per section 3 above) points to the
   owner. Below 6%, a run that merely clips a corner doesn't count for anything.
+- **Upkeep**: a territory untouched for **7 days** starts fading; after **35 quiet days** it
+  is deleted and the ground returns to unclaimed. Any credited run resets the clock
+  (`lastActivityAt`). Territories in an active battle are never faded or removed. Constants
+  live in `lib/territoryUpkeep.ts`.
+- **Districts**: each territory records the district it was claimed in (from the same
+  reverse-geocode call that names it), and `lib/districts.ts` ranks holders by share of the
+  *claimed* ground in that district — not of its real-world area, which no runner could
+  ever meaningfully cover.
