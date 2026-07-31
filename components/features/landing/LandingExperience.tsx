@@ -2,7 +2,9 @@ import SmoothScroll from "./SmoothScroll";
 import CustomCursor from "./CustomCursor";
 import ParticleField from "./ParticleField";
 import LandingNav from "./LandingNav";
+import LandingHero from "./LandingHero";
 import ScrollCue from "./ScrollCue";
+import LandingAbout from "./LandingAbout";
 import LandingSignUp from "./LandingSignUp";
 
 /**
@@ -17,11 +19,13 @@ export default function LandingExperience() {
       <CustomCursor />
       <ParticleField />
       <LandingNav />
+      <LandingHero />
       <ScrollCue />
       <main id="top" className="relative z-10">
         {/* Pure scroll distance for the logo -> kangaroo -> jump -> jump -> human -> run
             sequence, rendered by the fixed ParticleField canvas behind this transparent track. */}
         <div id="scroll-track" className="h-[300vh] w-full" />
+        <LandingAbout />
         <LandingSignUp />
       </main>
     </SmoothScroll>

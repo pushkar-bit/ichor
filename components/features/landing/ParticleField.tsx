@@ -161,8 +161,48 @@ export default function ParticleField() {
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x000000, 0.035);
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
     camera.position.z = 4.4;
+
+    // Environment: a sparse drifting starfield behind the runner (depth, always present) and
+    // a ground grid that fades in through the run so the human reads as moving through a
+    // place, not floating in a void. Both are independent of the morph shader — cheap, and
+    // can't affect the particle-morph tuning above.
+    const STAR_COUNT = coarsePointer ? 500 : 900;
+    const starGeometry = new THREE.BufferGeometry();
+    const starPositions = new Float32Array(STAR_COUNT * 3);
+    for (let i = 0; i < STAR_COUNT; i++) {
+      // Kept well outside the ~1.7-unit particle-morph cloud and away from the z~4.4 camera
+      // (world-scale, size-attenuated points close to camera balloon to cover the screen) —
+      // a fixed fully-behind shell reads as a consistent, un-intrusive starfield instead.
+      const radius = 9 + Math.random() * 9;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(Math.random() * 2 - 1);
+      starPositions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+      starPositions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+      starPositions[i * 3 + 2] = radius * Math.cos(phi) - 10;
+    }
+    starGeometry.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
+    const starMaterial = new THREE.PointsMaterial({
+      color: 0xae93f4,
+      size: 2.2,
+      sizeAttenuation: false,
+      transparent: true,
+      opacity: 0.45,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const stars = new THREE.Points(starGeometry, starMaterial);
+    scene.add(stars);
+
+    const gridGroup = new THREE.Group();
+    const groundGrid = new THREE.GridHelper(14, 28, 0xfda2de, 0xae93f4);
+    (groundGrid.material as THREE.Material).transparent = true;
+    (groundGrid.material as THREE.Material).opacity = 0;
+    groundGrid.position.y = -1.15;
+    gridGroup.add(groundGrid);
+    scene.add(gridGroup);
 
     const setSize = () => {
       const w = window.innerWidth;
@@ -254,6 +294,12 @@ export default function ParticleField() {
         points.rotation.y = idleRotation + targetRot.y + hop3D.spinY;
         points.rotation.x = targetRot.x + hop3D.tumbleX;
         points.position.z = hop3D.z;
+
+        // Environment drift: independent of the runner's own motion, so it reads as the
+        // world moving past rather than an extension of the morph itself.
+        stars.rotation.y += dt * 0.008;
+        stars.rotation.x += dt * 0.003;
+        gridGroup.position.z = (hop3D.z + points.position.z) * 0.4;
       }
 
       renderer.render(scene, camera);
@@ -337,6 +383,11 @@ export default function ParticleField() {
       hop3D.z = hopZ;
       hop3D.tumbleX = tumbleX;
       hop3D.spinY = spinY;
+
+      // Ground grid: absent through the logo/jump acts, fades in as the run starts — the
+      // runner lands into an actual environment instead of the void it took off from.
+      const gridT = smoothstep(P_JUMP2_END, P_JUMP2_END + 0.08, progress);
+      (groundGrid.material as THREE.Material).opacity = gridT * 0.28;
     };
 
     if (reducedMotion) {
@@ -418,6 +469,10 @@ export default function ParticleField() {
       ctxCleanups.forEach((fn) => fn());
       geometry.dispose();
       material.dispose();
+      starGeometry.dispose();
+      starMaterial.dispose();
+      groundGrid.geometry.dispose();
+      (groundGrid.material as THREE.Material).dispose();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
