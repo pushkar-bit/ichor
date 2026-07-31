@@ -113,7 +113,7 @@ export default function AboutPage() {
                   transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
                   className="w-full h-full p-8 flex items-center justify-center relative z-10"
                 >
-                  <img src="/about-logo.png" alt="ICHOR Logo Concept" className="w-full h-full object-contain drop-shadow-2xl" />
+                  <img src="/images/newl.jpg" alt="ICHOR Logo Concept" className="w-full h-full object-contain drop-shadow-2xl" />
                 </motion.div>
               </div>
             </FadeIn>
