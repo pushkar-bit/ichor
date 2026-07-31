@@ -25,8 +25,16 @@ function LenisEngine() {
     register(lenis);
     lenis.on("scroll", ScrollTrigger.update);
 
-    const ticker = (time: number) => {
-      lenis.raf(time * 1000);
+    // gsap.ticker.lagSmoothing(0) below reports the *real* elapsed time after any stall
+    // (first WebGL frame, tab switch, etc.) instead of a smoothed-over estimate. Fed straight
+    // into lenis.raf(), a single big tick can fast-forward an in-progress eased scrollTo by a
+    // large fraction of its duration in one step — an animated scrollTo(...) then "jumps"
+    // instead of visibly playing. Keep our own capped virtual clock for Lenis so one janky
+    // frame only ever advances its animations by a normal frame's worth.
+    let virtualElapsedMs = 0;
+    const ticker = (_time: number, deltaMs: number) => {
+      virtualElapsedMs += Math.min(deltaMs, 100);
+      lenis.raf(virtualElapsedMs);
     };
     gsap.ticker.add(ticker);
     gsap.ticker.lagSmoothing(0);

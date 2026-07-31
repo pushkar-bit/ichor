@@ -8,7 +8,10 @@ export default function LandingNav() {
 
   const goToJoin = (e: React.MouseEvent) => {
     e.preventDefault();
-    scrollTo("#join");
+    // Slower than lenis-context's 1.6s default: #join sits after the full logo->kangaroo->
+    // runner scroll-track, so tapping Sign In from the top should let that sequence actually
+    // play on the way down, not blur past it.
+    scrollTo("#join", { duration: 3.6 });
   };
 
   return (
