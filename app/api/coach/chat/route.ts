@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
     battlesWon: me.battlesWon,
     battlesLost: me.battlesLost,
     zonesHeld,
+    beginnerMode: me.beginnerMode,
   });
 
   await CoachMessage.create({ userId: me._id, role: "coach", text: reply });

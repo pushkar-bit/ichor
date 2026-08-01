@@ -1,10 +1,11 @@
 import Link from "next/link";
 import Image from "next/image";
-import { Trophy, Flame, ShieldCheck, MapPin, Gauge, Ruler, Snowflake, LogOut } from "lucide-react";
+import { Trophy, Flame, ShieldCheck, MapPin, Gauge, Ruler, Snowflake, LogOut, Heart } from "lucide-react";
 import { integrityTier } from "@/lib/scoring";
 import { BADGE_DEFS } from "@/lib/badges";
 import { Avatar } from "@/components/ui/Avatar";
 import { StatChip, EmptyState } from "@/components/ui/StatChip";
+import { BeginnerModeToggle } from "@/components/features/BeginnerModeToggle";
 import { EditProfileModal } from "@/components/features/EditProfileModal";
 import { TrainingPlanCard } from "@/components/features/TrainingPlanCard";
 import { ActivityHeatmap } from "@/components/features/ActivityHeatmap";
@@ -33,6 +34,7 @@ type ProfileUser = {
   integrityPoints: number;
   points?: number;
   badges?: string[];
+  beginnerMode?: boolean;
 };
 
 export function ProfileView({
@@ -204,19 +206,34 @@ export function ProfileView({
         </div>
       )}
 
-      {/* Battle record */}
-      <div>
-        <h2 className="font-semibold text-sm text-white/60 mb-2 flex items-center gap-1.5">
-          <Trophy className="w-4 h-4" /> Battle Record
-        </h2>
-        <div className="flex items-center justify-between text-sm mb-1.5">
-          <span className="text-lime font-medium">{user.battlesWon}W</span>
-          <span className="text-ignite font-medium">{user.battlesLost}L</span>
+      {/* Battle record — only once there's actually a record to show; a brand-new profile
+          (beginner or not) showing "0W - 0L" is a confusing, irrelevant scoreboard. */}
+      {totalBattles > 0 && (
+        <div>
+          <h2 className="font-semibold text-sm text-white/60 mb-2 flex items-center gap-1.5">
+            <Trophy className="w-4 h-4" /> Battle Record
+          </h2>
+          <div className="flex items-center justify-between text-sm mb-1.5">
+            <span className="text-lime font-medium">{user.battlesWon}W</span>
+            <span className="text-ignite font-medium">{user.battlesLost}L</span>
+          </div>
+          <div className="h-2 rounded-full bg-ignite/30 overflow-hidden">
+            <div className="h-full bg-lime" style={{ width: `${winRatio * 100}%` }} />
+          </div>
         </div>
-        <div className="h-2 rounded-full bg-ignite/30 overflow-hidden">
-          <div className="h-full bg-lime" style={{ width: `${winRatio * 100}%` }} />
+      )}
+
+      {/* Beginner-Friendly Mode toggle — reversible any time, not just at onboarding. */}
+      {isOwnProfile && (
+        <div className="bg-midnight-raised border border-border-ichor rounded-2xl p-4 flex items-center gap-3">
+          <Heart className="w-5 h-5 text-momentum shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold">Beginner-Friendly Mode</div>
+            <div className="text-xs text-white/40">A guided program, softer tone, and a shielded map for new runners.</div>
+          </div>
+          <BeginnerModeToggle initialEnabled={Boolean(user.beginnerMode)} />
         </div>
-      </div>
+      )}
 
       {/* Streak */}
       <div className="grid grid-cols-2 gap-3">

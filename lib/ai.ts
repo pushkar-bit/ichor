@@ -177,9 +177,31 @@ type CoachContext = {
   battlesWon: number;
   battlesLost: number;
   zonesHeld: number;
+  /** Beginner-Friendly Mode — swaps the coach's persona to patient/encouraging (see
+   * app/api/coach/chat/route.ts). Never references territory/battle mechanics unprompted. */
+  beginnerMode?: boolean;
 };
 
+function coachReplyFallbackBeginner(message: string, ctx: CoachContext): string {
+  const m = message.toLowerCase();
+
+  if (m.includes("hurt") || m.includes("pain") || m.includes("sore")) {
+    return `A dull ache a day after running is normal soreness — it fades. Anything sharp, or in a joint, means take the day off and let it heal. When in doubt, rest.`;
+  }
+  if (m.includes("how far") || m.includes("how long") || m.includes("how much")) {
+    return `There's no target to hit here except showing up. Walk when you need to, jog when you can — the plan on your Start Here page paces it out week by week.`;
+  }
+  if (m.includes("tired") || m.includes("hard") || m.includes("can't") || m.includes("cant")) {
+    return `That's completely normal this early on. Slow down, walk it out, and finish the session at whatever pace feels okay. Finishing slow still counts as finishing.`;
+  }
+  if (ctx.streakDays >= 2) {
+    return `${ctx.streakDays} days in a row — that consistency is the whole game right now, not your pace. Keep showing up.`;
+  }
+  return `I'm here for anything — pacing, soreness, what a session should feel like. What's on your mind?`;
+}
+
 function coachReplyFallback(message: string, ctx: CoachContext): string {
+  if (ctx.beginnerMode) return coachReplyFallbackBeginner(message, ctx);
   const m = message.toLowerCase();
 
   if (m.includes("burn more calories") || m.includes("burn calories")) {
@@ -254,7 +276,9 @@ export async function coachReply(message: string, ctx: CoachContext): Promise<st
   if (!model) return coachReplyFallback(message, ctx);
 
   try {
-    const systemPrompt = `You are Vikas Yadav, an elite performance coach for ICHOR — a campus social fitness battleground where college athletes compete for territory, leaderboard dominance, and glory. You are intense, disciplined, and data-driven — like an ancient Greek athlete who trains for victory, not participation. You speak with authority. You never sugarcoat. Keep responses mobile-optimized: maximum 3 short paragraphs, no markdown headers. Always reference the user's actual numbers. User stats: ${ctx.weeklyCaloriesBurned} calories this week, ${ctx.streakDays}-day streak, ${ctx.integrityPoints} integrity points, ${ctx.zonesHeld} zones held, ${ctx.battlesWon} battles won, ${ctx.battlesLost} battles lost.\n\n${GAME_MECHANICS_REFERENCE}`;
+    const systemPrompt = ctx.beginnerMode
+      ? `You are ICHOR's running coach, talking to someone who is brand new to running (Beginner-Friendly Mode is on). Be warm, patient, and encouraging — never intense, never combative, never sarcastic. Praise effort and consistency over speed or distance. Explain things in plain language, no running jargon without explaining it. Keep safety first: soreness is normal, sharp pain is not; rest days matter; always suggest walking when in doubt. Never bring up territory, raids, battles, leaderboards, or clans unless the user asks about them directly — this user is shielded from that side of the app for now. Keep responses mobile-optimized: maximum 3 short paragraphs, no markdown headers. User context: ${ctx.streakDays}-day streak, ${ctx.weeklyCaloriesBurned} calories this week.`
+      : `You are Vikas Yadav, an elite performance coach for ICHOR — a campus social fitness battleground where college athletes compete for territory, leaderboard dominance, and glory. You are intense, disciplined, and data-driven — like an ancient Greek athlete who trains for victory, not participation. You speak with authority. You never sugarcoat. Keep responses mobile-optimized: maximum 3 short paragraphs, no markdown headers. Always reference the user's actual numbers. User stats: ${ctx.weeklyCaloriesBurned} calories this week, ${ctx.streakDays}-day streak, ${ctx.integrityPoints} integrity points, ${ctx.zonesHeld} zones held, ${ctx.battlesWon} battles won, ${ctx.battlesLost} battles lost.\n\n${GAME_MECHANICS_REFERENCE}`;
 
     const result = await model.generateContent(`${systemPrompt}\n\nUser: ${message}`);
     const text = result.response.text().trim();

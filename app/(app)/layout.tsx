@@ -8,8 +8,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user.weightKg || !user.heightCm || !user.username) redirect("/onboarding");
 
   return (
-    <NavShell user={{ name: user.name, avatarUrl: user.avatarUrl }}>
-      {children}
-    </NavShell>
+    // data-mode scopes the Beginner-Friendly Mode CSS overrides in globals.css to the entire
+    // authenticated app — see the [data-mode="beginner"] rules there for why this wraps here
+    // instead of the <html> tag in the root layout.
+    <div data-mode={user.beginnerMode ? "beginner" : "core"}>
+      <NavShell user={{ name: user.name, avatarUrl: user.avatarUrl, beginnerMode: Boolean(user.beginnerMode) }}>
+        {children}
+      </NavShell>
+    </div>
   );
 }

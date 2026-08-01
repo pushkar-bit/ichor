@@ -139,6 +139,12 @@ export async function createBattle(params: {
     return { error: "This territory is shielded after a recent battle." };
   }
 
+  // Beginner-Friendly Mode shield — see the matching guard in lib/raids.ts.
+  const owner = await User.findById(territory.ownerId).select("beginnerMode").lean();
+  if ((owner as { beginnerMode?: boolean } | null)?.beginnerMode) {
+    return { error: "This runner is just getting started — give them a few weeks before attacking their ground." };
+  }
+
   const activeOnTerritory = await Battle.exists({ territoryId, status: { $ne: "RESOLVED" } });
   if (activeOnTerritory) return { error: "There's already an active battle for this territory." };
 

@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     if (!me) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
 
     const body = await req.json();
-    const { weightKg, heightCm, username } = body;
+    const { weightKg, heightCm, username, beginnerMode } = body;
 
     if (!weightKg || !heightCm) {
       return NextResponse.json({ error: "Weight and height are required" }, { status: 400 });
@@ -26,11 +26,19 @@ export async function POST(req: NextRequest) {
 
     const updates: Record<string, unknown> = { weightKg: Number(weightKg), heightCm: Number(heightCm) };
     if (!me.username) updates.username = normalizedUsername;
+    if (beginnerMode === true) {
+      updates.beginnerMode = true;
+      updates.beginnerModeStartedAt = new Date();
+    }
 
     await User.updateOne({ _id: me._id }, { $set: updates }, { strict: false });
     // Tells the onboarding client whether to show the "connect Strava" step next — a user who
     // signed up via Strava itself (app/api/auth/strava/callback.ts) already has this set.
-    return NextResponse.json({ success: true, stravaConnected: Boolean(me.stravaAthleteId) });
+    return NextResponse.json({
+      success: true,
+      stravaConnected: Boolean(me.stravaAthleteId),
+      beginnerMode: beginnerMode === true,
+    });
   } catch (err: any) {
     if (err?.code === 11000) {
       return NextResponse.json({ error: "That username is already taken." }, { status: 409 });

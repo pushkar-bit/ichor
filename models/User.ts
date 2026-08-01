@@ -55,6 +55,15 @@ const UserSchema = new Schema(
     stravaRefreshToken: { type: String, default: null },
     stravaTokenExpiresAt: { type: Date, default: null },
     stravaConnectedAt: { type: Date, default: null },
+    // Beginner-Friendly Mode — set from the onboarding "are you new to running?" question,
+    // freely toggleable afterward from Profile (see app/api/users/beginner-mode/route.ts).
+    // Drives the app-wide friendly reskin (see [data-mode="beginner"] rules in globals.css),
+    // the beginner program surfaced through lib/forYou.ts, and shields the user's territory
+    // from raids/battles (see lib/raids.ts, lib/battles.ts).
+    beginnerMode: { type: Boolean, default: false },
+    // Anchors "Week N of the program" — set when beginnerMode first turns on, left untouched
+    // on a later re-enable so turning the mode off and back on resumes rather than restarts.
+    beginnerModeStartedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

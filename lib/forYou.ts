@@ -9,6 +9,7 @@ import { decayStateFor, holdDays, quietDays, DORMANT_DAYS } from "./territoryUpk
 import { getActiveObjective } from "./objectives";
 import { getTopDistrictForUser } from "./districts";
 import { getLandWarWindow } from "./landWar";
+import { computeProgramProgress, PROGRAM_TIPS } from "./beginnerProgram";
 
 /**
  * The "For You" intelligence layer that fronts the feed. Everything here is computed
@@ -64,6 +65,11 @@ export type ForYouCard = CardBase &
     | { kind: "objective"; label: string; objectiveKind: "CLAIM" | "RAID" | "DEFEND"; expiresAt: string }
     | { kind: "district_standing"; district: string; sharePct: number; rank: number }
     | { kind: "land_war"; isOpen: boolean; at: string }
+    // Beginner-Friendly Mode — see lib/beginnerProgram.ts. Only ever emitted for
+    // viewer.beginnerMode, so a non-beginner's feed is completely unaffected.
+    | { kind: "beginner_next_session"; week: number; totalWeeks: number; sessionLabel: string; detail: string }
+    | { kind: "beginner_tip"; title: string; body: string }
+    | { kind: "beginner_milestone"; label: string }
   );
 
 type ViewerLike = {
@@ -74,6 +80,8 @@ type ViewerLike = {
   streakFreezesAvailable?: number;
   totalDistanceKm?: number;
   clanId?: unknown;
+  beginnerMode?: boolean;
+  beginnerModeStartedAt?: Date | null;
 };
 
 type WorkoutLean = {
@@ -183,6 +191,7 @@ export async function buildForYou(
   cards.push(...buildBattleCards(battles as any[], viewerId, now));
   cards.push(...buildOpportunityCards(opportunities as any[]));
   cards.push(...territoryCards);
+  cards.push(...buildBeginnerCards(viewer, workouts, now));
   cards.push(buildKudosCard(workouts, now));
   cards.push(buildStreakCard(viewer, workouts, now));
   cards.push(buildWeeklyCard(workouts, now));
@@ -377,6 +386,45 @@ async function buildTerritoryCards(viewerId: string, now: Date): Promise<ForYouC
     console.error("[forYou] territory cards failed:", (err as Error).message);
     return [];
   }
+}
+
+/**
+ * A beginner's program nudge and a rotating safety tip — see lib/beginnerProgram.ts. Priority
+ * mirrors under_attack (~100): while a session is due, it's the single most important thing a
+ * new runner should see, well above leaderboard/rival content they're shielded from anyway
+ * (lib/raids.ts, lib/battles.ts). Only ever runs for viewer.beginnerMode.
+ */
+function buildBeginnerCards(viewer: ViewerLike, workouts: WorkoutLean[], now: Date): (ForYouCard | null)[] {
+  if (!viewer.beginnerMode) return [];
+
+  const startedAt = viewer.beginnerModeStartedAt ?? now;
+  const relevantDates = workouts
+    .filter((w) => (w.activityType === "RUN" || w.activityType === "WALK") && new Date(w.workoutDate) >= startedAt)
+    .map((w) => new Date(w.workoutDate));
+  const progress = computeProgramProgress(startedAt, relevantDates, now);
+
+  if (progress.isComplete) {
+    return [{ kind: "beginner_milestone", id: id("beginner_graduate"), priority: 97, label: "You finished the 8-week program 🎉" }];
+  }
+
+  const out: (ForYouCard | null)[] = [];
+  if (progress.sessionsThisWeek < progress.sessionsTargetThisWeek) {
+    const next = progress.currentWeekData.sessions[progress.sessionsThisWeek];
+    out.push({
+      kind: "beginner_next_session",
+      id: id("beginner_session", `${progress.week}:${progress.sessionsThisWeek}`),
+      priority: 99,
+      week: progress.week,
+      totalWeeks: progress.totalWeeks,
+      sessionLabel: next.label,
+      detail: next.detail,
+    });
+  }
+  // Rotates daily so it doesn't feel static across visits.
+  const tip = PROGRAM_TIPS[(progress.week + now.getDate()) % PROGRAM_TIPS.length];
+  out.push({ kind: "beginner_tip", id: id("beginner_tip", dayKey(now)), priority: 45, title: tip.title, body: tip.body });
+
+  return out;
 }
 
 // ---------------------------------------------------------------------------

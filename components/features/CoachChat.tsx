@@ -14,7 +14,14 @@ const STARTERS = [
   "Generate my training plan",
 ];
 
-export function CoachChat() {
+const BEGINNER_STARTERS = [
+  "Is this soreness normal?",
+  "How should this week feel?",
+  "I'm finding it hard — now what?",
+  "What should I eat before a run?",
+];
+
+export function CoachChat({ beginnerMode = false }: { beginnerMode?: boolean }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -58,10 +65,10 @@ export function CoachChat() {
         </div>
         <div>
           <h1 className="font-display italic font-bold tracking-wide" style={{ color: "#AE93F4" }}>
-            VIKAS YADAV
+            {beginnerMode ? "COACH" : "VIKAS YADAV"}
           </h1>
           <p className="text-xs font-light" style={{ color: "#6B6570" }}>
-            Your Performance Coach
+            {beginnerMode ? "Your Running Buddy" : "Your Performance Coach"}
           </p>
         </div>
       </div>
@@ -74,7 +81,7 @@ export function CoachChat() {
         )}
         {loaded && messages.length === 0 && (
           <div className="flex flex-wrap gap-2 mt-4">
-            {STARTERS.map((s) => (
+            {(beginnerMode ? BEGINNER_STARTERS : STARTERS).map((s) => (
               <button
                 key={s}
                 onClick={() => send(s)}
@@ -114,7 +121,7 @@ export function CoachChat() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send(input)}
-          placeholder="Ask Vikas anything..."
+          placeholder={beginnerMode ? "Ask me anything..." : "Ask Vikas anything..."}
           className="flex-1 bg-midnight-raised border border-border-ichor rounded-full px-4 py-2.5 text-sm placeholder:text-white/30 focus:outline-none focus:border-momentum/50"
         />
         <button

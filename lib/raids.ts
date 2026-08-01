@@ -102,6 +102,19 @@ export async function raidTerritory(params: {
     return { ok: false, error: "This land is shielded after a recent fight." };
   }
 
+  // Fetched once, used both for the Beginner-Friendly Mode shield below and for the owner's
+  // name in the repelled/taken outcomes further down.
+  const owner = (await User.findById(territory.ownerId).select("name beginnerMode").lean()) as
+    | { name?: string; beginnerMode?: boolean }
+    | null;
+
+  // Beginner-Friendly Mode shield: a new runner's ground can't be raided while they're still
+  // building their base (see models/User.ts beginnerMode). Territory ownership doesn't change
+  // hands here at all, so this doesn't need a battle-style "suggest an alternative" flag.
+  if (owner?.beginnerMode) {
+    return { ok: false, error: "This runner is just getting started — give them a few weeks before raiding their ground." };
+  }
+
   const activeBattle = await Battle.exists({ territoryId, status: { $ne: "RESOLVED" } });
   if (activeBattle) return { ok: false, error: "There's an active battle here — the land is already contested." };
 
@@ -138,7 +151,6 @@ export async function raidTerritory(params: {
   const claimStats = territory.claimStats as { avgPaceMinPerKm: number | null } | null;
   const raiderPace = workout.avgPaceMinPerKm ?? Infinity;
   const holderPace = claimStats?.avgPaceMinPerKm ?? Infinity;
-  const owner = (await User.findById(territory.ownerId).select("name").lean()) as { name?: string } | null;
 
   // --- Repelled: the raider didn't out-run the claim. ---
   if (!(raiderPace < holderPace)) {

@@ -36,6 +36,50 @@
   border-color: var(--ichor-border);
 }
 
+/*
+ * Beginner-Friendly Mode reskin.
+ *
+ * Scoped under [data-mode="beginner"], set on a wrapper div in app/(app)/layout.tsx that wraps
+ * the whole authenticated app. Deliberately overrides the root-level ichor and font tokens
+ * (not the color/font-sans aliases in the theme block above) — every derived alias already
+ * resolves through these via var(), so this alone reskins colors and fonts everywhere with
+ * zero per-component edits. We stay on the dark canvas on purpose: text across the app is
+ * hardcoded light (text-white/NN), so a literal light-mode flip would make most of it
+ * unreadable without a full per-component audit. Instead: same dark background, warmer and
+ * rounder accents, a friendly rounded font, and softened hard edges.
+ */
+[data-mode="beginner"] {
+  --ichor-momentum: #ff9466;
+  --ichor-momentum-dim: #e07d52;
+  --ichor-midnight: #14100e;
+  --ichor-midnight-raised: #1c1613;
+  --ichor-midnight-card: #241c18;
+  --ichor-afterrun: #ffd166;
+  --ichor-lime: #8fd694;
+  --ichor-ignite: #ff8552;
+  --ichor-border: #3a2e27;
+
+  --font-poppins: var(--font-nunito);
+  --font-barlow: var(--font-baloo);
+}
+
+/* Soften every hard-edged card/button/nav-item to feel warm instead of tactical. Substring
+   attribute selectors match Tailwind's literal (unescaped) class-attribute text — safe here
+   since these patterns are distinctive enough not to collide with unrelated utilities. */
+[data-mode="beginner"] .rounded-none {
+  border-radius: 1.25rem !important;
+}
+[data-mode="beginner"] [class*="shadow-[4px_4px_0"] {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28) !important;
+}
+[data-mode="beginner"] [class*="border-2"] {
+  border-width: 1.5px !important;
+}
+[data-mode="beginner"] .font-display {
+  font-style: normal;
+  letter-spacing: normal;
+}
+
 html,
 body {
   background: var(--background);

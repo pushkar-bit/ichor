@@ -6,6 +6,7 @@ import {
   Swords, ShieldAlert, Trophy, Crosshair, Flame, TrendingUp, CalendarDays,
   Flag, Sparkles, History, Users, Target, MessageCircle, X, ChevronRight,
   Percent, Sunrise, AlertTriangle, Gauge, CalendarClock, TrendingDown, ShieldCheck, Map,
+  Footprints, PartyPopper, Heart,
 } from "lucide-react";
 import type { ForYouCard } from "@/lib/forYou";
 import { Countdown } from "./Countdown";
@@ -253,6 +254,28 @@ function describe(card: ForYouCard): Presentation {
           </div>
         ),
       };
+    case "beginner_next_session":
+      return {
+        accent: "text-momentum",
+        icon: <Footprints className="w-5 h-5" />, eyebrow: `Week ${card.week} of ${card.totalWeeks}`,
+        title: card.sessionLabel,
+        body: card.detail,
+        href: "/start", cta: "Open your plan",
+      };
+    case "beginner_tip":
+      return {
+        accent: "text-lime",
+        icon: <Heart className="w-5 h-5" />, eyebrow: "Good to know",
+        title: card.title, body: card.body,
+        href: "/start", cta: "More tips",
+      };
+    case "beginner_milestone":
+      return {
+        accent: "text-lime",
+        icon: <PartyPopper className="w-5 h-5" />, eyebrow: "Milestone",
+        title: card.label, body: "You're ready for the full ICHOR experience whenever you want it.",
+        href: "/start", cta: "See what's next",
+      };
     case "goal_projection":
       return {
         accent: "text-momentum",
@@ -348,6 +371,9 @@ function groupOf(kind: ForYouCard["kind"]): ForYouGroup {
     case "coach_tip":
     case "territory_fading":
     case "objective":
+    case "beginner_next_session":
+    case "beginner_tip":
+    case "beginner_milestone":
       return "act";
     case "leaderboard_move":
     case "rival":
