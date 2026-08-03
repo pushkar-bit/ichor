@@ -176,7 +176,19 @@ export type ProgramProgress = {
   currentWeekData: ProgramWeek;
   /** The most recent counted session, if any — used to detect "they just finished one." */
   lastCompletedSession: CompletedSessionEvent | null;
+  /** Sessions counted across the whole program so far, and the program's total. The progress
+   * bar reads from these — using stage number over total stages instead would show a filled
+   * sliver before the user has actually done anything. */
+  completedSessionsTotal: number;
+  totalSessionsInProgram: number;
+  /** Earliest moment a new session will count toward the plan, given the rest-day floor. Null
+   * when nothing has been logged yet (any session counts immediately). Surfaced in the UI so a
+   * runner is never silently told "0 of 3" after a run that didn't count — see restDayNotice. */
+  nextSessionCountsFrom: Date | null;
 };
+
+/** Total sessions across every stage — the denominator for overall progress. */
+export const TOTAL_PROGRAM_SESSIONS = PROGRAM_WEEKS.reduce((sum, w) => sum + w.sessions.length, 0);
 
 const DAY_MS = 86400e3;
 
@@ -218,6 +230,7 @@ export function computeProgramProgress(
 
   let week = 1;
   let sessionsThisWeek = 0;
+  let completedSessionsTotal = 0;
   let lastCountedDay: string | null = null;
   let lastCompletedSession: CompletedSessionEvent | null = null;
 
@@ -230,6 +243,7 @@ export function computeProgramProgress(
     }
 
     sessionsThisWeek++;
+    completedSessionsTotal++;
     lastCountedDay = dayKey(d);
     const totalSessionsInWeek = PROGRAM_WEEKS[week - 1].sessions.length;
     const completedWeek = sessionsThisWeek >= totalSessionsInWeek;
@@ -252,6 +266,12 @@ export function computeProgramProgress(
   const clampedWeek = Math.min(week, PROGRAM_LENGTH_WEEKS);
   const currentWeekData = PROGRAM_WEEKS[clampedWeek - 1];
 
+  // The rest-day floor is measured from the last counted session's calendar day, matching the
+  // gate in the replay loop above.
+  const nextSessionCountsFrom = lastCountedDay
+    ? new Date(new Date(lastCountedDay).getTime() + minDaysBetweenSessions * DAY_MS)
+    : null;
+
   return {
     week: clampedWeek,
     totalWeeks: PROGRAM_LENGTH_WEEKS,
@@ -260,6 +280,32 @@ export function computeProgramProgress(
     isComplete,
     currentWeekData,
     lastCompletedSession,
+    completedSessionsTotal,
+    totalSessionsInProgram: TOTAL_PROGRAM_SESSIONS,
+    nextSessionCountsFrom,
+  };
+}
+
+/**
+ * Plain-language status for the rest-day floor, resolved server-side so the label never depends
+ * on the viewer's clock. Returns null when a session logged right now would count — i.e. the
+ * banner only ever appears when there's something a runner would otherwise be confused by
+ * (a run today that quietly wouldn't advance the plan).
+ */
+export function restDayNotice(
+  progress: ProgramProgress,
+  now: Date = new Date(),
+): { title: string; body: string } | null {
+  const from = progress.nextSessionCountsFrom;
+  if (progress.isComplete || !from || now.getTime() >= from.getTime()) return null;
+
+  const daysLeft = Math.max(1, Math.ceil((from.getTime() - now.getTime()) / DAY_MS));
+  const when = daysLeft === 1 ? "tomorrow" : `in ${daysLeft} days`;
+  return {
+    title: `Rest day — your next session counts ${when}`,
+    body:
+      "You've already done a session recently, and the gap between them is where your body actually gets stronger. " +
+      "You're welcome to move today if you want to — it just won't tick off the next session on your plan.",
   };
 }
 

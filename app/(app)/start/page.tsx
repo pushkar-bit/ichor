@@ -1,7 +1,7 @@
 import { connectDB } from "@/lib/mongodb";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { Workout } from "@/models/Workout";
-import { computeProgramProgress, pickByDay, MOTIVATIONAL_QUOTES } from "@/lib/beginnerProgram";
+import { computeProgramProgress, pickByDay, restDayNotice, MOTIVATIONAL_QUOTES } from "@/lib/beginnerProgram";
 import { getAge, minRestDaysForAge } from "@/lib/age";
 import { StartView } from "@/components/features/StartView";
 
@@ -29,13 +29,18 @@ export default async function StartPage() {
     .select("workoutDate")
     .lean();
 
+  const now = new Date();
   const age = me.birthDate ? getAge(me.birthDate) : null;
   const progress = computeProgramProgress(
     startedAt,
     recentWorkouts.map((w: any) => new Date(w.workoutDate)),
-    new Date(),
+    now,
     minRestDaysForAge(age),
   );
 
-  return <StartView optedIn name={me.name} progress={progress} quote={quote} />;
+  // Resolved here rather than in the client component so the "tomorrow / in N days" wording
+  // comes off the server clock and can't hydrate-mismatch against the viewer's.
+  const restNotice = restDayNotice(progress, now);
+
+  return <StartView optedIn name={me.name} progress={progress} quote={quote} restNotice={restNotice} />;
 }
