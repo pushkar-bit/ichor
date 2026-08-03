@@ -112,10 +112,10 @@ export default function OnboardingPage() {
           <p className="text-sm text-white/60 mb-2">Are you completely new to running?</p>
           <p className="text-xs text-white/40 mb-6">
             Answering yes switches your account into <span className="text-momentum font-semibold">Beginner-Friendly Mode</span> — a
-            calmer, guided version of ICHOR built for people taking their first steps. We&apos;ll give you a gentle
-            week-by-week plan of exercises paced to how you&apos;re actually doing, plain explanations for everything
-            you see, and a warmer feel throughout — all so your transition into running is as smooth and easy as
-            possible. Nothing is locked in: you can switch back anytime from your profile.
+            calmer, guided version of ICHOR built for people taking their first steps. We&apos;ll walk you from your
+            very first one-minute jog all the way to <span className="text-momentum font-semibold">running a full 5K</span>,
+            in gentle stages paced to how you&apos;re actually doing, with plain explanations for everything you see
+            and a warmer feel throughout. Nothing is locked in: you can switch back anytime from your profile.
           </p>
           {error && <p className="text-xs text-ignite mb-3">{error}</p>}
           <div className="space-y-3">

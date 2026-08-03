@@ -262,6 +262,13 @@ function describe(card: ForYouCard): Presentation {
         body: card.detail,
         href: "/start", cta: "Open your plan",
       };
+    case "beginner_shortfall":
+      return {
+        accent: "text-momentum",
+        icon: <Footprints className="w-5 h-5" />, eyebrow: "Almost",
+        title: card.title, body: card.body,
+        href: "/start", cta: "See the target",
+      };
     case "beginner_tip":
       return {
         accent: card.tier === "must-know" ? "text-ignite" : "text-lime",
@@ -273,7 +280,8 @@ function describe(card: ForYouCard): Presentation {
       return {
         accent: "text-lime",
         icon: <PartyPopper className="w-5 h-5" />, eyebrow: "Milestone",
-        title: card.label, body: "You're ready for the full ICHOR experience whenever you want it.",
+        title: card.label,
+        body: "From one-minute jogs to five kilometres. You're ready for the full ICHOR experience whenever you want it.",
         href: "/start", cta: "See what's next",
       };
     case "beginner_session_kudos":
@@ -392,6 +400,7 @@ function groupOf(kind: ForYouCard["kind"]): ForYouGroup {
     case "beginner_tip":
     case "beginner_milestone":
     case "beginner_session_kudos":
+    case "beginner_shortfall":
     case "birthday":
       return "act";
     case "leaderboard_move":

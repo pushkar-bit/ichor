@@ -4,9 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   Sparkles, CheckCircle2, PartyPopper, Loader2, Heart, Circle, Moon,
-  CalendarCheck, Unlock, Leaf, ChevronDown, ArrowRight,
+  CalendarCheck, Unlock, Leaf, ChevronDown, ArrowRight, Target, Footprints,
 } from "lucide-react";
-import { tipsByTier, PROGRAM_WEEKS, type ProgramProgress } from "@/lib/beginnerProgram";
+import {
+  tipsByTier, PROGRAM_WEEKS, PROGRAM_GOAL_KM, PROGRAM_GOAL_LABEL, targetLabel, type ProgramProgress,
+} from "@/lib/beginnerProgram";
 
 /** The "how this works" explainer, as scannable points rather than a paragraph. */
 const HOW_IT_WORKS = [
@@ -30,7 +32,15 @@ type RestNotice = { title: string; body: string } | null;
 export function StartView(
   props:
     | { optedIn: false; name: string; quote: string }
-    | { optedIn: true; name: string; progress: ProgramProgress; quote: string; restNotice?: RestNotice },
+    | {
+        optedIn: true;
+        name: string;
+        progress: ProgramProgress;
+        quote: string;
+        restNotice?: RestNotice;
+        shortNotice?: RestNotice;
+        longestRunKm?: number;
+      },
 ) {
   const [loading, setLoading] = useState(false);
   const [showJourney, setShowJourney] = useState(false);
@@ -52,11 +62,12 @@ export function StartView(
         <div className="w-16 h-16 rounded-2xl bg-momentum/15 flex items-center justify-center mx-auto">
           <Heart className="w-8 h-8 text-momentum" />
         </div>
-        <h1 className="font-display italic font-bold text-2xl">New to running?</h1>
+        <h1 className="font-display italic font-bold text-2xl">Want to run your first 5K?</h1>
         <p className="text-sm text-white/60">
-          Turn on Beginner-Friendly Mode for a guided 8-stage walk/run program that moves at your pace — not a fixed
-          calendar — plus safety tips written for a first-timer and a warmer, calmer version of the whole app. No
-          leaderboard pressure, no one can raid your ground while you're building your base.
+          Beginner-Friendly Mode is a guided 8-stage plan that takes you from your very first one-minute jog to
+          running a full 5K. It moves at your pace — stages unlock when you finish them, not on a fixed calendar —
+          and comes with safety tips written for a first-timer and a warmer, calmer version of the whole app. No
+          leaderboard pressure, and no one can raid your ground while you're building your base.
         </p>
         <button
           onClick={() => handleToggle(true)}
@@ -71,6 +82,9 @@ export function StartView(
 
   const { name, progress, quote } = props;
   const restNotice = props.restNotice ?? null;
+  const shortNotice = props.shortNotice ?? null;
+  const longestRunKm = props.longestRunKm ?? 0;
+  const goalPct = Math.min(100, Math.round((longestRunKm / PROGRAM_GOAL_KM) * 100));
   const {
     week, totalWeeks, sessionsThisWeek, sessionsTargetThisWeek, isComplete, currentWeekData,
     completedSessionsTotal, totalSessionsInProgram,
@@ -85,8 +99,38 @@ export function StartView(
       <div>
         <h1 className="font-display italic font-bold text-2xl mb-1">Hey {name.split(" ")[0]} 👋</h1>
         <p className="text-sm text-momentum italic mb-2">&ldquo;{quote}&rdquo;</p>
-        <p className="text-sm text-white/60">Here's your plan — one stage at a time, no pressure.</p>
+        <p className="text-sm text-white/60">
+          {/* Not PROGRAM_GOAL_LABEL.toLowerCase() — that would render "5k", and the K in 5K is
+              a unit, not a word. */}
+          Your goal: <span className="text-white font-semibold">your first {PROGRAM_GOAL_KM}K</span>. Here&apos;s the plan
+          that gets you there — one stage at a time, no pressure.
+        </p>
       </div>
+
+      {/* The goal itself, tracked by the only number that actually answers "am I close?" —
+          the furthest single run so far, not minutes on the clock. */}
+      {!isComplete && (
+        <div className="bg-midnight-raised border border-border-ichor rounded-2xl p-5">
+          <div className="flex items-baseline justify-between mb-2">
+            <span className="font-semibold text-sm flex items-center gap-1.5">
+              <Target className="w-4 h-4 text-momentum" /> {PROGRAM_GOAL_LABEL}
+            </span>
+            <span className="text-xs text-white/40 tabular-nums">
+              {longestRunKm > 0 ? `${longestRunKm.toFixed(1)} km` : "not yet"} / {PROGRAM_GOAL_KM} km
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-white/10 overflow-hidden mb-2">
+            <div className="h-full bg-momentum transition-all" style={{ width: `${goalPct}%` }} />
+          </div>
+          <p className="text-xs text-white/50">
+            {longestRunKm <= 0
+              ? "Your longest run will show up here once you log your first session."
+              : longestRunKm >= PROGRAM_GOAL_KM
+                ? "You've already covered 5K in a single run. Finish the stages and it's official."
+                : `Longest run so far — ${(PROGRAM_GOAL_KM - longestRunKm).toFixed(1)} km to go.`}
+          </p>
+        </div>
+      )}
 
       {!isComplete && (
         <div className="bg-midnight-raised/60 border border-border-ichor rounded-2xl p-4">
@@ -112,14 +156,27 @@ export function StartView(
         </div>
       )}
 
+      {/* A run that happened but didn't reach the target. Shown so the app never appears to
+          have simply ignored something they went out and did. */}
+      {shortNotice && (
+        <div className="bg-midnight-raised border border-momentum/30 rounded-2xl p-4 flex items-start gap-3">
+          <Footprints className="w-5 h-5 text-momentum shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold mb-1">{shortNotice.title}</p>
+            <p className="text-xs text-white/50 leading-relaxed">{shortNotice.body}</p>
+          </div>
+        </div>
+      )}
+
       {isComplete ? (
         <div className="bg-momentum/10 border border-momentum/30 rounded-2xl p-6 text-center space-y-4">
           <PartyPopper className="w-10 h-10 text-momentum mx-auto" />
-          <h2 className="font-display italic font-bold text-xl">You finished the program 🎉</h2>
+          <h2 className="font-display italic font-bold text-xl">You ran your first 5K 🎉</h2>
           <p className="text-sm text-white/60">
-            Not long ago you were just getting started. Now you're a runner. You're ready for the full ICHOR
-            experience — territory, clans, all of it — whenever you want it. Staying in Beginner-Friendly Mode is
-            just as fine, too.
+            Not long ago you were starting with one-minute jogs. You just covered five kilometres. That&apos;s a
+            distance most people never run in their life, and you got there by showing up. You&apos;re ready for the
+            full ICHOR experience — territory, clans, all of it — whenever you want it. Staying in
+            Beginner-Friendly Mode is just as fine, too.
           </p>
           <button
             onClick={() => handleToggle(false)}
@@ -171,6 +228,11 @@ export function StartView(
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-semibold">{s.label}</p>
+                      {/* The number this session is actually checked against, stated up front
+                          so nobody has to guess what "counts". */}
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-white/50 bg-white/10 px-2 py-0.5 rounded-full">
+                        {targetLabel(s)}
+                      </span>
                       {isNext && (
                         <span className="text-[10px] font-bold uppercase tracking-wide text-momentum bg-momentum/15 px-2 py-0.5 rounded-full">
                           Up next

@@ -1,6 +1,13 @@
 /**
- * The Beginner-Friendly Mode on-ramp — an 8-stage walk/run interval program (the same shape as
- * a "couch to 5K") plus a short, tiered library of safety/education cards.
+ * The Beginner-Friendly Mode on-ramp: an 8-stage walk/run plan whose single stated goal is the
+ * runner's first 5K, plus a short, tiered library of safety/education cards.
+ *
+ * Structure is deliberately time-based early and distance-based late. The early stages are about
+ * time on feet — a beginner can't pace a distance target yet, and chasing one is how people hurt
+ * themselves in week one. The closing stages switch to kilometres because the goal *is* a
+ * distance: a common failure of "30 minutes continuous" plans is that they're sold as couch-to-5K
+ * while a genuine beginner at 7-8 min/km only covers ~4 km in that half hour, so they graduate
+ * having never actually run 5K.
  *
  * The plan content (PROGRAM_WEEKS, PROGRAM_TIPS) is static and identical for every beginner —
  * what's personalized is only a user's *position* in it, computed by computeProgramProgress()
@@ -11,80 +18,116 @@
 
 export const PROGRAM_LENGTH_WEEKS = 8;
 
-export type ProgramSession = { label: string; detail: string };
+/** The finish line the whole plan is pointed at. */
+export const PROGRAM_GOAL_KM = 5;
+export const PROGRAM_GOAL_LABEL = "Your first 5K";
+
+/**
+ * What a logged activity has to actually achieve to tick this session off. Early stages are
+ * gated on duration (a beginner's watch records the whole walk/run session, so time on feet is
+ * the honest measure of an interval workout); the closing stages are gated on distance, because
+ * by then the session *is* a distance.
+ *
+ * Only one field is set per session in practice, but both are checked with OR semantics — so a
+ * runner who covers a big distance quickly still clears a duration-based session, and vice versa.
+ */
+export type SessionRequirement = { minDistanceKm?: number; minDurationMin?: number };
+
+export type ProgramSession = {
+  label: string;
+  detail: string;
+  requires: SessionRequirement;
+  /**
+   * Set on the final 5K only. Everything else is deliberately lenient (see LENIENT_FACTOR) —
+   * but the app tells this runner "you ran your first 5K" at the end, and that claim has to be
+   * true, so the last session allows only GPS-drift slack rather than a 15% discount.
+   */
+  strict?: boolean;
+};
 export type ProgramWeek = { week: number; title: string; sessions: ProgramSession[] };
+
+/**
+ * Sessions count at 85% of their stated target. GPS under-reads, treadmills mis-measure, and a
+ * beginner who set out to do 3 km and recorded 2.6 km did the session — rejecting that would
+ * punish real effort over a rounding error and is exactly the kind of thing that makes people
+ * quit. The goal is to keep beginners moving, not to police them.
+ */
+export const LENIENT_FACTOR = 0.85;
+
+/** Slack allowed on a `strict` session — enough for GPS drift, not enough to skip a kilometre. */
+export const GPS_TOLERANCE_FACTOR = 0.98;
 
 export const PROGRAM_WEEKS: ProgramWeek[] = [
   {
     week: 1,
     title: "Getting moving",
     sessions: [
-      { label: "Session 1", detail: "5 min brisk walk to warm up, then 8× (1 min easy jog / 2 min walk), 5 min walk to finish." },
-      { label: "Session 2", detail: "5 min brisk walk to warm up, then 8× (1 min easy jog / 2 min walk), 5 min walk to finish." },
-      { label: "Session 3", detail: "5 min brisk walk to warm up, then 8× (1 min easy jog / 2 min walk), 5 min walk to finish." },
+      { label: "Session 1", detail: "5 min brisk walk to warm up, then 8× (1 min easy jog / 2 min walk), 5 min walk to finish.", requires: { minDurationMin: 24 } },
+      { label: "Session 2", detail: "5 min brisk walk to warm up, then 8× (1 min easy jog / 2 min walk), 5 min walk to finish.", requires: { minDurationMin: 24 } },
+      { label: "Session 3", detail: "5 min brisk walk to warm up, then 8× (1 min easy jog / 2 min walk), 5 min walk to finish.", requires: { minDurationMin: 24 } },
     ],
   },
   {
     week: 2,
     title: "Building rhythm",
     sessions: [
-      { label: "Session 1", detail: "5 min walk, then 6× (1.5 min jog / 2 min walk), 5 min walk to finish." },
-      { label: "Session 2", detail: "5 min walk, then 6× (1.5 min jog / 2 min walk), 5 min walk to finish." },
-      { label: "Session 3", detail: "5 min walk, then 6× (1.5 min jog / 2 min walk), 5 min walk to finish." },
+      { label: "Session 1", detail: "5 min walk, then 6× (1.5 min jog / 2 min walk), 5 min walk to finish.", requires: { minDurationMin: 21 } },
+      { label: "Session 2", detail: "5 min walk, then 6× (1.5 min jog / 2 min walk), 5 min walk to finish.", requires: { minDurationMin: 21 } },
+      { label: "Session 3", detail: "5 min walk, then 6× (1.5 min jog / 2 min walk), 5 min walk to finish.", requires: { minDurationMin: 21 } },
     ],
   },
   {
     week: 3,
     title: "Longer stretches",
     sessions: [
-      { label: "Session 1", detail: "5 min walk, then 2× (3 min jog / 3 min walk, 5 min jog / 3 min walk), 5 min walk to finish." },
-      { label: "Session 2", detail: "5 min walk, then 2× (3 min jog / 3 min walk, 5 min jog / 3 min walk), 5 min walk to finish." },
-      { label: "Session 3", detail: "5 min walk, then 2× (3 min jog / 3 min walk, 5 min jog / 3 min walk), 5 min walk to finish." },
+      { label: "Session 1", detail: "5 min walk, then 2× (3 min jog / 3 min walk, 5 min jog / 3 min walk), 5 min walk to finish.", requires: { minDurationMin: 28 } },
+      { label: "Session 2", detail: "5 min walk, then 2× (3 min jog / 3 min walk, 5 min jog / 3 min walk), 5 min walk to finish.", requires: { minDurationMin: 28 } },
+      { label: "Session 3", detail: "5 min walk, then 2× (3 min jog / 3 min walk, 5 min jog / 3 min walk), 5 min walk to finish.", requires: { minDurationMin: 28 } },
     ],
   },
   {
     week: 4,
     title: "Finding your stride",
     sessions: [
-      { label: "Session 1", detail: "5 min walk, then jog 3 / walk 1.5 / jog 5 / walk 2.5 / jog 3 / walk 1.5 / jog 5, 5 min walk to finish." },
-      { label: "Session 2", detail: "5 min walk, then jog 3 / walk 1.5 / jog 5 / walk 2.5 / jog 3 / walk 1.5 / jog 5, 5 min walk to finish." },
-      { label: "Session 3", detail: "5 min walk, then jog 3 / walk 1.5 / jog 5 / walk 2.5 / jog 3 / walk 1.5 / jog 5, 5 min walk to finish." },
+      { label: "Session 1", detail: "5 min walk, then jog 3 / walk 1.5 / jog 5 / walk 2.5 / jog 3 / walk 1.5 / jog 5, 5 min walk to finish.", requires: { minDurationMin: 22 } },
+      { label: "Session 2", detail: "5 min walk, then jog 3 / walk 1.5 / jog 5 / walk 2.5 / jog 3 / walk 1.5 / jog 5, 5 min walk to finish.", requires: { minDurationMin: 22 } },
+      { label: "Session 3", detail: "5 min walk, then jog 3 / walk 1.5 / jog 5 / walk 2.5 / jog 3 / walk 1.5 / jog 5, 5 min walk to finish.", requires: { minDurationMin: 22 } },
     ],
   },
   {
     week: 5,
-    title: "Stretching the jog",
+    title: "Your first continuous run",
     sessions: [
-      { label: "Session 1", detail: "5 min jog, 3 min walk, 5 min jog." },
-      { label: "Session 2", detail: "8 min jog, 5 min walk, 8 min jog." },
-      { label: "Session 3", detail: "20 minutes of continuous jogging — your longest yet." },
+      { label: "Session 1", detail: "5 min jog, 3 min walk, 5 min jog.", requires: { minDurationMin: 13 } },
+      { label: "Session 2", detail: "8 min jog, 5 min walk, 8 min jog.", requires: { minDurationMin: 21 } },
+      { label: "Session 3", detail: "20 minutes of jogging with no walk breaks — your first continuous run. That's roughly 2–2.5 km. Go slow enough that you could hold a conversation.", requires: { minDurationMin: 20 } },
     ],
   },
   {
     week: 6,
-    title: "Closing the gaps",
+    title: "Your first 3K",
     sessions: [
-      { label: "Session 1", detail: "5 min jog, 3 min walk, 8 min jog, 3 min walk, 5 min jog." },
-      { label: "Session 2", detail: "10 min jog, 3 min walk, 10 min jog." },
-      { label: "Session 3", detail: "25 minutes of continuous jogging." },
+      { label: "Session 1", detail: "10 min jog, 3 min walk, 10 min jog.", requires: { minDurationMin: 23 } },
+      { label: "Session 2", detail: "25 minutes of continuous jogging — around 3 km for most people at an easy pace.", requires: { minDurationMin: 25 } },
+      { label: "Session 3", detail: "3 km, however long it takes. This is the first one measured in distance instead of minutes — the clock genuinely doesn't matter.", requires: { minDistanceKm: 3 } },
     ],
   },
   {
     week: 7,
-    title: "Making it routine",
+    title: "Past the 4K mark",
     sessions: [
-      { label: "Session 1", detail: "25 minutes of continuous jogging, easy effort." },
-      { label: "Session 2", detail: "25 minutes of continuous jogging, easy effort." },
-      { label: "Session 3", detail: "25 minutes of continuous jogging, easy effort." },
+      { label: "Session 1", detail: "3 km at an easy, comfortable pace.", requires: { minDistanceKm: 3 } },
+      { label: "Session 2", detail: "3.5 km. If you need a short walk break to get there, take it — finishing the distance is the whole point.", requires: { minDistanceKm: 3.5 } },
+      { label: "Session 3", detail: "4 km. Only 1 km short of the goal now.", requires: { minDistanceKm: 4 } },
     ],
   },
   {
     week: 8,
-    title: "Graduation week",
+    title: "Your first 5K",
     sessions: [
-      { label: "Session 1", detail: "28 minutes of continuous jogging." },
-      { label: "Session 2", detail: "28 minutes of continuous jogging." },
-      { label: "Session 3", detail: "30 minutes of continuous jogging — the finish line. You did it." },
+      { label: "Session 1", detail: "4 km, easy effort. Nothing to prove today.", requires: { minDistanceKm: 4 } },
+      { label: "Session 2", detail: "4.5 km — the last step before the real thing. Rest well after this one.", requires: { minDistanceKm: 4.5 } },
+      { label: "Session 3", detail: "5 km. This is it. Start slower than feels right, walk if you need to, and finish it — you'll have run your first 5K.", requires: { minDistanceKm: 5 }, strict: true },
     ],
   },
 ];
@@ -185,6 +228,19 @@ export type ProgramProgress = {
    * when nothing has been logged yet (any session counts immediately). Surfaced in the UI so a
    * runner is never silently told "0 of 3" after a run that didn't count — see restDayNotice. */
   nextSessionCountsFrom: Date | null;
+  /** The most recent activity that was rested-clear but fell short of the session's target, if
+   * that's still the latest thing they did. Surfaced so a short run is acknowledged rather than
+   * silently dropped — the same "don't discard without saying so" rule as the rest-day notice. */
+  lastShortfall: SessionShortfall | null;
+};
+
+/** An activity that counted for nothing because it didn't reach the session's target. */
+export type SessionShortfall = {
+  at: Date;
+  distanceKm: number;
+  durationSeconds: number;
+  sessionLabel: string;
+  requires: SessionRequirement;
 };
 
 /** Total sessions across every stage — the denominator for overall progress. */
@@ -207,6 +263,22 @@ function dayKey(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** One logged Strava/manual activity, as the replay needs to see it. */
+export type ProgramWorkout = { date: Date; distanceKm: number; durationSeconds: number };
+
+/** Effective threshold for a requirement field, after leniency. */
+export function effectiveTarget(value: number, strict?: boolean): number {
+  return value * (strict ? GPS_TOLERANCE_FACTOR : LENIENT_FACTOR);
+}
+
+/** Does this activity satisfy the session's target? OR semantics across the two fields. */
+export function meetsRequirement(w: ProgramWorkout, session: ProgramSession): boolean {
+  const { minDistanceKm, minDurationMin } = session.requires;
+  if (minDistanceKm != null && w.distanceKm >= effectiveTarget(minDistanceKm, session.strict)) return true;
+  if (minDurationMin != null && w.durationSeconds / 60 >= effectiveTarget(minDurationMin, session.strict)) return true;
+  return false;
+}
+
 /**
  * Derives where a beginner is in the program by replaying their actual run/walk history since
  * they started — no persisted counter to drift, and re-toggling the mode off/on just resumes
@@ -217,34 +289,56 @@ function dayKey(d: Date): string {
  * they're not ready for — and someone who's consistent (with real rest days between runs, see
  * minDaysBetweenSessions) naturally clears the whole program faster than a fixed calendar
  * countdown would have let them, without the plan itself ever getting less safe.
+ *
+ * A session also has to actually be *done*: the activity must reach the session's own target
+ * (see meetsRequirement). Without that check this replay counted attendance rather than effort,
+ * so a 300 m stroll ticked off "5 km" and someone could be told they'd run their first 5K
+ * having never run one.
  */
 export function computeProgramProgress(
   startedAt: Date,
-  recentWorkoutDates: Date[],
+  recentWorkouts: ProgramWorkout[],
   now: Date = new Date(),
   minDaysBetweenSessions: number = DEFAULT_MIN_DAYS_BETWEEN_SESSIONS,
 ): ProgramProgress {
-  const sorted = recentWorkoutDates
-    .filter((d) => d.getTime() >= startedAt.getTime() && d.getTime() <= now.getTime())
-    .sort((a, b) => a.getTime() - b.getTime());
+  const sorted = recentWorkouts
+    .filter((w) => w.date.getTime() >= startedAt.getTime() && w.date.getTime() <= now.getTime())
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
 
   let week = 1;
   let sessionsThisWeek = 0;
   let completedSessionsTotal = 0;
   let lastCountedDay: string | null = null;
   let lastCompletedSession: CompletedSessionEvent | null = null;
+  let lastShortfall: SessionShortfall | null = null;
 
-  for (const d of sorted) {
+  for (const w of sorted) {
     if (week > PROGRAM_LENGTH_WEEKS) break; // already graduated — stop replaying
+    const d = w.date;
 
     if (lastCountedDay !== null) {
       const gapDays = Math.round((d.getTime() - new Date(lastCountedDay).getTime()) / DAY_MS);
       if (gapDays < minDaysBetweenSessions) continue; // too soon after the last counted session — doesn't advance the plan
     }
 
+    const session = PROGRAM_WEEKS[week - 1].sessions[sessionsThisWeek];
+    if (!meetsRequirement(w, session)) {
+      // Fell short of this session's target. Deliberately does NOT touch lastCountedDay: a run
+      // that earned no progress shouldn't also cost them two days of waiting.
+      lastShortfall = {
+        at: d,
+        distanceKm: w.distanceKm,
+        durationSeconds: w.durationSeconds,
+        sessionLabel: session.label,
+        requires: session.requires,
+      };
+      continue;
+    }
+
     sessionsThisWeek++;
     completedSessionsTotal++;
     lastCountedDay = dayKey(d);
+    lastShortfall = null; // superseded by a session that actually landed
     const totalSessionsInWeek = PROGRAM_WEEKS[week - 1].sessions.length;
     const completedWeek = sessionsThisWeek >= totalSessionsInWeek;
     lastCompletedSession = {
@@ -280,6 +374,7 @@ export function computeProgramProgress(
     isComplete,
     currentWeekData,
     lastCompletedSession,
+    lastShortfall,
     completedSessionsTotal,
     totalSessionsInProgram: TOTAL_PROGRAM_SESSIONS,
     nextSessionCountsFrom,
@@ -292,6 +387,43 @@ export function computeProgramProgress(
  * banner only ever appears when there's something a runner would otherwise be confused by
  * (a run today that quietly wouldn't advance the plan).
  */
+/** Short "what this session asks for" label, e.g. "3 km" or "24 min". */
+export function targetLabel(session: ProgramSession): string {
+  const { minDistanceKm, minDurationMin } = session.requires;
+  if (minDistanceKm != null) return `${minDistanceKm} km`;
+  if (minDurationMin != null) return `${minDurationMin} min`;
+  return "";
+}
+
+/**
+ * Explains a run that didn't tick a session off. Only returned when the shortfall is the most
+ * recent thing that happened, so it reads as feedback on the run they just did rather than as a
+ * standing complaint. Deliberately warm — the run still happened and still did them good.
+ */
+export function shortfallNotice(
+  progress: ProgramProgress,
+  now: Date = new Date(),
+  maxAgeHours = 36,
+): { title: string; body: string } | null {
+  const s = progress.lastShortfall;
+  if (!s || progress.isComplete) return null;
+  if ((now.getTime() - s.at.getTime()) / 3600e3 > maxAgeHours) return null;
+
+  const did =
+    s.requires.minDistanceKm != null
+      ? `${s.distanceKm.toFixed(1)} km`
+      : `${Math.round(s.durationSeconds / 60)} min`;
+  const asked =
+    s.requires.minDistanceKm != null ? `${s.requires.minDistanceKm} km` : `${s.requires.minDurationMin} min`;
+
+  return {
+    title: `That one didn't quite reach ${s.sessionLabel.toLowerCase()}`,
+    body:
+      `You logged ${did} and this session asks for about ${asked}, so it hasn't ticked off yet — but it absolutely ` +
+      `still did you good, and it hasn't used up a rest day either. Go again whenever you're ready.`,
+  };
+}
+
 export function restDayNotice(
   progress: ProgramProgress,
   now: Date = new Date(),
@@ -353,8 +485,8 @@ export const SESSION_KUDOS_MESSAGES: string[] = [
 
 /** A bigger, more celebratory bump for finishing an entire stage. */
 export const WEEK_COMPLETE_MESSAGES: string[] = [
-  "You just finished a whole stage of your plan. That's genuinely something to be proud of.",
-  "Stage complete! You're not the same runner you were when you started this one.",
+  "You just finished a whole stage of your plan. That's genuinely something to be proud of — and it's one stage closer to your 5K.",
+  "Stage complete! You're not the same runner you were when you started this one. 5K is getting closer.",
   "That's a full stage down — however long it took you, you got there, and that's what matters.",
 ];
 

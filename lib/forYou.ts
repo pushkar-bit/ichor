@@ -9,8 +9,12 @@ import { decayStateFor, holdDays, quietDays, DORMANT_DAYS } from "./territoryUpk
 import { getActiveObjective } from "./objectives";
 import { getTopDistrictForUser } from "./districts";
 import { getLandWarWindow } from "./landWar";
-import { computeProgramProgress, PROGRAM_TIPS, SESSION_KUDOS_MESSAGES, WEEK_COMPLETE_MESSAGES, pickForSession } from "./beginnerProgram";
+import {
+  computeProgramProgress, shortfallNotice, PROGRAM_TIPS, SESSION_KUDOS_MESSAGES,
+  WEEK_COMPLETE_MESSAGES, pickForSession,
+} from "./beginnerProgram";
 import { getAge, minRestDaysForAge, isBirthdayToday } from "./age";
+import { startOfWeek, endOfWeek } from "./week";
 
 /**
  * The "For You" intelligence layer that fronts the feed. Everything here is computed
@@ -72,6 +76,7 @@ export type ForYouCard = CardBase &
     | { kind: "beginner_tip"; title: string; body: string; tier: "must-know" | "very-important" }
     | { kind: "beginner_milestone"; label: string }
     | { kind: "beginner_session_kudos"; week: number; sessionNumber: number; totalSessionsInWeek: number; message: string; completedWeek: boolean }
+    | { kind: "beginner_shortfall"; title: string; body: string }
     // Not beginner-gated — every viewer gets this on their own birthday. See lib/age.ts.
     | { kind: "birthday"; name: string }
   );
@@ -176,7 +181,14 @@ export async function buildForYou(
       .limit(20)
       .populate("territoryId", "name")
       .lean(),
-    CoachMessage.findOne({ userId: viewer._id, role: "coach" }).sort({ createdAt: -1 }).select("text").lean(),
+    // Bounded to the current week: without a date floor this pinned the newest coach reply to
+    // the feed forever, so a tip from months ago kept resurfacing as if it were current advice.
+    CoachMessage.find({ userId: viewer._id, role: "coach", createdAt: { $gte: startOfWeek(now) } })
+      .sort({ createdAt: -1 })
+      .limit(1)
+      .select("text")
+      .lean()
+      .then((rows) => rows[0] ?? null),
     Notification.find({
       userId: viewer._id,
       type: "ATTACK_OPPORTUNITY",
@@ -408,17 +420,25 @@ function buildBeginnerCards(viewer: ViewerLike, workouts: WorkoutLean[], now: Da
   if (!viewer.beginnerMode) return [];
 
   const startedAt = viewer.beginnerModeStartedAt ?? now;
-  const relevantDates = workouts
+  const relevant = workouts
     .filter((w) => (w.activityType === "RUN" || w.activityType === "WALK") && new Date(w.workoutDate) >= startedAt)
-    .map((w) => new Date(w.workoutDate));
+    .map((w) => ({
+      date: new Date(w.workoutDate),
+      distanceKm: w.distanceKm ?? 0,
+      durationSeconds: w.durationSeconds ?? 0,
+    }));
   const age = viewer.birthDate ? getAge(viewer.birthDate, now) : null;
-  const progress = computeProgramProgress(startedAt, relevantDates, now, minRestDaysForAge(age));
+  const progress = computeProgramProgress(startedAt, relevant, now, minRestDaysForAge(age));
 
   if (progress.isComplete) {
-    return [{ kind: "beginner_milestone", id: id("beginner_graduate"), priority: 97, label: "You finished the program 🎉" }];
+    return [{ kind: "beginner_milestone", id: id("beginner_graduate"), priority: 97, label: "You ran your first 5K 🎉" }];
   }
 
   const out: (ForYouCard | null)[] = [];
+
+  // A run that fell short of the session target outranks everything else here: it's the one
+  // case where the app would otherwise appear to have ignored a run they actually did.
+  const shortfall = shortfallNotice(progress, now);
 
   // A session finished in the last SESSION_KUDOS_FRESH_HOURS leads with a warm kudos card
   // instead of the usual "next session" nudge — congratulating them on what they just did
@@ -426,7 +446,15 @@ function buildBeginnerCards(viewer: ViewerLike, workouts: WorkoutLean[], now: Da
   const last = progress.lastCompletedSession;
   const sessionIsFresh = last && (now.getTime() - last.at.getTime()) / 3600e3 <= SESSION_KUDOS_FRESH_HOURS;
 
-  if (sessionIsFresh && last) {
+  if (shortfall) {
+    out.push({
+      kind: "beginner_shortfall",
+      id: id("beginner_shortfall", dayKey(progress.lastShortfall!.at)),
+      priority: 100,
+      title: shortfall.title,
+      body: shortfall.body,
+    });
+  } else if (sessionIsFresh && last) {
     const pool = last.completedWeek ? WEEK_COMPLETE_MESSAGES : SESSION_KUDOS_MESSAGES;
     out.push({
       kind: "beginner_session_kudos",
@@ -544,13 +572,14 @@ function buildStreakCard(viewer: ViewerLike, workouts: WorkoutLean[], now: Date)
 }
 
 function buildWeeklyCard(workouts: WorkoutLean[], now: Date): ForYouCard | null {
-  const thisWeek = windowStats(workouts, now, 0, 7);
+  const thisWeek = thisWeekStats(workouts, now);
   if (thisWeek.runs === 0) return null;
-  const lastWeek = windowStats(workouts, now, 7, 14);
+  const lastWeek = lastWeekStats(workouts, now);
   const vsLastWeekPct =
     lastWeek.distanceKm > 0 ? Math.round(((thisWeek.distanceKm - lastWeek.distanceKm) / lastWeek.distanceKm) * 100) : null;
-  // Monday-morning recaps feel most relevant; nudge priority early in the week.
-  const dow = now.getDay();
+  // Monday-morning recaps feel most relevant; nudge priority early in the week. UTC to match
+  // the week boundary itself, so the bump lands on the same day the week actually rolled over.
+  const dow = now.getUTCDay();
   return {
     kind: "weekly",
     id: id("weekly"),
@@ -649,8 +678,8 @@ function buildTodaysMissionCard(viewer: ViewerLike, workouts: WorkoutLean[], now
 
   const runs = workouts.filter((w) => w.activityType === "RUN");
   const target = Math.round(typicalRunKm(runs) * 2) / 2; // realistic single run, nearest 0.5 km
-  const weekly = windowStats(workouts, now, 0, 7).distanceKm;
-  const lastWeekly = windowStats(workouts, now, 7, 14).distanceKm;
+  const weekly = thisWeekStats(workouts, now).distanceKm;
+  const lastWeekly = lastWeekStats(workouts, now).distanceKm;
 
   // Tone scales with how much they've already done — push the under-active toward the base
   // level, keep the on-track steady, and celebrate (don't nag) the already-ahead.
@@ -740,7 +769,9 @@ async function buildClanPulse(viewer: ViewerLike, now: Date): Promise<ForYouCard
 /** "Faster than 78% of the club this week" — only surfaced when it's a flattering, motivating
  * stat (>= PERCENTILE_MIN_TO_SHOW); a bottom-quartile percentile would just be discouraging. */
 async function buildPercentileCard(viewerId: string, now: Date): Promise<ForYouCard | null> {
-  const weekStart = new Date(now.getTime() - 7 * DAY_MS);
+  // Same Monday-based week as the leaderboard this card implicitly competes with — a rolling
+  // 7-day window here would rank the viewer against a different slice of runs than /leaderboard.
+  const weekStart = startOfWeek(now);
   const rows = (await Workout.aggregate([
     { $match: { workoutDate: { $gte: weekStart, $lte: now }, activityType: "RUN" } },
     { $group: { _id: "$userId", distanceKm: { $sum: "$distanceKm" } } },
@@ -884,9 +915,8 @@ function buildGoalProjectionCard(viewer: ViewerLike, workouts: WorkoutLean[], no
 // helpers
 // ---------------------------------------------------------------------------
 
-function windowStats(workouts: WorkoutLean[], now: Date, fromDaysAgo: number, toDaysAgo: number) {
-  const from = now.getTime() - toDaysAgo * DAY_MS;
-  const to = now.getTime() - fromDaysAgo * DAY_MS;
+/** Totals over an absolute [from, to) instant range. */
+function statsBetween(workouts: WorkoutLean[], from: number, to: number) {
   let distanceKm = 0, calories = 0, runs = 0, bestPace: number | null = null;
   for (const w of workouts) {
     const t = new Date(w.workoutDate).getTime();
@@ -897,6 +927,31 @@ function windowStats(workouts: WorkoutLean[], now: Date, fromDaysAgo: number, to
     if (w.avgPaceMinPerKm != null && (bestPace === null || w.avgPaceMinPerKm < bestPace)) bestPace = w.avgPaceMinPerKm;
   }
   return { distanceKm, calories, runs, bestPace };
+}
+
+/** A rolling "last N days" window. Correct for rate/trend math (e.g. the 4-week accumulation
+ * rate behind goal projection) — but NOT for anything the UI labels "this week". */
+function windowStats(workouts: WorkoutLean[], now: Date, fromDaysAgo: number, toDaysAgo: number) {
+  return statsBetween(workouts, now.getTime() - toDaysAgo * DAY_MS, now.getTime() - fromDaysAgo * DAY_MS);
+}
+
+/**
+ * The current Mon 00:00 UTC → next Mon window, i.e. the same week the leaderboard, weekly
+ * score, clan totals, profile recap and the feed's Monday reset all use (lib/week.ts).
+ *
+ * Anything user-facing that says "this week" has to come from here. These cards previously used
+ * a rolling last-7-days window, which silently disagreed with the rest of the app: mid-week it
+ * still counted runs from the *previous* week, so the For You "this week" totals could differ
+ * from the leaderboard and the profile recap for the same user at the same moment.
+ */
+function thisWeekStats(workouts: WorkoutLean[], now: Date) {
+  return statsBetween(workouts, startOfWeek(now).getTime(), endOfWeek(now).getTime());
+}
+
+/** The previous calendar week, on the same Monday boundary. */
+function lastWeekStats(workouts: WorkoutLean[], now: Date) {
+  const inLastWeek = new Date(now.getTime() - 7 * DAY_MS);
+  return statsBetween(workouts, startOfWeek(inLastWeek).getTime(), endOfWeek(inLastWeek).getTime());
 }
 
 function fmtPace(minPerKm: number): string {

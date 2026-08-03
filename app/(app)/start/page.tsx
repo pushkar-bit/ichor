@@ -1,7 +1,9 @@
 import { connectDB } from "@/lib/mongodb";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { Workout } from "@/models/Workout";
-import { computeProgramProgress, pickByDay, restDayNotice, MOTIVATIONAL_QUOTES } from "@/lib/beginnerProgram";
+import {
+  computeProgramProgress, pickByDay, restDayNotice, shortfallNotice, MOTIVATIONAL_QUOTES,
+} from "@/lib/beginnerProgram";
 import { getAge, minRestDaysForAge } from "@/lib/age";
 import { StartView } from "@/components/features/StartView";
 
@@ -26,14 +28,22 @@ export default async function StartPage() {
     activityType: { $in: ["RUN", "WALK"] },
     workoutDate: { $gte: since },
   })
-    .select("workoutDate")
+    .select("workoutDate distanceKm durationSeconds")
     .lean();
+
+  // Furthest single run since starting the plan — the honest measure of "how close to 5K am I",
+  // and the one number a beginner actually cares about on the way to the goal.
+  const longestRunKm = recentWorkouts.reduce((max: number, w: any) => Math.max(max, w.distanceKm ?? 0), 0);
 
   const now = new Date();
   const age = me.birthDate ? getAge(me.birthDate) : null;
   const progress = computeProgramProgress(
     startedAt,
-    recentWorkouts.map((w: any) => new Date(w.workoutDate)),
+    recentWorkouts.map((w: any) => ({
+      date: new Date(w.workoutDate),
+      distanceKm: w.distanceKm ?? 0,
+      durationSeconds: w.durationSeconds ?? 0,
+    })),
     now,
     minRestDaysForAge(age),
   );
@@ -41,6 +51,17 @@ export default async function StartPage() {
   // Resolved here rather than in the client component so the "tomorrow / in N days" wording
   // comes off the server clock and can't hydrate-mismatch against the viewer's.
   const restNotice = restDayNotice(progress, now);
+  const shortNotice = shortfallNotice(progress, now);
 
-  return <StartView optedIn name={me.name} progress={progress} quote={quote} restNotice={restNotice} />;
+  return (
+    <StartView
+      optedIn
+      name={me.name}
+      progress={progress}
+      quote={quote}
+      restNotice={restNotice}
+      shortNotice={shortNotice}
+      longestRunKm={longestRunKm}
+    />
+  );
 }
