@@ -33,9 +33,17 @@ export const PROGRAM_GOAL_LABEL = "Your first 5K";
  */
 export type SessionRequirement = { minDistanceKm?: number; minDurationMin?: number };
 
+/** One instruction in a session. `time` is the duration or distance for that single step. */
+export type SessionStep = { text: string; time?: string };
+
 export type ProgramSession = {
   label: string;
-  detail: string;
+  /** One-line version, for compact surfaces like the feed card. */
+  summary: string;
+  /** The session as an ordered checklist — one action per step, rests included as their own
+   * steps. The Strava start/end bookends are added by the UI (see SESSION_START_STEP /
+   * SESSION_END_STEP) rather than repeated in every session's data. */
+  steps: SessionStep[];
   requires: SessionRequirement;
   /**
    * Set on the final 5K only. Everything else is deliberately lenient (see LENIENT_FACTOR) —
@@ -57,77 +65,355 @@ export const LENIENT_FACTOR = 0.85;
 /** Slack allowed on a `strict` session — enough for GPS drift, not enough to skip a kilometre. */
 export const GPS_TOLERANCE_FACTOR = 0.98;
 
+/**
+ * Every session is ONE Strava activity, start to finish — warm-up and cool-down included.
+ * Stated explicitly at both ends because the alternative (a runner starting and stopping Strava
+ * around each jog interval) would record eight tiny activities for one session, none of which
+ * would meet the session's target, and the plan would never advance.
+ */
+export const SESSION_START_STEP: SessionStep = {
+  text: "Start ONE run in Strava and leave it recording for everything below — warm-up and cool-down included",
+};
+export const SESSION_END_STEP: SessionStep = {
+  text: "End and save the Strava workout. It syncs here on its own and ticks this session off — nothing else to do",
+};
+
 export const PROGRAM_WEEKS: ProgramWeek[] = [
   {
     week: 1,
     title: "Getting moving",
     sessions: [
-      { label: "Session 1", detail: "5 min brisk walk to warm up, then 8× (1 min easy jog / 2 min walk), 5 min walk to finish.", requires: { minDurationMin: 24 } },
-      { label: "Session 2", detail: "5 min brisk walk to warm up, then 8× (1 min easy jog / 2 min walk), 5 min walk to finish.", requires: { minDurationMin: 24 } },
-      { label: "Session 3", detail: "5 min brisk walk to warm up, then 8× (1 min easy jog / 2 min walk), 5 min walk to finish.", requires: { minDurationMin: 24 } },
+      {
+        label: "Session 1",
+        summary: "8 rounds of 1 min jog / 2 min walk, plus a warm-up and cool-down.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog at an easy, conversational pace", time: "1 min" },
+          { text: "Walk until your breath comes back", time: "2 min" },
+          { text: "Keep alternating that jog and walk until you've done 8 rounds in total", time: "24 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 34 },
+      },
+      {
+        label: "Session 2",
+        summary: "8 rounds of 1 min jog / 2 min walk, plus a warm-up and cool-down.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog at an easy, conversational pace", time: "1 min" },
+          { text: "Walk until your breath comes back", time: "2 min" },
+          { text: "Keep alternating that jog and walk until you've done 8 rounds in total", time: "24 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 34 },
+      },
+      {
+        label: "Session 3",
+        summary: "8 rounds of 1 min jog / 2 min walk, plus a warm-up and cool-down.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog at an easy, conversational pace", time: "1 min" },
+          { text: "Walk until your breath comes back", time: "2 min" },
+          { text: "Keep alternating that jog and walk until you've done 8 rounds in total", time: "24 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 34 },
+      },
     ],
   },
   {
     week: 2,
     title: "Building rhythm",
     sessions: [
-      { label: "Session 1", detail: "5 min walk, then 6× (1.5 min jog / 2 min walk), 5 min walk to finish.", requires: { minDurationMin: 21 } },
-      { label: "Session 2", detail: "5 min walk, then 6× (1.5 min jog / 2 min walk), 5 min walk to finish.", requires: { minDurationMin: 21 } },
-      { label: "Session 3", detail: "5 min walk, then 6× (1.5 min jog / 2 min walk), 5 min walk to finish.", requires: { minDurationMin: 21 } },
+      {
+        label: "Session 1",
+        summary: "6 rounds of 1½ min jog / 2 min walk.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog at an easy pace", time: "1½ min" },
+          { text: "Walk to recover", time: "2 min" },
+          { text: "Keep alternating until you've done 6 rounds in total", time: "21 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 31 },
+      },
+      {
+        label: "Session 2",
+        summary: "6 rounds of 1½ min jog / 2 min walk.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog at an easy pace", time: "1½ min" },
+          { text: "Walk to recover", time: "2 min" },
+          { text: "Keep alternating until you've done 6 rounds in total", time: "21 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 31 },
+      },
+      {
+        label: "Session 3",
+        summary: "6 rounds of 1½ min jog / 2 min walk.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog at an easy pace", time: "1½ min" },
+          { text: "Walk to recover", time: "2 min" },
+          { text: "Keep alternating until you've done 6 rounds in total", time: "21 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 31 },
+      },
     ],
   },
   {
     week: 3,
     title: "Longer stretches",
     sessions: [
-      { label: "Session 1", detail: "5 min walk, then 2× (3 min jog / 3 min walk, 5 min jog / 3 min walk), 5 min walk to finish.", requires: { minDurationMin: 28 } },
-      { label: "Session 2", detail: "5 min walk, then 2× (3 min jog / 3 min walk, 5 min jog / 3 min walk), 5 min walk to finish.", requires: { minDurationMin: 28 } },
-      { label: "Session 3", detail: "5 min walk, then 2× (3 min jog / 3 min walk, 5 min jog / 3 min walk), 5 min walk to finish.", requires: { minDurationMin: 28 } },
+      {
+        label: "Session 1",
+        summary: "Longer jog blocks — 3 min and 5 min, twice through.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog", time: "3 min" },
+          { text: "Walk", time: "3 min" },
+          { text: "Jog", time: "5 min" },
+          { text: "Walk", time: "3 min" },
+          { text: "Go through that jog/walk/jog/walk block once more — 2 rounds in total", time: "28 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 38 },
+      },
+      {
+        label: "Session 2",
+        summary: "Longer jog blocks — 3 min and 5 min, twice through.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog", time: "3 min" },
+          { text: "Walk", time: "3 min" },
+          { text: "Jog", time: "5 min" },
+          { text: "Walk", time: "3 min" },
+          { text: "Go through that jog/walk/jog/walk block once more — 2 rounds in total", time: "28 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 38 },
+      },
+      {
+        label: "Session 3",
+        summary: "Longer jog blocks — 3 min and 5 min, twice through.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog", time: "3 min" },
+          { text: "Walk", time: "3 min" },
+          { text: "Jog", time: "5 min" },
+          { text: "Walk", time: "3 min" },
+          { text: "Go through that jog/walk/jog/walk block once more — 2 rounds in total", time: "28 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 38 },
+      },
     ],
   },
   {
     week: 4,
     title: "Finding your stride",
     sessions: [
-      { label: "Session 1", detail: "5 min walk, then jog 3 / walk 1.5 / jog 5 / walk 2.5 / jog 3 / walk 1.5 / jog 5, 5 min walk to finish.", requires: { minDurationMin: 22 } },
-      { label: "Session 2", detail: "5 min walk, then jog 3 / walk 1.5 / jog 5 / walk 2.5 / jog 3 / walk 1.5 / jog 5, 5 min walk to finish.", requires: { minDurationMin: 22 } },
-      { label: "Session 3", detail: "5 min walk, then jog 3 / walk 1.5 / jog 5 / walk 2.5 / jog 3 / walk 1.5 / jog 5, 5 min walk to finish.", requires: { minDurationMin: 22 } },
+      {
+        label: "Session 1",
+        summary: "Three jog blocks building to 5 min, with short walks between.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog", time: "3 min" },
+          { text: "Walk", time: "1½ min" },
+          { text: "Jog", time: "5 min" },
+          { text: "Walk", time: "2½ min" },
+          { text: "Jog", time: "3 min" },
+          { text: "Walk", time: "1½ min" },
+          { text: "Jog — the last one", time: "5 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 32 },
+      },
+      {
+        label: "Session 2",
+        summary: "Three jog blocks building to 5 min, with short walks between.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog", time: "3 min" },
+          { text: "Walk", time: "1½ min" },
+          { text: "Jog", time: "5 min" },
+          { text: "Walk", time: "2½ min" },
+          { text: "Jog", time: "3 min" },
+          { text: "Walk", time: "1½ min" },
+          { text: "Jog — the last one", time: "5 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 32 },
+      },
+      {
+        label: "Session 3",
+        summary: "Three jog blocks building to 5 min, with short walks between.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog", time: "3 min" },
+          { text: "Walk", time: "1½ min" },
+          { text: "Jog", time: "5 min" },
+          { text: "Walk", time: "2½ min" },
+          { text: "Jog", time: "3 min" },
+          { text: "Walk", time: "1½ min" },
+          { text: "Jog — the last one", time: "5 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 32 },
+      },
     ],
   },
   {
     week: 5,
     title: "Your first continuous run",
     sessions: [
-      { label: "Session 1", detail: "5 min jog, 3 min walk, 5 min jog.", requires: { minDurationMin: 13 } },
-      { label: "Session 2", detail: "8 min jog, 5 min walk, 8 min jog.", requires: { minDurationMin: 21 } },
-      { label: "Session 3", detail: "20 minutes of jogging with no walk breaks — your first continuous run. That's roughly 2–2.5 km. Go slow enough that you could hold a conversation.", requires: { minDurationMin: 20 } },
+      {
+        label: "Session 1",
+        summary: "Two 5-minute jogs with a walk in between.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog", time: "5 min" },
+          { text: "Walk", time: "3 min" },
+          { text: "Jog", time: "5 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 23 },
+      },
+      {
+        label: "Session 2",
+        summary: "Two 8-minute jogs with a walk in between.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog", time: "8 min" },
+          { text: "Walk", time: "5 min" },
+          { text: "Jog", time: "8 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 31 },
+      },
+      {
+        label: "Session 3",
+        summary: "Your first jog with no walk breaks — 20 minutes.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog with no walk breaks. Go slow enough that you could still hold a conversation — that's roughly 2–2.5 km", time: "20 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 30 },
+      },
     ],
   },
   {
     week: 6,
     title: "Your first 3K",
     sessions: [
-      { label: "Session 1", detail: "10 min jog, 3 min walk, 10 min jog.", requires: { minDurationMin: 23 } },
-      { label: "Session 2", detail: "25 minutes of continuous jogging — around 3 km for most people at an easy pace.", requires: { minDurationMin: 25 } },
-      { label: "Session 3", detail: "3 km, however long it takes. This is the first one measured in distance instead of minutes — the clock genuinely doesn't matter.", requires: { minDistanceKm: 3 } },
+      {
+        label: "Session 1",
+        summary: "Two 10-minute jogs with a walk in between.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog", time: "10 min" },
+          { text: "Walk", time: "3 min" },
+          { text: "Jog", time: "10 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 33 },
+      },
+      {
+        label: "Session 2",
+        summary: "25 minutes of continuous jogging — around 3 km.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Jog without stopping — around 3 km for most people at an easy pace", time: "25 min" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDurationMin: 35 },
+      },
+      {
+        label: "Session 3",
+        summary: "3 km, however long it takes.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Run 3 km. The clock genuinely doesn't matter here — only the distance", time: "3 km" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDistanceKm: 3 },
+      },
     ],
   },
   {
     week: 7,
     title: "Past the 4K mark",
     sessions: [
-      { label: "Session 1", detail: "3 km at an easy, comfortable pace.", requires: { minDistanceKm: 3 } },
-      { label: "Session 2", detail: "3.5 km. If you need a short walk break to get there, take it — finishing the distance is the whole point.", requires: { minDistanceKm: 3.5 } },
-      { label: "Session 3", detail: "4 km. Only 1 km short of the goal now.", requires: { minDistanceKm: 4 } },
+      {
+        label: "Session 1",
+        summary: "3 km at an easy, comfortable pace.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Run at an easy, comfortable pace", time: "3 km" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDistanceKm: 3 },
+      },
+      {
+        label: "Session 2",
+        summary: "3.5 km — walk breaks are fine.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Run 3.5 km. Need a short walk break to get there? Take it — finishing the distance is the point", time: "3.5 km" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDistanceKm: 3.5 },
+      },
+      {
+        label: "Session 3",
+        summary: "4 km — only 1 km short of the goal.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Run 4 km. Only 1 km short of the goal now", time: "4 km" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDistanceKm: 4 },
+      },
     ],
   },
   {
     week: 8,
     title: "Your first 5K",
     sessions: [
-      { label: "Session 1", detail: "4 km, easy effort. Nothing to prove today.", requires: { minDistanceKm: 4 } },
-      { label: "Session 2", detail: "4.5 km — the last step before the real thing. Rest well after this one.", requires: { minDistanceKm: 4.5 } },
-      { label: "Session 3", detail: "5 km. This is it. Start slower than feels right, walk if you need to, and finish it — you'll have run your first 5K.", requires: { minDistanceKm: 5 }, strict: true },
+      {
+        label: "Session 1",
+        summary: "4 km, easy effort.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Run 4 km at an easy effort. Nothing to prove today", time: "4 km" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDistanceKm: 4 },
+      },
+      {
+        label: "Session 2",
+        summary: "4.5 km — the last step before the real thing.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Run 4.5 km, then rest well before the next one", time: "4.5 km" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDistanceKm: 4.5 },
+      },
+      {
+        label: "Session 3",
+        summary: "5 km. This is the one.",
+        steps: [
+          { text: "Brisk walk to warm up", time: "5 min" },
+          { text: "Run 5 km. Start slower than feels right, walk if you need to, and finish it — this is your first 5K", time: "5 km" },
+          { text: "Easy walk to cool down", time: "5 min" },
+        ],
+        requires: { minDistanceKm: 5 },
+        strict: true,
+      },
     ],
   },
 ];

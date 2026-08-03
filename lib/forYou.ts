@@ -475,7 +475,7 @@ function buildBeginnerCards(viewer: ViewerLike, workouts: WorkoutLean[], now: Da
       week: progress.week,
       totalWeeks: progress.totalWeeks,
       sessionLabel: next.label,
-      detail: next.detail,
+      detail: next.summary,
     });
   }
 

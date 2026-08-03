@@ -7,7 +7,8 @@ import {
   CalendarCheck, Unlock, Leaf, ChevronDown, ArrowRight, Target, Footprints,
 } from "lucide-react";
 import {
-  tipsByTier, PROGRAM_WEEKS, PROGRAM_GOAL_KM, PROGRAM_GOAL_LABEL, targetLabel, type ProgramProgress,
+  tipsByTier, PROGRAM_WEEKS, PROGRAM_GOAL_KM, PROGRAM_GOAL_LABEL, targetLabel,
+  SESSION_START_STEP, SESSION_END_STEP, type ProgramProgress,
 } from "@/lib/beginnerProgram";
 
 /** The "how this works" explainer, as scannable points rather than a paragraph. */
@@ -239,16 +240,49 @@ export function StartView(
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-white/50 mt-0.5">{s.detail}</p>
+                    {/* The session you're actually about to do gets the full checklist — one
+                        action per line, rests included, bookended by the Strava start/stop so
+                        it's unmistakable that this is ONE recording, not one per interval.
+                        Other sessions stay as a one-liner so the page doesn't become a wall. */}
+                    {isNext ? (
+                      <ol className="mt-2.5 space-y-2">
+                        {[SESSION_START_STEP, ...s.steps, SESSION_END_STEP].map((step, n) => {
+                          const isBookend = n === 0 || n === s.steps.length + 1;
+                          return (
+                            <li key={n} className="flex items-start gap-2.5">
+                              <span
+                                className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold tabular-nums mt-px ${
+                                  isBookend ? "bg-[#FC4C02]/20 text-[#FC4C02]" : "bg-white/10 text-white/60"
+                                }`}
+                              >
+                                {n + 1}
+                              </span>
+                              <span className={`text-xs leading-relaxed flex-1 ${isBookend ? "text-white/70" : "text-white/60"}`}>
+                                {step.text}
+                              </span>
+                              {step.time && (
+                                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-momentum bg-momentum/10 px-2 py-0.5 rounded-full mt-px">
+                                  {step.time}
+                                </span>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    ) : (
+                      <p className="text-xs text-white/50 mt-0.5">{s.summary}</p>
+                    )}
                   </div>
                 </div>
-                {/* The plan is only half the job — this is the step that actually records it. */}
+                {/* Deliberately a quiet secondary link, not a primary button: the checklist above
+                    ends with "nothing else to do", and a big "Log this session" CTA would flatly
+                    contradict that. This is only the fallback for a run Strava didn't capture. */}
                 {isNext && !restNotice && (
                   <Link
                     href="/post/create"
-                    className="mt-3 w-full flex items-center justify-center gap-2 bg-momentum text-midnight font-bold text-sm py-2.5 rounded-full"
+                    className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-white/40 hover:text-white/70 transition-colors"
                   >
-                    Log this session <ArrowRight className="w-4 h-4" />
+                    Didn&apos;t record it on Strava? Add it by hand <ArrowRight className="w-3.5 h-3.5" />
                   </Link>
                 )}
               </div>
