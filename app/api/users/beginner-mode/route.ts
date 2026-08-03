@@ -9,7 +9,8 @@ import { User } from "@/models/User";
  *
  * beginnerModeStartedAt is only set on the false→true transition and left untouched on a
  * later re-enable, so turning the mode off and back on resumes the program instead of
- * restarting the 8-week clock (see lib/beginnerProgram.ts).
+ * restarting the program from stage 1 (see lib/beginnerProgram.ts's computeProgramProgress —
+ * it replays workout history since this timestamp, so nothing else needs to reset).
  */
 export async function PATCH(req: NextRequest) {
   await connectDB();

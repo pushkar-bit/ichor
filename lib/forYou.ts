@@ -9,7 +9,8 @@ import { decayStateFor, holdDays, quietDays, DORMANT_DAYS } from "./territoryUpk
 import { getActiveObjective } from "./objectives";
 import { getTopDistrictForUser } from "./districts";
 import { getLandWarWindow } from "./landWar";
-import { computeProgramProgress, PROGRAM_TIPS } from "./beginnerProgram";
+import { computeProgramProgress, PROGRAM_TIPS, SESSION_KUDOS_MESSAGES, WEEK_COMPLETE_MESSAGES, pickForSession } from "./beginnerProgram";
+import { getAge, minRestDaysForAge, isBirthdayToday } from "./age";
 
 /**
  * The "For You" intelligence layer that fronts the feed. Everything here is computed
@@ -68,8 +69,11 @@ export type ForYouCard = CardBase &
     // Beginner-Friendly Mode — see lib/beginnerProgram.ts. Only ever emitted for
     // viewer.beginnerMode, so a non-beginner's feed is completely unaffected.
     | { kind: "beginner_next_session"; week: number; totalWeeks: number; sessionLabel: string; detail: string }
-    | { kind: "beginner_tip"; title: string; body: string }
+    | { kind: "beginner_tip"; title: string; body: string; tier: "must-know" | "very-important" }
     | { kind: "beginner_milestone"; label: string }
+    | { kind: "beginner_session_kudos"; week: number; sessionNumber: number; totalSessionsInWeek: number; message: string; completedWeek: boolean }
+    // Not beginner-gated — every viewer gets this on their own birthday. See lib/age.ts.
+    | { kind: "birthday"; name: string }
   );
 
 type ViewerLike = {
@@ -82,6 +86,7 @@ type ViewerLike = {
   clanId?: unknown;
   beginnerMode?: boolean;
   beginnerModeStartedAt?: Date | null;
+  birthDate?: Date | null;
 };
 
 type WorkoutLean = {
@@ -192,6 +197,7 @@ export async function buildForYou(
   cards.push(...buildOpportunityCards(opportunities as any[]));
   cards.push(...territoryCards);
   cards.push(...buildBeginnerCards(viewer, workouts, now));
+  cards.push(buildBirthdayCard(viewer, now));
   cards.push(buildKudosCard(workouts, now));
   cards.push(buildStreakCard(viewer, workouts, now));
   cards.push(buildWeeklyCard(workouts, now));
@@ -394,6 +400,10 @@ async function buildTerritoryCards(viewerId: string, now: Date): Promise<ForYouC
  * new runner should see, well above leaderboard/rival content they're shielded from anyway
  * (lib/raids.ts, lib/battles.ts). Only ever runs for viewer.beginnerMode.
  */
+/** How long a just-finished session stays "fresh" enough to lead with a kudos card — matches
+ * the general kudos card's own freshness window (KUDOS_FRESH_HOURS) for consistency. */
+const SESSION_KUDOS_FRESH_HOURS = 10;
+
 function buildBeginnerCards(viewer: ViewerLike, workouts: WorkoutLean[], now: Date): (ForYouCard | null)[] {
   if (!viewer.beginnerMode) return [];
 
@@ -401,14 +411,34 @@ function buildBeginnerCards(viewer: ViewerLike, workouts: WorkoutLean[], now: Da
   const relevantDates = workouts
     .filter((w) => (w.activityType === "RUN" || w.activityType === "WALK") && new Date(w.workoutDate) >= startedAt)
     .map((w) => new Date(w.workoutDate));
-  const progress = computeProgramProgress(startedAt, relevantDates, now);
+  const age = viewer.birthDate ? getAge(viewer.birthDate, now) : null;
+  const progress = computeProgramProgress(startedAt, relevantDates, now, minRestDaysForAge(age));
 
   if (progress.isComplete) {
-    return [{ kind: "beginner_milestone", id: id("beginner_graduate"), priority: 97, label: "You finished the 8-week program 🎉" }];
+    return [{ kind: "beginner_milestone", id: id("beginner_graduate"), priority: 97, label: "You finished the program 🎉" }];
   }
 
   const out: (ForYouCard | null)[] = [];
-  if (progress.sessionsThisWeek < progress.sessionsTargetThisWeek) {
+
+  // A session finished in the last SESSION_KUDOS_FRESH_HOURS leads with a warm kudos card
+  // instead of the usual "next session" nudge — congratulating them on what they just did
+  // matters more, right then, than pointing at what's next.
+  const last = progress.lastCompletedSession;
+  const sessionIsFresh = last && (now.getTime() - last.at.getTime()) / 3600e3 <= SESSION_KUDOS_FRESH_HOURS;
+
+  if (sessionIsFresh && last) {
+    const pool = last.completedWeek ? WEEK_COMPLETE_MESSAGES : SESSION_KUDOS_MESSAGES;
+    out.push({
+      kind: "beginner_session_kudos",
+      id: id("beginner_kudos", `${last.week}:${last.sessionNumber}:${dayKey(last.at)}`),
+      priority: 100,
+      week: last.week,
+      sessionNumber: last.sessionNumber,
+      totalSessionsInWeek: last.totalSessionsInWeek,
+      message: pickForSession(pool, last),
+      completedWeek: last.completedWeek,
+    });
+  } else if (progress.sessionsThisWeek < progress.sessionsTargetThisWeek) {
     const next = progress.currentWeekData.sessions[progress.sessionsThisWeek];
     out.push({
       kind: "beginner_next_session",
@@ -420,11 +450,23 @@ function buildBeginnerCards(viewer: ViewerLike, workouts: WorkoutLean[], now: Da
       detail: next.detail,
     });
   }
-  // Rotates daily so it doesn't feel static across visits.
-  const tip = PROGRAM_TIPS[(progress.week + now.getDate()) % PROGRAM_TIPS.length];
-  out.push({ kind: "beginner_tip", id: id("beginner_tip", dayKey(now)), priority: 45, title: tip.title, body: tip.body });
+
+  // Walks PROGRAM_TIPS in its defined priority order, one per elapsed day since they started —
+  // so the very first tip a beginner ever sees is the single most important one (warm up),
+  // must-know tips are exhausted before very-important ones, and it still changes daily rather
+  // than repeating the same card every visit.
+  const daysSinceStart = Math.max(0, Math.floor((now.getTime() - startedAt.getTime()) / DAY_MS));
+  const tip = PROGRAM_TIPS[daysSinceStart % PROGRAM_TIPS.length];
+  out.push({ kind: "beginner_tip", id: id("beginner_tip", dayKey(now)), priority: 45, title: tip.title, body: tip.body, tier: tip.tier });
 
   return out;
+}
+
+/** Not beginner-gated — every viewer gets a warm nudge on their own birthday, at the top of the
+ * feed. Deliberately date-only (viewer.birthDate's month/day), never gated on anything else. */
+function buildBirthdayCard(viewer: ViewerLike, now: Date): ForYouCard | null {
+  if (!viewer.birthDate || !isBirthdayToday(viewer.birthDate, now)) return null;
+  return { kind: "birthday", id: id("birthday", dayKey(now)), priority: 101, name: viewer.name ?? "there" };
 }
 
 // ---------------------------------------------------------------------------

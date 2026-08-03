@@ -64,6 +64,10 @@ const UserSchema = new Schema(
     // Anchors "Week N of the program" — set when beginnerMode first turns on, left untouched
     // on a later re-enable so turning the mode off and back on resumes rather than restarts.
     beginnerModeStartedAt: { type: Date, default: null },
+    // Collected at onboarding (required for new signups; retrofittable via EditProfileModal for
+    // existing accounts, which is why this stays nullable). Powers the birthday notification
+    // (lib/birthday.ts) and age-aware pacing in the beginner program (lib/age.ts).
+    birthDate: { type: Date, default: null },
   },
   { timestamps: true },
 );

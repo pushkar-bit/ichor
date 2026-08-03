@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     if (!me) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
 
     const body = await req.json();
-    const { weightKg, heightCm, username, beginnerMode } = body;
+    const { weightKg, heightCm, username, birthDate, beginnerMode } = body;
 
     if (!weightKg || !heightCm) {
       return NextResponse.json({ error: "Weight and height are required" }, { status: 400 });
@@ -26,6 +26,15 @@ export async function POST(req: NextRequest) {
 
     const updates: Record<string, unknown> = { weightKg: Number(weightKg), heightCm: Number(heightCm) };
     if (!me.username) updates.username = normalizedUsername;
+    if (typeof birthDate === "string" && birthDate) {
+      const parsed = new Date(birthDate);
+      const now = new Date();
+      const minDate = new Date(now.getUTCFullYear() - 100, 0, 1);
+      if (Number.isNaN(parsed.getTime()) || parsed > now || parsed < minDate) {
+        return NextResponse.json({ error: "That doesn't look like a valid birth date." }, { status: 400 });
+      }
+      updates.birthDate = parsed;
+    }
     if (beginnerMode === true) {
       updates.beginnerMode = true;
       updates.beginnerModeStartedAt = new Date();

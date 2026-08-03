@@ -30,6 +30,8 @@ export const NOTIFICATION_TYPES = [
   "COMMENT_REPLY",
   "CLAN_JOIN",
   "GROUP_RUN_JOIN",
+  // Birthday wish (lib/birthday.ts) — deduped per user per year via the dedupeKey unique index.
+  "BIRTHDAY",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

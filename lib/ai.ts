@@ -180,13 +180,18 @@ type CoachContext = {
   /** Beginner-Friendly Mode — swaps the coach's persona to patient/encouraging (see
    * app/api/coach/chat/route.ts). Never references territory/battle mechanics unprompted. */
   beginnerMode?: boolean;
+  /** Whole years, from User.birthDate (lib/age.ts) — only ever used to calibrate tone in
+   * beginner mode (e.g. not over-explaining basics to an older, likely more experienced-with-
+   * exercise-in-general user), never to change what advice is given. Absent when unset. */
+  age?: number | null;
 };
 
 function coachReplyFallbackBeginner(message: string, ctx: CoachContext): string {
   const m = message.toLowerCase();
 
   if (m.includes("hurt") || m.includes("pain") || m.includes("sore")) {
-    return `A dull ache a day after running is normal soreness — it fades. Anything sharp, or in a joint, means take the day off and let it heal. When in doubt, rest.`;
+    const doctorNote = (ctx.age ?? 0) >= 55 ? " If anything feels off beyond normal soreness, checking in with a doctor before pushing on is a perfectly normal thing to do." : "";
+    return `A dull ache a day after running is normal soreness — it fades. Anything sharp, or in a joint, means take the day off and let it heal. When in doubt, rest.${doctorNote}`;
   }
   if (m.includes("how far") || m.includes("how long") || m.includes("how much")) {
     return `There's no target to hit here except showing up. Walk when you need to, jog when you can — the plan on your Start Here page paces it out week by week.`;
@@ -271,13 +276,21 @@ looks wrong — walk them through the exact rule above that would explain it (di
 already used, wrong classification, etc.) before assuming it's actually broken.
 `.trim();
 
+/** Light tone calibration only — never changes what advice is given, just how it's framed. */
+function ageToneNote(age?: number | null): string {
+  if (age == null) return "";
+  if (age < 16) return " The user is a young teenager — keep language simple and encouraging, and skip anything adult-oriented (gym culture references, etc).";
+  if (age >= 55) return " The user is an older adult starting to run — don't be patronizing or assume frailty, but do lean conservative on recovery/rest-day advice, and if it comes up naturally, mention that checking in with a doctor before ramping up is a reasonable, normal thing to do.";
+  return "";
+}
+
 export async function coachReply(message: string, ctx: CoachContext): Promise<string> {
   const model = getGeminiModel();
   if (!model) return coachReplyFallback(message, ctx);
 
   try {
     const systemPrompt = ctx.beginnerMode
-      ? `You are ICHOR's running coach, talking to someone who is brand new to running (Beginner-Friendly Mode is on). Be warm, patient, and encouraging — never intense, never combative, never sarcastic. Praise effort and consistency over speed or distance. Explain things in plain language, no running jargon without explaining it. Keep safety first: soreness is normal, sharp pain is not; rest days matter; always suggest walking when in doubt. Never bring up territory, raids, battles, leaderboards, or clans unless the user asks about them directly — this user is shielded from that side of the app for now. Keep responses mobile-optimized: maximum 3 short paragraphs, no markdown headers. User context: ${ctx.streakDays}-day streak, ${ctx.weeklyCaloriesBurned} calories this week.`
+      ? `You are ICHOR's running coach, talking to someone who is brand new to running (Beginner-Friendly Mode is on). Be warm, patient, and encouraging — never intense, never combative, never sarcastic. Praise effort and consistency over speed or distance. Explain things in plain language, no running jargon without explaining it. Keep safety first: soreness is normal, sharp pain is not; rest days matter; always suggest walking when in doubt. Never bring up territory, raids, battles, leaderboards, or clans unless the user asks about them directly — this user is shielded from that side of the app for now.${ageToneNote(ctx.age)} Keep responses mobile-optimized: maximum 3 short paragraphs, no markdown headers. User context: ${ctx.streakDays}-day streak, ${ctx.weeklyCaloriesBurned} calories this week.`
       : `You are Vikas Yadav, an elite performance coach for ICHOR — a campus social fitness battleground where college athletes compete for territory, leaderboard dominance, and glory. You are intense, disciplined, and data-driven — like an ancient Greek athlete who trains for victory, not participation. You speak with authority. You never sugarcoat. Keep responses mobile-optimized: maximum 3 short paragraphs, no markdown headers. Always reference the user's actual numbers. User stats: ${ctx.weeklyCaloriesBurned} calories this week, ${ctx.streakDays}-day streak, ${ctx.integrityPoints} integrity points, ${ctx.zonesHeld} zones held, ${ctx.battlesWon} battles won, ${ctx.battlesLost} battles lost.\n\n${GAME_MECHANICS_REFERENCE}`;
 
     const result = await model.generateContent(`${systemPrompt}\n\nUser: ${message}`);

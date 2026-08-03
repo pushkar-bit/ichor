@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Sparkles, CheckCircle2, PartyPopper, Loader2, Heart } from "lucide-react";
-import { PROGRAM_TIPS, type ProgramProgress } from "@/lib/beginnerProgram";
+import { tipsByTier, type ProgramProgress } from "@/lib/beginnerProgram";
 
 async function setBeginnerMode(on: boolean) {
   const res = await fetch("/api/users/beginner-mode", {
@@ -14,7 +14,9 @@ async function setBeginnerMode(on: boolean) {
 }
 
 export function StartView(
-  props: { optedIn: false; name: string } | { optedIn: true; name: string; progress: ProgramProgress },
+  props:
+    | { optedIn: false; name: string; quote: string }
+    | { optedIn: true; name: string; progress: ProgramProgress; quote: string },
 ) {
   const [loading, setLoading] = useState(false);
 
@@ -37,9 +39,9 @@ export function StartView(
         </div>
         <h1 className="font-display italic font-bold text-2xl">New to running?</h1>
         <p className="text-sm text-white/60">
-          Turn on Beginner-Friendly Mode for a guided 8-week walk/run program, safety tips written for a first-timer,
-          and a warmer, calmer version of the whole app — no leaderboard pressure, no one can raid your ground while
-          you're building your base.
+          Turn on Beginner-Friendly Mode for a guided 8-stage walk/run program that moves at your pace — not a fixed
+          calendar — plus safety tips written for a first-timer and a warmer, calmer version of the whole app. No
+          leaderboard pressure, no one can raid your ground while you're building your base.
         </p>
         <button
           onClick={() => handleToggle(true)}
@@ -52,7 +54,7 @@ export function StartView(
     );
   }
 
-  const { name, progress } = props;
+  const { name, progress, quote } = props;
   const { week, totalWeeks, sessionsThisWeek, sessionsTargetThisWeek, isComplete, currentWeekData } = progress;
   const pct = Math.round((week / totalWeeks) * 100);
 
@@ -60,15 +62,28 @@ export function StartView(
     <div className="max-w-xl mx-auto px-4 py-6 space-y-8">
       <div>
         <h1 className="font-display italic font-bold text-2xl mb-1">Hey {name.split(" ")[0]} 👋</h1>
-        <p className="text-sm text-white/60">Here's your plan — one week at a time, no pressure.</p>
+        <p className="text-sm text-momentum italic mb-2">&ldquo;{quote}&rdquo;</p>
+        <p className="text-sm text-white/60">Here's your plan — one stage at a time, no pressure.</p>
       </div>
+
+      {!isComplete && (
+        <div className="bg-midnight-raised/60 border border-border-ichor rounded-2xl p-4">
+          <p className="text-xs text-white/50 leading-relaxed">
+            <span className="text-white/80 font-semibold">How this works, in plain terms:</span> every stage below has a
+            small number of sessions — nothing to memorize, just show up when you can. Finish this stage&apos;s sessions
+            (with a real rest day between them, which is intentional — that&apos;s when your body actually adapts) and
+            the next stage unlocks on its own. There&apos;s no clock counting down and nobody here comparing you to
+            anyone else. Whatever pace gets you through it is the right pace.
+          </p>
+        </div>
+      )}
 
       {isComplete ? (
         <div className="bg-momentum/10 border border-momentum/30 rounded-2xl p-6 text-center space-y-4">
           <PartyPopper className="w-10 h-10 text-momentum mx-auto" />
           <h2 className="font-display italic font-bold text-xl">You finished the program 🎉</h2>
           <p className="text-sm text-white/60">
-            Eight weeks ago you were just getting started. Now you're a runner. You're ready for the full ICHOR
+            Not long ago you were just getting started. Now you're a runner. You're ready for the full ICHOR
             experience — territory, clans, all of it — whenever you want it. Staying in Beginner-Friendly Mode is
             just as fine, too.
           </p>
@@ -90,7 +105,8 @@ export function StartView(
             <div className="h-full bg-momentum transition-all" style={{ width: `${pct}%` }} />
           </div>
           <p className="text-xs text-white/50">
-            {sessionsThisWeek} of {sessionsTargetThisWeek} sessions logged this week
+            {sessionsThisWeek} of {sessionsTargetThisWeek} sessions completed — the next stage unlocks once you finish these,
+            not on a fixed date.
           </p>
         </div>
       )}
@@ -118,17 +134,26 @@ export function StartView(
         </div>
       </div>
 
-      <div>
-        <h2 className="font-semibold text-sm text-white/60 mb-3">Good to know</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          {PROGRAM_TIPS.map((tip) => (
-            <div key={tip.id} className="bg-midnight-raised border border-border-ichor rounded-2xl p-4">
-              <p className="text-sm font-semibold mb-1">{tip.title}</p>
-              <p className="text-xs text-white/50">{tip.body}</p>
-            </div>
-          ))}
+      {tipsByTier().map((group) => (
+        <div key={group.tier}>
+          <h2 className="font-semibold text-sm text-white/60 mb-3 flex items-center gap-2">
+            {group.label}
+            {group.tier === "must-know" && (
+              <span className="text-[10px] font-bold uppercase tracking-wide text-ignite bg-ignite/15 px-2 py-0.5 rounded-full">
+                Read first
+              </span>
+            )}
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {group.tips.map((tip) => (
+              <div key={tip.id} className="bg-midnight-raised border border-border-ichor rounded-2xl p-4">
+                <p className="text-sm font-semibold mb-1">{tip.title}</p>
+                <p className="text-xs text-white/50">{tip.body}</p>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      ))}
     </div>
   );
 }

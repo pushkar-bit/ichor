@@ -1,11 +1,15 @@
 import { redirect } from "next/navigation";
 import { getOrCreateCurrentUser } from "@/lib/currentUser";
 import { NavShell } from "@/components/ui/NavShell";
+import { checkAndSendBirthdayWish } from "@/lib/birthday";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getOrCreateCurrentUser();
   if (!user) redirect("/sign-in");
   if (!user.weightKg || !user.heightCm || !user.username) redirect("/onboarding");
+
+  // Cheap on every non-birthday request — see lib/birthday.ts for why this is safe to call here.
+  await checkAndSendBirthdayWish(user);
 
   return (
     // data-mode scopes the Beginner-Friendly Mode CSS overrides in globals.css to the entire

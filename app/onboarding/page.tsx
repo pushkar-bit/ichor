@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, ArrowRight, Scale, Ruler, AtSign, Link2, Sparkles, Footprints } from "lucide-react";
+import { Loader2, ArrowRight, Scale, Ruler, AtSign, Link2, Sparkles, Footprints, Cake } from "lucide-react";
+
+const MIN_AGE_YEARS = 5;
+const MAX_AGE_YEARS = 100;
 
 const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 
@@ -18,6 +21,7 @@ export default function OnboardingPage() {
   const [heightCm, setHeightCm] = useState("");
   const [heightFt, setHeightFt] = useState("");
   const [heightIn, setHeightIn] = useState("");
+  const [birthDate, setBirthDate] = useState("");
   const [beginnerMode, setBeginnerMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +49,15 @@ export default function OnboardingPage() {
       setError("Username must be 3-20 characters: lowercase letters, numbers, underscores.");
       return;
     }
+    if (!birthDate) {
+      setError("Please enter your birth date.");
+      return;
+    }
+    const ageYears = (Date.now() - new Date(birthDate).getTime()) / (365.25 * 86400e3);
+    if (ageYears < MIN_AGE_YEARS || ageYears > MAX_AGE_YEARS) {
+      setError("Please double-check your birth date.");
+      return;
+    }
 
     setError(null);
     setStep("newRunner");
@@ -62,6 +75,7 @@ export default function OnboardingPage() {
           weightKg,
           heightCm: resolvedHeightCm(),
           username: username.trim().toLowerCase(),
+          birthDate,
           beginnerMode: isNew,
         }),
       });
@@ -95,9 +109,13 @@ export default function OnboardingPage() {
             <Footprints className="w-7 h-7 text-momentum" />
           </div>
           <h1 className="font-display italic font-bold text-2xl mb-2">One quick thing.</h1>
-          <p className="text-sm text-white/60 mb-6">
-            Are you completely new to running? We&apos;ll set you up with a friendlier, guided experience made for a first-timer —
-            you can switch it off anytime from your profile.
+          <p className="text-sm text-white/60 mb-2">Are you completely new to running?</p>
+          <p className="text-xs text-white/40 mb-6">
+            Answering yes switches your account into <span className="text-momentum font-semibold">Beginner-Friendly Mode</span> — a
+            calmer, guided version of ICHOR built for people taking their first steps. We&apos;ll give you a gentle
+            week-by-week plan of exercises paced to how you&apos;re actually doing, plain explanations for everything
+            you see, and a warmer feel throughout — all so your transition into running is as smooth and easy as
+            possible. Nothing is locked in: you can switch back anytime from your profile.
           </p>
           {error && <p className="text-xs text-ignite mb-3">{error}</p>}
           <div className="space-y-3">
@@ -253,6 +271,21 @@ export default function OnboardingPage() {
                 </div>
               </div>
             )}
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-white/50 block mb-1.5 flex items-center gap-1.5">
+              <Cake className="w-3.5 h-3.5" /> Birth date
+            </label>
+            <input
+              type="date"
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+              max={new Date().toISOString().slice(0, 10)}
+              required
+              className="w-full bg-midnight border border-border-ichor rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-momentum [color-scheme:dark]"
+            />
+            <p className="text-[11px] text-white/30 mt-1">Helps us pace your plan sensibly — and we&apos;ll wish you a happy birthday 🎂</p>
           </div>
 
           {error && <p className="text-xs text-ignite">{error}</p>}

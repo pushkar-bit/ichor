@@ -35,6 +35,7 @@ type ProfileUser = {
   points?: number;
   badges?: string[];
   beginnerMode?: boolean;
+  birthDate?: string | Date | null;
 };
 
 export function ProfileView({
@@ -108,6 +109,7 @@ export function ProfileView({
             initialAvatarUrl={user.avatarUrl}
             initialWeight={user.weightKg}
             initialHeight={user.heightCm}
+            initialBirthDate={user.birthDate ? new Date(user.birthDate).toISOString().slice(0, 10) : null}
           />
         ) : (
           <FollowButton userId={(user as any)._id ? String((user as any)._id) : ""} initialFollowing={isFollowing} />

@@ -10,10 +10,19 @@ export async function PATCH(req: NextRequest) {
   const me = await getOrCreateCurrentUser();
   if (!me) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
 
-  const { name, bio, username, avatarUrl, weightKg, heightCm } = await req.json();
+  const { name, bio, username, avatarUrl, weightKg, heightCm, birthDate } = await req.json();
   const updates: any = {};
   if (typeof name === "string" && name.trim()) updates.name = name.trim();
   if (typeof bio === "string") updates.bio = bio.slice(0, 200);
+  if (typeof birthDate === "string" && birthDate) {
+    const parsed = new Date(birthDate);
+    const now = new Date();
+    const minDate = new Date(now.getUTCFullYear() - 100, 0, 1);
+    if (Number.isNaN(parsed.getTime()) || parsed > now || parsed < minDate) {
+      return NextResponse.json({ error: "That doesn't look like a valid birth date." }, { status: 400 });
+    }
+    updates.birthDate = parsed;
+  }
   if (typeof username === "string") {
     const normalized = username.trim().toLowerCase();
     if (!USERNAME_PATTERN.test(normalized)) {
