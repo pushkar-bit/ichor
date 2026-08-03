@@ -603,7 +603,11 @@ export function computeProgramProgress(
     const d = w.date;
 
     if (lastCountedDay !== null) {
-      const gapDays = Math.round((d.getTime() - new Date(lastCountedDay).getTime()) / DAY_MS);
+      // Compared as whole calendar days (both floored to midnight UTC), not raw elapsed ms.
+      // Rounding the ms difference used to let a run late on day 1 pass (1.96d rounds to 2),
+      // which contradicted nextSessionCountsFrom below — and that mismatch is visible now that
+      // the UI shows a live countdown to exactly that timestamp.
+      const gapDays = Math.floor((new Date(dayKey(d)).getTime() - new Date(lastCountedDay).getTime()) / DAY_MS);
       if (gapDays < minDaysBetweenSessions) continue; // too soon after the last counted session — doesn't advance the plan
     }
 

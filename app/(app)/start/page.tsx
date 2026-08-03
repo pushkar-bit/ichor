@@ -60,6 +60,7 @@ export default async function StartPage() {
       progress={progress}
       quote={quote}
       restNotice={restNotice}
+      restCountsFromISO={progress.nextSessionCountsFrom?.toISOString() ?? null}
       shortNotice={shortNotice}
       longestRunKm={longestRunKm}
     />

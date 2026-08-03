@@ -6,10 +6,57 @@ import {
   Sparkles, CheckCircle2, PartyPopper, Loader2, Heart, Circle, Moon,
   CalendarCheck, Unlock, Leaf, ChevronDown, ArrowRight, Target, Footprints,
 } from "lucide-react";
+import { Countdown } from "./Countdown";
 import {
   tipsByTier, PROGRAM_WEEKS, PROGRAM_GOAL_KM, PROGRAM_GOAL_LABEL, targetLabel,
   SESSION_START_STEP, SESSION_END_STEP, type ProgramProgress,
 } from "@/lib/beginnerProgram";
+
+/**
+ * One deliberate type scale for the whole page, so importance is legible at a glance instead of
+ * every line arriving at the same weight. Mirrors the For You rail's Lead treatment (tinted icon
+ * chip + tracked eyebrow + large title over a soft gradient wash), which is the visual language
+ * the rest of the app already uses to say "this one matters".
+ */
+const EYEBROW = "text-[11px] font-bold uppercase tracking-[0.15em]";
+const SECTION_HEADING = `${EYEBROW} text-white/35`;
+
+/** Per-accent tokens, matching accentStyles() in ForYouRail. */
+const ACCENTS = {
+  momentum: { text: "text-momentum", chip: "bg-momentum/15", glow: "from-momentum/15", border: "border-momentum/40" },
+  afterrun: { text: "text-afterrun", chip: "bg-afterrun/15", glow: "from-afterrun/15", border: "border-afterrun/40" },
+  lime: { text: "text-lime", chip: "bg-lime/15", glow: "from-lime/15", border: "border-lime/40" },
+} as const;
+
+/** The page's attention-grabber: a washed, bordered card with a large icon chip. Reserved for
+ * things a runner would be actively harmed by missing — currently the rest-day gate (their runs
+ * won't count) and a run that fell short of its target. */
+function HeroCard({
+  accent, icon, eyebrow, title, children,
+}: {
+  accent: keyof typeof ACCENTS;
+  icon: React.ReactNode;
+  eyebrow: string;
+  title: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  const a = ACCENTS[accent];
+  return (
+    <div className={`relative overflow-hidden rounded-2xl border ${a.border} bg-midnight-raised`}>
+      <div className={`absolute inset-0 bg-gradient-to-br ${a.glow} via-transparent to-transparent pointer-events-none`} />
+      <div className="relative flex items-start gap-4 p-5">
+        <span className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${a.chip} ${a.text}`}>
+          {icon}
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className={`${EYEBROW} ${a.text}`}>{eyebrow}</div>
+          <div className="font-bold text-xl leading-tight mt-1">{title}</div>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** The "how this works" explainer, as scannable points rather than a paragraph. */
 const HOW_IT_WORKS = [
@@ -39,6 +86,8 @@ export function StartView(
         progress: ProgramProgress;
         quote: string;
         restNotice?: RestNotice;
+        /** ISO instant the rest-day gate lifts — drives the live counter. */
+        restCountsFromISO?: string | null;
         shortNotice?: RestNotice;
         longestRunKm?: number;
       },
@@ -83,6 +132,7 @@ export function StartView(
 
   const { name, progress, quote } = props;
   const restNotice = props.restNotice ?? null;
+  const restCountsFromISO = props.restCountsFromISO ?? null;
   const shortNotice = props.shortNotice ?? null;
   const longestRunKm = props.longestRunKm ?? 0;
   const goalPct = Math.min(100, Math.round((longestRunKm / PROGRAM_GOAL_KM) * 100));
@@ -108,34 +158,70 @@ export function StartView(
         </p>
       </div>
 
+      {/* Promoted to the loudest thing on the page: while this is up, runs genuinely do not
+          count toward the plan, and that was previously buried in the same small grey text as
+          everything else. The live counter answers the only question it raises — "how long?" */}
+      {restNotice && (
+        <HeroCard
+          accent="momentum"
+          icon={<Moon className="w-6 h-6" />}
+          eyebrow="Rest day"
+          title="Your next session counts in"
+        >
+          <div className="text-3xl font-bold text-momentum tabular-nums mt-1 leading-none">
+            <Countdown to={restCountsFromISO} prefix="" suffix="" precise expiredText="now — you're good to go" />
+          </div>
+          <p className="text-sm text-white/60 mt-3 leading-relaxed">{restNotice.body}</p>
+        </HeroCard>
+      )}
+
+      {/* A run that happened but didn't reach the target. Distinct accent from the rest-day card
+          so the two never read as the same message at a glance. */}
+      {shortNotice && (
+        <HeroCard
+          accent="afterrun"
+          icon={<Footprints className="w-6 h-6" />}
+          eyebrow="Almost"
+          title={shortNotice.title}
+        >
+          <p className="text-sm text-white/60 mt-2 leading-relaxed">{shortNotice.body}</p>
+        </HeroCard>
+      )}
+
       {/* The goal itself, tracked by the only number that actually answers "am I close?" —
           the furthest single run so far, not minutes on the clock. */}
       {!isComplete && (
-        <div className="bg-midnight-raised border border-border-ichor rounded-2xl p-5">
-          <div className="flex items-baseline justify-between mb-2">
-            <span className="font-semibold text-sm flex items-center gap-1.5">
-              <Target className="w-4 h-4 text-momentum" /> {PROGRAM_GOAL_LABEL}
-            </span>
-            <span className="text-xs text-white/40 tabular-nums">
-              {longestRunKm > 0 ? `${longestRunKm.toFixed(1)} km` : "not yet"} / {PROGRAM_GOAL_KM} km
-            </span>
+        <div className="relative overflow-hidden bg-midnight-raised border border-border-ichor rounded-2xl p-5">
+          <div className="absolute inset-0 bg-gradient-to-br from-momentum/[0.07] via-transparent to-transparent pointer-events-none" />
+          <div className="relative">
+            <div className={`${EYEBROW} text-momentum flex items-center gap-1.5 mb-2`}>
+              <Target className="w-3.5 h-3.5" /> {PROGRAM_GOAL_LABEL}
+            </div>
+            {/* The distance is the headline, not a caption — it's the number the whole plan
+                is chasing, and it was previously the smallest text in the card. */}
+            <div className="flex items-baseline gap-1.5 mb-3">
+              <span className="text-3xl font-bold tabular-nums leading-none">
+                {longestRunKm > 0 ? longestRunKm.toFixed(1) : "0.0"}
+              </span>
+              <span className="text-sm text-white/40 font-medium">/ {PROGRAM_GOAL_KM} km</span>
+            </div>
+            <div className="h-2 rounded-full bg-white/10 overflow-hidden mb-2">
+              <div className="h-full bg-momentum transition-all" style={{ width: `${goalPct}%` }} />
+            </div>
+            <p className="text-xs text-white/50">
+              {longestRunKm <= 0
+                ? "Your longest run will show up here once you log your first session."
+                : longestRunKm >= PROGRAM_GOAL_KM
+                  ? "You've already covered 5K in a single run. Finish the stages and it's official."
+                  : `Longest run so far — ${(PROGRAM_GOAL_KM - longestRunKm).toFixed(1)} km to go.`}
+            </p>
           </div>
-          <div className="h-2 rounded-full bg-white/10 overflow-hidden mb-2">
-            <div className="h-full bg-momentum transition-all" style={{ width: `${goalPct}%` }} />
-          </div>
-          <p className="text-xs text-white/50">
-            {longestRunKm <= 0
-              ? "Your longest run will show up here once you log your first session."
-              : longestRunKm >= PROGRAM_GOAL_KM
-                ? "You've already covered 5K in a single run. Finish the stages and it's official."
-                : `Longest run so far — ${(PROGRAM_GOAL_KM - longestRunKm).toFixed(1)} km to go.`}
-          </p>
         </div>
       )}
 
       {!isComplete && (
         <div className="bg-midnight-raised/60 border border-border-ichor rounded-2xl p-4">
-          <p className="text-xs font-semibold text-white/80 mb-3">How this works, in plain terms</p>
+          <p className={`${SECTION_HEADING} mb-3`}>How this works, in plain terms</p>
           <ul className="space-y-2.5">
             {HOW_IT_WORKS.map(({ icon: Icon, text }) => (
               <li key={text} className="flex items-start gap-2.5">
@@ -144,28 +230,6 @@ export function StartView(
               </li>
             ))}
           </ul>
-        </div>
-      )}
-
-      {restNotice && (
-        <div className="bg-midnight-raised border border-momentum/30 rounded-2xl p-4 flex items-start gap-3">
-          <Moon className="w-5 h-5 text-momentum shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold mb-1">{restNotice.title}</p>
-            <p className="text-xs text-white/50 leading-relaxed">{restNotice.body}</p>
-          </div>
-        </div>
-      )}
-
-      {/* A run that happened but didn't reach the target. Shown so the app never appears to
-          have simply ignored something they went out and did. */}
-      {shortNotice && (
-        <div className="bg-midnight-raised border border-momentum/30 rounded-2xl p-4 flex items-start gap-3">
-          <Footprints className="w-5 h-5 text-momentum shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold mb-1">{shortNotice.title}</p>
-            <p className="text-xs text-white/50 leading-relaxed">{shortNotice.body}</p>
-          </div>
         </div>
       )}
 
@@ -189,22 +253,22 @@ export function StartView(
         </div>
       ) : (
         <div className="bg-midnight-raised border border-border-ichor rounded-2xl p-5">
-          <div className="flex items-baseline justify-between mb-2">
-            <span className="font-semibold text-sm">Stage {week} of {totalWeeks}</span>
-            <span className="text-xs text-white/40">{currentWeekData.title}</span>
+          <div className="flex items-baseline justify-between mb-2.5">
+            <span className="font-bold text-lg leading-none">Stage {week}<span className="text-white/35 text-sm font-medium"> of {totalWeeks}</span></span>
+            <span className={`${EYEBROW} text-white/35`}>{currentWeekData.title}</span>
           </div>
-          <div className="h-2 rounded-full bg-white/10 overflow-hidden mb-3">
+          <div className="h-2 rounded-full bg-white/10 overflow-hidden mb-2.5">
             <div className="h-full bg-momentum transition-all" style={{ width: `${pct}%` }} />
           </div>
           <p className="text-xs text-white/50">
-            {sessionsThisWeek} of {sessionsTargetThisWeek} sessions done in this stage
+            <span className="text-white/80 font-semibold tabular-nums">{sessionsThisWeek} of {sessionsTargetThisWeek}</span> sessions done in this stage
             <span className="text-white/30"> · {completedSessionsTotal} of {totalSessionsInProgram} overall</span>
           </p>
         </div>
       )}
 
       <div>
-        <h2 className="font-semibold text-sm text-white/60 mb-3">This stage&apos;s sessions</h2>
+        <h2 className={`${SECTION_HEADING} mb-3`}>This stage&apos;s sessions</h2>
         <div className="space-y-2.5">
           {currentWeekData.sessions.map((s, i) => {
             const done = i < sessionsThisWeek;
@@ -212,13 +276,13 @@ export function StartView(
             return (
               <div
                 key={s.label}
-                className={`rounded-2xl border p-4 ${
+                className={`relative overflow-hidden rounded-2xl border transition-colors ${
                   done
                     ? "bg-momentum/10 border-momentum/30"
                     : isNext
-                      ? "bg-midnight-raised border-momentum/40"
-                      : "bg-midnight-raised border-border-ichor"
-                }`}
+                      ? "bg-midnight-raised border-momentum/50 p-5 shadow-[0_0_0_1px_rgba(255,148,102,0.08)]"
+                      : "bg-midnight-raised/60 border-border-ichor"
+                } ${isNext ? "" : "p-4"}`}
               >
                 <div className="flex items-start gap-3">
                   {done ? (
@@ -228,7 +292,7 @@ export function StartView(
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-semibold">{s.label}</p>
+                      <p className={isNext ? "text-base font-bold" : "text-sm font-semibold text-white/70"}>{s.label}</p>
                       {/* The number this session is actually checked against, stated up front
                           so nobody has to guess what "counts". */}
                       <span className="text-[10px] font-bold uppercase tracking-wide text-white/50 bg-white/10 px-2 py-0.5 rounded-full">
@@ -328,7 +392,7 @@ export function StartView(
 
       {tipsByTier().map((group) => (
         <div key={group.tier}>
-          <h2 className="font-semibold text-sm text-white/60 mb-3 flex items-center gap-2">
+          <h2 className={`${SECTION_HEADING} mb-3 flex items-center gap-2`}>
             {group.label}
             {group.tier === "must-know" && (
               <span className="text-[10px] font-bold uppercase tracking-wide text-ignite bg-ignite/15 px-2 py-0.5 rounded-full">
