@@ -394,6 +394,15 @@ function EventDetails() {
             ))}
           </div>
         </FadeIn>
+        <FadeIn delay={0.1}>
+          <a
+            href="/calendar"
+            className="inline-flex items-center gap-2 mt-6 text-sm font-medium text-white/60 hover:text-white transition-colors"
+          >
+            See the full run calendar
+            <ArrowUpRight className="w-4 h-4" />
+          </a>
+        </FadeIn>
       </div>
     </section>
   );

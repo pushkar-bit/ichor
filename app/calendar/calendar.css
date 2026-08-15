@@ -1,0 +1,31 @@
+/* LeetCode-heatmap-style pulse: cycles Monday -> Sunday, staggered per weekday
+   column by animation-delay so every week row scans in sync — see CalendarPage. */
+@keyframes ichor-cal-scan {
+  0% {
+    opacity: 0.15;
+    transform: translateX(-50%) scale(1);
+  }
+  6% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1.8);
+  }
+  14% {
+    opacity: 0.15;
+    transform: translateX(-50%) scale(1);
+  }
+  100% {
+    opacity: 0.15;
+    transform: translateX(-50%) scale(1);
+  }
+}
+
+.ichor-cal-scan-dot {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: #ae93f4;
+  animation: ichor-cal-scan 7s ease-in-out infinite;
+}
