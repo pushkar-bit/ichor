@@ -186,7 +186,26 @@ type CoachContext = {
   age?: number | null;
 };
 
+/** Rule-based RU-Rox training advice, shared by both fallback voices when Gemini is unavailable. */
+function ruroxReplyFallback(message: string): string | null {
+  const m = message.toLowerCase();
+  if (!m.includes("rurox") && !m.includes("ru-rox") && !m.includes("ru rox")) return null;
+
+  if (m.includes("beginner")) {
+    return `RU-Rox is 3.6km of running (four 800m legs + a 400m sprint) with a station after each 800m — burpee broad jumps, the crawl, sandbag lunges, tire flips. As a beginner, your only goal is finishing: build up to jogging/walking 3.6km comfortably, add bodyweight squats/lunges/planks twice a week, and practice the broad jumps and lunges unweighted. Pace doesn't matter — finishing does.`;
+  }
+  if (m.includes("moderate") || m.includes("intermediate")) {
+    return `You've got a base already, so train the course's rhythm, not just distance — repeat 800m at a controlled pace, then drill a station move, repeat. Start light-weighted lunges and practice real tire-flip mechanics (drive from the hips) a few times before race day so Station 4 doesn't blow you up.`;
+  }
+  if (m.includes("pro") || m.includes("advanced")) {
+    return `At your level the race is won or lost in the transitions — running hard into a station and clearing it without a heart-rate crash. Bring your intervals close to 800m repeats, train grip and posterior chain specifically for the tire flips, and rehearse getting back to pace within the first 50-100m out of every station.`;
+  }
+  return `RU-Rox is a 3.6km hybrid race — four 800m legs each followed by a station (burpee broad jumps, the crawl, sandbag lunges, tire flips), then a 400m sprint to finish. Tell me your level — beginner, moderate, or pro — and I'll give you a training plan built around that exact course.`;
+}
+
 function coachReplyFallbackBeginner(message: string, ctx: CoachContext): string {
+  const ruroxReply = ruroxReplyFallback(message);
+  if (ruroxReply) return ruroxReply;
   const m = message.toLowerCase();
 
   if (m.includes("hurt") || m.includes("pain") || m.includes("sore")) {
@@ -207,6 +226,8 @@ function coachReplyFallbackBeginner(message: string, ctx: CoachContext): string 
 
 function coachReplyFallback(message: string, ctx: CoachContext): string {
   if (ctx.beginnerMode) return coachReplyFallbackBeginner(message, ctx);
+  const ruroxReply = ruroxReplyFallback(message);
+  if (ruroxReply) return ruroxReply;
   const m = message.toLowerCase();
 
   if (m.includes("burn more calories") || m.includes("burn calories")) {
@@ -276,6 +297,45 @@ looks wrong — walk them through the exact rule above that would explain it (di
 already used, wrong classification, etc.) before assuming it's actually broken.
 `.trim();
 
+/**
+ * The actual RU-Rox race drill, so Vikas Yadav can give real training advice against the real
+ * course instead of guessing at obstacle-race generalities. Keep in sync with the event's own
+ * course spec if it ever changes.
+ */
+const RUROX_REFERENCE = `
+RU-ROX RACE REFERENCE — ICHOR's hybrid obstacle race for the new batch. Use this to give concrete,
+race-specific training advice whenever a user asks how to train for RU-Rox, mentions RU-Rox, or asks about
+"the race." Never invent obstacles or distances that aren't listed here.
+
+THE COURSE: Run on a 400m track. Total running distance is 3.6km, broken into four 800m legs (2 laps each)
+plus one final 400m sprint (1 lap), with a grit station after each of the first four legs:
+  Leg 1 (800m) -> Station 1: Burpee Broad Jumps (marked 50m zone)
+  Leg 2 (800m) -> Station 2: The Crawl (military-style mesh nets, low clearance — you move on elbows/knees)
+  Leg 3 (800m) -> Station 3: Sandbag Lunges (10kg sacks for girls, 15kg for boys)
+  Leg 4 (800m) -> Station 4: Tire Flips (25kg tires; 30m distance for girls, 90m for boys)
+  Leg 5 (400m) -> straight sprint to the finish line
+The event is explicitly beginner-friendly and open to the whole new batch, not just athletes. Everyone who
+finishes gets a Velcro finisher patch; the fastest overall get a champion patch. Motto: "Jab Bhaago, Tabhi
+Savera" — dawn breaks only when you run.
+
+HOW TO COACH IT BY LEVEL — tailor the plan to whichever level the user identifies as (ask if unclear):
+  BEGINNER: goal is just finishing. Prioritize being able to jog/walk 3.6km comfortably over multiple
+  sessions before race day, plus basic bodyweight strength (squats, lunges, plank, incline push-ups) twice a
+  week so the stations don't wreck them. Practice broad jumps and lunges with no added weight first. No need
+  to run fast — pacing and finishing beat speed every time for a first-timer.
+  MODERATE (already runs sometimes): add interval work that mimics the course rhythm — repeat 800m at a
+  controlled pace, rest/mimic a station drill, repeat, to build race-specific endurance rather than pure
+  distance. Start light-weighted lunges and practice actual tire-flip mechanics (hip drive, not just arms) a
+  couple of times before race day.
+  PRO/ADVANCED (trains regularly): focus on transitions — running fast into a station and clearing it
+  cleanly without a big heart-rate crash, since that's what actually separates finish times on a hybrid
+  course like this. Bring race-pace intervals close to 800m repeats, train grip and posterior chain for the
+  tire flips specifically, and rehearse getting back to running pace within the first 50-100m out of each
+  station.
+Always ground advice in the actual stations above — never suggest generic obstacle-race content (rope
+climbs, monkey bars, walls) that isn't part of this course.
+`.trim();
+
 /** Light tone calibration only — never changes what advice is given, just how it's framed. */
 function ageToneNote(age?: number | null): string {
   if (age == null) return "";
@@ -290,8 +350,8 @@ export async function coachReply(message: string, ctx: CoachContext): Promise<st
 
   try {
     const systemPrompt = ctx.beginnerMode
-      ? `You are ICHOR's running coach, talking to someone who is brand new to running (Beginner-Friendly Mode is on). They are following an 8-stage walk/run plan whose goal is running their first 5K — stages unlock as they finish sessions, not on a calendar, and the plan asks for a rest day between sessions. Frame progress around that 5K goal when it's relevant. Be warm, patient, and encouraging — never intense, never combative, never sarcastic. Praise effort and consistency over speed or distance. Explain things in plain language, no running jargon without explaining it. Keep safety first: soreness is normal, sharp pain is not; rest days matter; always suggest walking when in doubt. Never bring up territory, raids, battles, leaderboards, or clans unless the user asks about them directly — this user is shielded from that side of the app for now.${ageToneNote(ctx.age)} Keep responses mobile-optimized: maximum 3 short paragraphs, no markdown headers. User context: ${ctx.streakDays}-day streak, ${ctx.weeklyCaloriesBurned} calories this week.`
-      : `You are Vikas Yadav, an elite performance coach for ICHOR — a campus social fitness battleground where college athletes compete for territory, leaderboard dominance, and glory. You are intense, disciplined, and data-driven — like an ancient Greek athlete who trains for victory, not participation. You speak with authority. You never sugarcoat. Keep responses mobile-optimized: maximum 3 short paragraphs, no markdown headers. Always reference the user's actual numbers. User stats: ${ctx.weeklyCaloriesBurned} calories this week, ${ctx.streakDays}-day streak, ${ctx.integrityPoints} integrity points, ${ctx.zonesHeld} zones held, ${ctx.battlesWon} battles won, ${ctx.battlesLost} battles lost.\n\n${GAME_MECHANICS_REFERENCE}`;
+      ? `You are ICHOR's running coach, talking to someone who is brand new to running (Beginner-Friendly Mode is on). They are following an 8-stage walk/run plan whose goal is running their first 5K — stages unlock as they finish sessions, not on a calendar, and the plan asks for a rest day between sessions. Frame progress around that 5K goal when it's relevant. Be warm, patient, and encouraging — never intense, never combative, never sarcastic. Praise effort and consistency over speed or distance. Explain things in plain language, no running jargon without explaining it. Keep safety first: soreness is normal, sharp pain is not; rest days matter; always suggest walking when in doubt. Never bring up territory, raids, battles, leaderboards, or clans unless the user asks about them directly — this user is shielded from that side of the app for now.${ageToneNote(ctx.age)} Keep responses mobile-optimized: maximum 3 short paragraphs, no markdown headers. User context: ${ctx.streakDays}-day streak, ${ctx.weeklyCaloriesBurned} calories this week.\n\n${RUROX_REFERENCE}`
+      : `You are Vikas Yadav, an elite performance coach for ICHOR — a campus social fitness battleground where college athletes compete for territory, leaderboard dominance, and glory. You are intense, disciplined, and data-driven — like an ancient Greek athlete who trains for victory, not participation. You speak with authority. You never sugarcoat. Keep responses mobile-optimized: maximum 3 short paragraphs, no markdown headers. Always reference the user's actual numbers. User stats: ${ctx.weeklyCaloriesBurned} calories this week, ${ctx.streakDays}-day streak, ${ctx.integrityPoints} integrity points, ${ctx.zonesHeld} zones held, ${ctx.battlesWon} battles won, ${ctx.battlesLost} battles lost.\n\n${GAME_MECHANICS_REFERENCE}\n\n${RUROX_REFERENCE}`;
 
     const result = await model.generateContent(`${systemPrompt}\n\nUser: ${message}`);
     const text = result.response.text().trim();

@@ -21,11 +21,23 @@ const BEGINNER_STARTERS = [
   "What should I eat before a run?",
 ];
 
+const RUROX_STARTERS = [
+  "I'm a beginner — how do I train for RU-Rox?",
+  "I train regularly — how do I train for RU-Rox?",
+  "I'm advanced — how do I train for RU-Rox?",
+];
+
 export function CoachChat({ beginnerMode = false }: { beginnerMode?: boolean }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  // Lazy-initialized (not effect + setState) since `loaded` — false on both the server
+  // render and the first client render, until the messages fetch below resolves — already
+  // gates every use of this value, so there's no hydration mismatch to worry about.
+  const [ruroxTopic] = useState(
+    () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("topic") === "rurox",
+  );
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -77,6 +89,22 @@ export function CoachChat({ beginnerMode = false }: { beginnerMode?: boolean }) 
         {!loaded && (
           <div className="flex justify-center py-10">
             <Loader2 className="w-6 h-6 text-white/30 animate-spin" />
+          </div>
+        )}
+        {loaded && messages.length === 0 && ruroxTopic && (
+          <div className="mb-2">
+            <p className="text-xs text-white/40 mb-2 px-1">Training for RU-Rox — what&apos;s your level?</p>
+            <div className="flex flex-wrap gap-2">
+              {RUROX_STARTERS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => send(s)}
+                  className="text-xs font-medium bg-momentum/15 border border-momentum/40 text-momentum px-3 py-2 rounded-full hover:bg-momentum/25"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {loaded && messages.length === 0 && (

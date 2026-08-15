@@ -16,6 +16,7 @@ import {
   MessageCircle,
   AtSign,
   ArrowUpRight,
+  GraduationCap,
 } from "lucide-react";
 import { FadingVideo } from "@/components/ui/FadingVideo";
 import { BlurText } from "@/components/ui/BlurText";
@@ -31,6 +32,7 @@ export default function RuRoxPage() {
       <Origin />
       <Explainer />
       <Course />
+      <TrainCTA />
       <EventDetails />
       <ClosingCTA />
     </div>
@@ -51,6 +53,7 @@ function Nav() {
           {[
             ["The Race", "#course"],
             ["Origin", "#origin"],
+            ["Train", "#train"],
             ["Details", "#details"],
           ].map(([label, href]) => (
             <a
@@ -140,8 +143,8 @@ function Hero() {
           <FadeIn delay={1.3}>
             <div className="flex items-stretch gap-4 mt-10">
               {[
-                { value: "3.23 km", label: "Total course distance" },
-                { value: "5 + 4", label: "Runs & grit stations" },
+                { value: "3.6 km", label: "Total course distance" },
+                { value: "4 + 4", label: "800m legs & grit stations" },
               ].map((s) => (
                 <div key={s.label} className="rurox-glass rounded-2xl p-5 w-[170px]">
                   <p className="font-display italic font-bold text-3xl text-white leading-none">
@@ -280,21 +283,21 @@ const STATIONS = [
   {
     icon: Zap,
     title: "Burpee Broad Jumps",
-    desc: "Straight off the first running leg, no time to catch your breath. Drop, explode forward, repeat — pure full-body power to shake off any rhythm you thought you had.",
+    desc: "Straight off the first 800m leg, no time to catch your breath. Drop, explode forward, repeat — pure full-body power to shake off any rhythm you thought you had.",
   },
   {
     icon: Footprints,
-    title: "The Crawl Zone",
-    desc: "Low, military-style netting pins you close to the ground. There's no jogging through this one — just elbows, knees, and the grit to keep moving forward, flat on the turf.",
+    title: "The Crawl",
+    desc: "Low, military-style mesh nets pin you close to the ground. There's no jogging through this one — just elbows, knees, and the grit to keep moving forward, flat on the turf.",
   },
   {
     icon: Dumbbell,
-    title: "Sack Walking Lunges",
+    title: "Sandbag Lunges",
     desc: "A weighted sack on your shoulders and a stretch of ground that refuses to get shorter. Every lunge burns a little more than the last — this is where legs start negotiating.",
   },
   {
     icon: RotateCw,
-    title: "The Tire Flip",
+    title: "Tire Flips",
     desc: "The final grit station before the last sprint. Heavy tires, end over end, across the field — a last full-body gut-check right before RU-Rox lets you run for the finish line.",
   },
 ];
@@ -306,13 +309,13 @@ function Course() {
         <FadeIn>
           <SectionLabel>The Course</SectionLabel>
           <h2 className="font-display italic font-bold text-4xl md:text-6xl leading-[0.95] mb-4 max-w-2xl">
-            Five runs.
+            Four 800m legs.
             <br />
-            Four grit stations.
+            Then sprint it home.
           </h2>
           <p className="text-white/50 max-w-xl mb-16 text-lg">
-            600 metres of running between every station, four different tests of grit along the
-            way — 3.23 kilometres, start to finish.
+            Two laps of the 400m track between every station, four different tests of grit along
+            the way, then a final 400m sprint to the line — 3.6 kilometres, start to finish.
           </p>
         </FadeIn>
 
@@ -338,6 +341,36 @@ function Course() {
   );
 }
 
+// ── TRAIN CTA ────────────────────────────────────────────────────────────
+
+function TrainCTA() {
+  return (
+    <section id="train" className="relative bg-black py-20 px-6 border-t border-white/10">
+      <div className="max-w-3xl mx-auto text-center">
+        <FadeIn>
+          <div className="rurox-glass-strong rounded-[1.5rem] px-6 py-10 md:px-12 md:py-14">
+            <GraduationCap className="w-8 h-8 text-momentum mx-auto mb-5" />
+            <h2 className="font-display italic font-bold text-3xl md:text-4xl mb-3">
+              Don&apos;t know where to start?
+            </h2>
+            <p className="text-white/60 max-w-md mx-auto mb-8">
+              Vikas Yadav, ICHOR&apos;s AI coach, will build you a training plan for this exact
+              course — whether you&apos;re a first-timer or chasing the champion patch.
+            </p>
+            <a
+              href="/coach?topic=rurox"
+              className="inline-flex items-center gap-2 bg-white text-black font-semibold rounded-full px-6 py-3 hover:bg-white/90 transition-colors"
+            >
+              How to Train for RU-Rox
+              <ArrowUpRight className="w-5 h-5" />
+            </a>
+          </div>
+        </FadeIn>
+      </div>
+    </section>
+  );
+}
+
 // ── EVENT DETAILS ────────────────────────────────────────────────────────
 
 function EventDetails() {
@@ -345,7 +378,7 @@ function EventDetails() {
     { icon: MapPin, label: "Location", value: "Neem Tree Ground, Rishihood University" },
     { icon: Clock, label: "Start Time", value: "7:00 AM" },
     { icon: Users, label: "Open To", value: "The New Batch" },
-    { icon: Route, label: "Distance", value: "3.23 km" },
+    { icon: Route, label: "Distance", value: "3.6 km" },
   ];
   return (
     <section id="details" className="relative border-t border-white/10 bg-[#050208] py-20 px-6">
