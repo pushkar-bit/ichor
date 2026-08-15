@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { IchorLogo } from "./IchorMark";
-import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, Search, LogOut, Info, Castle, Sparkles } from "lucide-react";
+import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, Search, LogOut, Info, Castle, Sparkles, Flag } from "lucide-react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { Avatar } from "./Avatar";
 import { CoachWidget } from "@/components/features/CoachWidget";
@@ -34,6 +34,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/coach", label: "Coach", icon: MessageCircle },
   { href: "/profile", label: "Profile", icon: User },
   { href: "/search", label: "Search", icon: Search },
+  { href: "/ru-rox", label: "RU-Rox", icon: Flag },
   { href: "/about", label: "About", icon: Info, splashTo: "about" },
 ];
 
