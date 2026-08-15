@@ -22,14 +22,17 @@ function useNow(intervalMs = 1000): number {
   return now;
 }
 
-function formatRemaining(ms: number): string {
+function formatRemaining(ms: number, precise = false): string {
   const s = Math.floor(ms / 1000);
   const d = Math.floor(s / 86400);
   const h = Math.floor((s % 86400) / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${m}m`;
+  // `precise` keeps a visibly moving unit at every range. The default (coarser) form is what
+  // battle deadlines use, where a value that changes every second reads as pressure rather than
+  // information — but a countdown presented AS a counter needs to actually tick.
+  if (d > 0) return precise ? `${d}d ${h}h ${m}m` : `${d}d ${h}h`;
+  if (h > 0) return precise ? `${h}h ${m}m ${sec}s` : `${h}h ${m}m`;
   if (m > 0) return `${m}m ${sec}s`;
   return `${sec}s`;
 }
@@ -41,12 +44,15 @@ export function Countdown({
   suffix = " left",
   expiredText = "expired",
   className = "",
+  precise = false,
 }: {
   to: string | null;
   prefix?: string;
   suffix?: string;
   expiredText?: string;
   className?: string;
+  /** Show an extra, faster-moving unit so the value visibly ticks. See formatRemaining. */
+  precise?: boolean;
 }) {
   const now = useNow();
   if (!to) return null;
@@ -54,7 +60,7 @@ export function Countdown({
   const urgent = ms > 0 && ms < 3600_000;
   return (
     <span className={`tabular-nums ${urgent ? "text-ignite font-semibold" : ""} ${className}`}>
-      {ms <= 0 ? expiredText : `${prefix}${formatRemaining(ms)}${suffix}`}
+      {ms <= 0 ? expiredText : `${prefix}${formatRemaining(ms, precise)}${suffix}`}
     </span>
   );
 }

@@ -17,6 +17,10 @@ const nextConfig: NextConfig = {
       // Google OAuth profile pictures (lh3/lh4/lh5/lh6.googleusercontent.com) — the only
       // reason Avatar.tsx had `unoptimized` hardcoded everywhere was to dodge this being missing.
       { protocol: "https", hostname: "*.googleusercontent.com" },
+      // A runner's own Strava photos (lib/strava.ts's fetchStravaPhotos) are served from
+      // Strava's CloudFront CDN — missing this crashed the whole profile posts grid (a
+      // next/image "unconfigured host" render error) for any post with an attached photo.
+      { protocol: "https", hostname: "*.cloudfront.net" },
     ],
   },
 };

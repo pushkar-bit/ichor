@@ -16,6 +16,7 @@ export function EditProfileModal({
   initialAvatarUrl,
   initialWeight,
   initialHeight,
+  initialBirthDate,
 }: {
   initialName: string;
   initialBio: string;
@@ -23,6 +24,8 @@ export function EditProfileModal({
   initialAvatarUrl?: string | null;
   initialWeight?: number | null;
   initialHeight?: number | null;
+  /** ISO date string (yyyy-mm-dd), or null if never set — e.g. an account that predates this field. */
+  initialBirthDate?: string | null;
 }) {
   const router = useRouter();
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -37,6 +40,7 @@ export function EditProfileModal({
   const [heightCm, setHeightCm] = useState(initialHeight ? String(initialHeight) : "");
   const [heightFt, setHeightFt] = useState(initialHeight ? String(Math.floor(initialHeight / 30.48)) : "");
   const [heightIn, setHeightIn] = useState(initialHeight ? String(Math.round((initialHeight / 2.54) % 12)) : "");
+  const [birthDate, setBirthDate] = useState(initialBirthDate ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,6 +83,7 @@ export function EditProfileModal({
           ...(newAvatarUrl ? { avatarUrl: newAvatarUrl } : {}),
           weightKg: weightKg ? Number(weightKg) : null,
           heightCm: finalHeightCm ? Number(finalHeightCm) : null,
+          ...(birthDate ? { birthDate } : {}),
         }),
       });
       if (res.ok) {
@@ -216,6 +221,17 @@ export function EditProfileModal({
                     </div>
                   )}
                 </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-white/50 mb-1.5 block">Birth date</label>
+                <input
+                  type="date"
+                  value={birthDate}
+                  onChange={(e) => setBirthDate(e.target.value)}
+                  max={new Date().toISOString().slice(0, 10)}
+                  className="w-full bg-midnight border border-border-ichor rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-momentum/50 [color-scheme:dark]"
+                />
+                <p className="text-[11px] text-white/30 mt-1">Used to pace your plan sensibly and to wish you a happy birthday 🎂</p>
               </div>
               {error && <p className="text-xs text-ignite">{error}</p>}
               <button

@@ -6,6 +6,7 @@ import {
   Swords, ShieldAlert, Trophy, Crosshair, Flame, TrendingUp, CalendarDays,
   Flag, Sparkles, History, Users, Target, MessageCircle, X, ChevronRight,
   Percent, Sunrise, AlertTriangle, Gauge, CalendarClock, TrendingDown, ShieldCheck, Map,
+  Footprints, PartyPopper, Heart, Cake,
 } from "lucide-react";
 import type { ForYouCard } from "@/lib/forYou";
 import { Countdown } from "./Countdown";
@@ -253,6 +254,52 @@ function describe(card: ForYouCard): Presentation {
           </div>
         ),
       };
+    case "beginner_next_session":
+      return {
+        accent: "text-momentum",
+        icon: <Footprints className="w-5 h-5" />, eyebrow: `Week ${card.week} of ${card.totalWeeks}`,
+        title: card.sessionLabel,
+        body: card.detail,
+        href: "/start", cta: "Open your plan",
+      };
+    case "beginner_shortfall":
+      return {
+        accent: "text-momentum",
+        icon: <Footprints className="w-5 h-5" />, eyebrow: "Almost",
+        title: card.title, body: card.body,
+        href: "/start", cta: "See the target",
+      };
+    case "beginner_tip":
+      return {
+        accent: card.tier === "must-know" ? "text-ignite" : "text-lime",
+        icon: <Heart className="w-5 h-5" />, eyebrow: card.tier === "must-know" ? "Must know" : "Very important",
+        title: card.title, body: card.body,
+        href: "/start", cta: "More tips",
+      };
+    case "beginner_milestone":
+      return {
+        accent: "text-lime",
+        icon: <PartyPopper className="w-5 h-5" />, eyebrow: "Milestone",
+        title: card.label,
+        body: "From one-minute jogs to five kilometres. You're ready for the full ICHOR experience whenever you want it.",
+        href: "/start", cta: "See what's next",
+      };
+    case "beginner_session_kudos":
+      return {
+        accent: "text-lime",
+        icon: <PartyPopper className="w-5 h-5" />,
+        eyebrow: card.completedWeek ? `Stage ${card.week} complete!` : `Week ${card.week}, session ${card.sessionNumber} done`,
+        title: card.completedWeek ? "You finished the whole stage 🎉" : "Nice — that's a session in the books 💪",
+        body: card.message,
+        href: "/start", cta: "See your plan",
+      };
+    case "birthday":
+      return {
+        accent: "text-afterrun",
+        icon: <Cake className="w-5 h-5" />, eyebrow: "Happy birthday!",
+        title: `Have a great one, ${card.name.split(" ")[0]} 🎂`,
+        body: "Everyone here hopes it's a good one. However you spend today, it counts.",
+      };
     case "goal_projection":
       return {
         accent: "text-momentum",
@@ -330,6 +377,7 @@ function accentStyles(accent: string): { chip: string; glow: string } {
   if (accent.includes("ignite")) return { chip: "bg-ignite/15", glow: "from-ignite/10" };
   if (accent.includes("lime")) return { chip: "bg-lime/15", glow: "from-lime/10" };
   if (accent.includes("momentum")) return { chip: "bg-momentum/15", glow: "from-momentum/10" };
+  if (accent.includes("afterrun")) return { chip: "bg-afterrun/15", glow: "from-afterrun/10" };
   return { chip: "bg-white/10", glow: "from-white/[0.06]" };
 }
 
@@ -348,6 +396,12 @@ function groupOf(kind: ForYouCard["kind"]): ForYouGroup {
     case "coach_tip":
     case "territory_fading":
     case "objective":
+    case "beginner_next_session":
+    case "beginner_tip":
+    case "beginner_milestone":
+    case "beginner_session_kudos":
+    case "beginner_shortfall":
+    case "birthday":
       return "act";
     case "leaderboard_move":
     case "rival":

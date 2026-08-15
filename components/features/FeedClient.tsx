@@ -6,7 +6,6 @@ import { Flame, PlusCircle } from "lucide-react";
 import type { ActivityCardData } from "./ActivityCard";
 import { CreatorFeedGroup } from "./CreatorFeedGroup";
 import { ForYouRail, Lead as TopInsight } from "./ForYouRail";
-import { StravaConnectNudge } from "./StravaConnectNudge";
 import { TerritoryStrip } from "./TerritoryStrip";
 import { NotificationsWidget } from "./NotificationsWidget";
 import type { TerritorySummary } from "@/lib/territorySummary";
@@ -139,9 +138,9 @@ export function FeedClient({
           </Link>
         </div>
 
-        {/* Account-level status, not tied to any one tab — shows regardless of which feed
-            tab is active, unlike the per-tab dynamic insight banner below. */}
-        <StravaConnectNudge connected={stravaConnected} />
+        {/* The old dismissible "connect Strava" nudge lived here. It's now superseded by the
+            app-wide StravaGateBanner (app/(app)/layout.tsx), which targets the same audience
+            with the same CTA — keeping both meant two Strava prompts stacked on one screen. */}
 
         {/* Unconditional, above everything, on every tab: the state of your ground. Nothing
             else in the app guarantees territory is visible when the user opens it. */}

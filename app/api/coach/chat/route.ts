@@ -5,6 +5,7 @@ import { CoachMessage } from "@/models/CoachMessage";
 import { Territory } from "@/models/Territory";
 import { computeUserWeeklyScore } from "@/lib/scoring";
 import { coachReply } from "@/lib/ai";
+import { getAge } from "@/lib/age";
 
 export async function GET() {
   await connectDB();
@@ -38,6 +39,8 @@ export async function POST(req: NextRequest) {
     battlesWon: me.battlesWon,
     battlesLost: me.battlesLost,
     zonesHeld,
+    beginnerMode: me.beginnerMode,
+    age: me.birthDate ? getAge(me.birthDate) : null,
   });
 
   await CoachMessage.create({ userId: me._id, role: "coach", text: reply });

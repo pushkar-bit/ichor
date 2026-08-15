@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { IchorLogo } from "./IchorMark";
-import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, Search, LogOut, Info, Castle } from "lucide-react";
+import { Flame, Map, PlusCircle, Trophy, Users, MessageCircle, User, Search, LogOut, Info, Castle, Sparkles } from "lucide-react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { Avatar } from "./Avatar";
 import { CoachWidget } from "@/components/features/CoachWidget";
@@ -13,15 +13,18 @@ import { NotificationBell } from "@/components/features/NotificationBell";
  * Nav items.
  * splashTo: when set, clicking this item plays the splash animation first,
  * then redirects to `splashTo` destination instead of navigating directly.
+ * beginnerOnly: only rendered when the viewer is in Beginner-Friendly Mode.
  */
 type NavItem = {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   splashTo?: string;
+  beginnerOnly?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
+  { href: "/start", label: "Start Here", icon: Sparkles, beginnerOnly: true },
   { href: "/feed", label: "Feed", icon: Flame },
   { href: "/map", label: "Territory", icon: Map },
   { href: "/post/create", label: "Post", icon: PlusCircle },
@@ -34,7 +37,17 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/about", label: "About", icon: Info, splashTo: "about" },
 ];
 
-type NavUser = { name: string; avatarUrl: string };
+// Beginner-Friendly Mode softens a handful of the more combative labels — hrefs/structure
+// never change, so nothing about routing or feature access is affected, only the words.
+const BEGINNER_LABELS: Record<string, string> = {
+  "/map": "My Map",
+  "/empire": "My Clan",
+  "/leaderboard": "Progress",
+  "/coach": "My Coach",
+  "/post/create": "Share a Run",
+};
+
+type NavUser = { name: string; avatarUrl: string; beginnerMode?: boolean };
 
 export function NavShell({
   children,
@@ -45,6 +58,7 @@ export function NavShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const beginnerMode = Boolean(user.beginnerMode);
   usePushNotifications();
 
   /** Handle nav item click — splash-intercepted items go through /splash?to=<dest> first */
@@ -59,6 +73,7 @@ export function NavShell({
   function renderNavItem(item: NavItem, compact = false) {
     const active = pathname === item.href || (item.href !== "/feed" && pathname?.startsWith(item.href));
     const Icon = item.icon;
+    const label = beginnerMode ? BEGINNER_LABELS[item.href] ?? item.label : item.label;
 
     if (compact) {
       // Mobile bottom nav (icon + label, no motion wrapper)
@@ -72,7 +87,7 @@ export function NavShell({
           }`}
         >
           <Icon className="w-5 h-5" />
-          {item.label}
+          {label}
         </Link>
       );
     }
@@ -96,15 +111,21 @@ export function NavShell({
           ) : (
             <Icon className="w-[18px] h-[18px]" />
           )}
-          {item.label}
+          {label}
         </Link>
       </div>
     );
   }
 
-  const mobileNavItems = NAV_ITEMS.filter((i) =>
-    ["/feed", "/map", "/post/create", "/leaderboard", "/search"].includes(i.href)
-  );
+  const visibleNavItems = NAV_ITEMS.filter((i) => !i.beginnerOnly || beginnerMode);
+
+  // Mobile bottom nav only fits five slots. Beginners get Start Here in place of the
+  // leaderboard — the competitive ranking they're least ready for on day one — while
+  // Leaderboard/Progress stays fully reachable from the desktop sidebar either way.
+  const mobileHrefs = beginnerMode
+    ? ["/start", "/feed", "/map", "/post/create", "/search"]
+    : ["/feed", "/map", "/post/create", "/leaderboard", "/search"];
+  const mobileNavItems = visibleNavItems.filter((i) => mobileHrefs.includes(i.href));
 
   return (
     <div className="min-h-screen bg-midnight-raised md:bg-midnight flex">
@@ -117,7 +138,7 @@ export function NavShell({
           </Link>
         </div>
         <nav className="flex-1 space-y-3">
-          {NAV_ITEMS.map((item) => renderNavItem(item))}
+          {visibleNavItems.map((item) => renderNavItem(item))}
         </nav>
         <div className="mt-auto px-2 space-y-2 mb-4">
           {/* No bell here anymore — on desktop, notifications live at the top of the feed's
@@ -160,7 +181,7 @@ export function NavShell({
 
           {/* Floating Coach Widget for Mobile */}
           <div className="fixed bottom-[80px] right-4 z-[99]">
-            <CoachWidget />
+            <CoachWidget beginnerMode={beginnerMode} />
           </div>
 
           {/* Mobile Bottom Navigation */}

@@ -14,7 +14,13 @@ const STARTERS = [
   "Generate my training plan",
 ];
 
-export function CoachWidget() {
+const BEGINNER_STARTERS = [
+  "Is this soreness normal?",
+  "How should this week feel?",
+  "What should I eat before a run?",
+];
+
+export function CoachWidget({ beginnerMode = false }: { beginnerMode?: boolean }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -84,10 +90,10 @@ export function CoachWidget() {
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-display italic font-bold tracking-wide" style={{ color: "#AE93F4" }}>
-                VIKAS YADAV
+                {beginnerMode ? "COACH" : "VIKAS YADAV"}
               </div>
               <div className="text-[10px] font-light" style={{ color: "#6B6570" }}>
-                Your Performance Coach · Online
+                {beginnerMode ? "Your Running Buddy · Online" : "Your Performance Coach · Online"}
               </div>
             </div>
             <button
@@ -108,7 +114,7 @@ export function CoachWidget() {
             {loaded && messages.length === 0 && (
               <div className="space-y-2">
                 <p className="text-xs text-white/40 text-center">Ask me anything about your training!</p>
-                {STARTERS.map((s) => (
+                {(beginnerMode ? BEGINNER_STARTERS : STARTERS).map((s) => (
                   <button
                     key={s}
                     onClick={() => send(s)}
@@ -157,7 +163,7 @@ export function CoachWidget() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && send(input)}
-              placeholder="Ask Vikas..."
+              placeholder={beginnerMode ? "Ask me..." : "Ask Vikas..."}
               className="flex-1 bg-midnight-raised border border-border-ichor rounded-full px-3 py-2 text-xs placeholder:text-white/30 focus:outline-none focus:border-momentum/50"
             />
             <button

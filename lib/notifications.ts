@@ -88,6 +88,8 @@ export function hrefForNotification(
     case "LAND_WAR_OPEN":
     case "LAND_WAR_RESULT":
       return "/map";
+    case "BIRTHDAY":
+      return "/profile";
     default:
       // Everything territory- and battle-shaped lives on the map.
       return "/map";
