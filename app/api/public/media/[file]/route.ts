@@ -17,12 +17,12 @@ import path from "path";
  *
  * Public API — no auth required.
  * Route: /api/public/media/[file]
- *   /api/public/media/anim  → public/anim.mp4   (video/mp4)
+ *   /api/public/media/anim  → public/images/anim.mp4   (video/mp4)
  *   /api/public/media/logo  → public/logo.mp3   (audio/mpeg)
  */
 
 const ALLOWED: Record<string, { filename: string; mime: string }> = {
-  anim: { filename: "anim.mp4", mime: "video/mp4" },
+  anim: { filename: "images/anim.mp4", mime: "video/mp4" },
   logo: { filename: "logo.mp3", mime: "audio/mpeg" },
 };
 

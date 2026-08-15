@@ -1,7 +1,7 @@
 import Image from "next/image";
 
 /**
- * The ICHOR brand mark — a photorealistic rendered glyph (public/images/newl.jpg), not a
+ * The ICHOR brand mark — a photorealistic rendered glyph (public/images/logo-mark-source.jpg), not a
  * flat vector: `className` must set an explicit width/height (or an aspect-ratio) for the
  * `fill` image to size against. Its near-black background blends into the app's own
  * midnight background, so it reads cleanly without needing a cutout/transparent asset.
@@ -9,7 +9,7 @@ import Image from "next/image";
 export function IchorMark({ className }: { className?: string }) {
   return (
     <span className={`relative inline-block ${className ?? ""}`}>
-      <Image src="/images/newl.jpg" alt="ICHOR" fill className="object-contain" sizes="200px" />
+      <Image src="/images/logo-mark-source.jpg" alt="ICHOR" fill className="object-contain" sizes="200px" />
     </span>
   );
 }

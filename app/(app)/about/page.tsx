@@ -3,7 +3,7 @@
 import { motion, useInView } from "framer-motion";
 import { useRef } from "react";
 import { IchorMark } from "@/components/ui/IchorMark";
-import { Flame, Users, Trophy, Map, Heart, Zap } from "lucide-react";
+import { Flame, Users, Trophy, Map, Heart, Zap, MessageCircle, AtSign } from "lucide-react";
 
 export default function AboutPage() {
   return (
@@ -113,7 +113,7 @@ export default function AboutPage() {
                   transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
                   className="w-full h-full p-8 flex items-center justify-center relative z-10"
                 >
-                  <img src="/images/newl.jpg" alt="ICHOR Logo Concept" className="w-full h-full object-contain drop-shadow-2xl" />
+                  <img src="/images/logo-mark-source.jpg" alt="ICHOR Logo Concept" className="w-full h-full object-contain drop-shadow-2xl" />
                 </motion.div>
               </div>
             </FadeIn>
@@ -200,16 +200,60 @@ export default function AboutPage() {
             <SectionLabel>The Team</SectionLabel>
             <h2 className="font-display italic font-bold text-5xl mb-4">Built by runners,<br />for runners</h2>
             <p className="text-white/50 max-w-xl mb-16">
-              ICHOR was founded by developers Pushkar Jain and Om Yadav, supported by a core team obsessed with turning campus fitness culture into something legendary.
+              ICHOR is led by founder &amp; president Pushkar Jain and vice president Om Yadav,
+              backed by a core team obsessed with turning campus fitness culture into something legendary.
             </p>
           </FadeIn>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
             {FOUNDERS.map((f, i) => (
               <FadeIn key={f.name} delay={i * 0.1}>
                 <FounderCard founder={f} />
               </FadeIn>
             ))}
           </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {CORE_TEAM.map((f, i) => (
+              <FadeIn key={f.name} delay={i * 0.1}>
+                <FounderCard founder={f} />
+              </FadeIn>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── GET IN TOUCH ──────────────────────────────────────────────────── */}
+      <section className="border-t border-border-ichor bg-midnight-raised">
+        <div className="max-w-5xl mx-auto px-6 py-24 text-center">
+          <FadeIn>
+            <SectionLabel>Get In Touch</SectionLabel>
+            <h2 className="font-display italic font-bold text-5xl mb-4">Come run with us</h2>
+            <p className="text-white/50 max-w-xl mx-auto mb-10">
+              The fastest way to reach the team is to join the community directly — that&apos;s
+              where drops, events, and runs get announced first.
+            </p>
+          </FadeIn>
+          <FadeIn delay={0.1}>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <a
+                href="https://chat.whatsapp.com/IXnXrKajDKN0zmhTc1pk57"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-momentum text-midnight font-semibold rounded-full px-6 py-3 hover:bg-momentum-dim transition-colors"
+              >
+                <MessageCircle className="w-5 h-5" />
+                Join our WhatsApp Community
+              </a>
+              <a
+                href="https://instagram.com/ichor.club"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 border border-border-ichor rounded-full px-6 py-3 font-semibold text-white/80 hover:border-momentum/40 hover:text-white transition-colors"
+              >
+                <AtSign className="w-5 h-5" />
+                @ichor.club
+              </a>
+            </div>
+          </FadeIn>
         </div>
       </section>
 
@@ -309,7 +353,16 @@ function FadeIn({
   );
 }
 
-function FounderCard({ founder }: { founder: (typeof FOUNDERS)[number] }) {
+type TeamMember = {
+  name: string;
+  initials: string;
+  role: string;
+  bio: string;
+  gradient: string;
+  image?: string;
+};
+
+function FounderCard({ founder }: { founder: TeamMember }) {
   return (
     <div className="bg-midnight-raised border border-border-ichor rounded-2xl overflow-hidden hover:border-momentum/40 transition-colors">
       {/* Photo placeholder / image */}
@@ -391,11 +444,11 @@ const VALUES = [
   },
 ];
 
-const FOUNDERS = [
+const FOUNDERS: TeamMember[] = [
   {
     name: "Pushkar Jain",
     initials: "PJ",
-    role: "Co-Founder & Developer",
+    role: "Founder & President",
     bio: "Obsessed with building products that make people move. Believes every campus needs a fitness battleground.",
     gradient: "linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)",
     image: "/founder-1.jpg",
@@ -403,16 +456,43 @@ const FOUNDERS = [
   {
     name: "Om Yadav",
     initials: "OY",
-    role: "Co-Founder & Developer",
+    role: "Vice President",
     bio: "Passionate about pushing limits and turning ideas into reality. Drives the technical vision of ICHOR.",
     gradient: "linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)",
     image: "/founder-2.jpg",
   },
+];
+
+const CORE_TEAM: TeamMember[] = [
   {
-    name: "The Core Team",
-    initials: "IC",
-    role: "Core Contributors",
-    bio: "Abhinav Sukhwal, Rudraksha Baragi, and Samridhi Negi. A squad of builders, runners, and campus culture obsessives making ICHOR real.",
+    name: "Samridhi Negi",
+    initials: "SN",
+    role: "Core Team",
+    bio: "Part of the crew turning campus fitness culture into something legendary, one run at a time.",
+    gradient: "linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)",
+    image: undefined,
+  },
+  {
+    name: "Abhinav Sukhwal",
+    initials: "AS",
+    role: "Core Team",
+    bio: "The mind behind RU-Rox — turned a wild idea for a campus hybrid race into ICHOR's flagship event.",
+    gradient: "linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)",
+    image: undefined,
+  },
+  {
+    name: "Rudraksha Bairagi",
+    initials: "RB",
+    role: "Core Team",
+    bio: "Part of the crew turning campus fitness culture into something legendary, one run at a time.",
+    gradient: "linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)",
+    image: undefined,
+  },
+  {
+    name: "Alok Rawat",
+    initials: "AR",
+    role: "Content Head",
+    bio: "Shapes how ICHOR's story gets told — from the drops to the run recaps.",
     gradient: "linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)",
     image: undefined,
   },
